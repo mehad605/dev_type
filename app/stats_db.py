@@ -148,10 +148,35 @@ def clear_session_progress(file_path: str):
 
 
 def get_incomplete_sessions() -> List[str]:
-    """Get list of files with incomplete sessions."""
+    """Get list of files with incomplete sessions (paused or not finished)."""
     conn = _connect()
     cur = conn.cursor()
-    cur.execute("SELECT file_path FROM session_progress WHERE is_paused = 1")
+    # Get files that are paused OR have not reached the end
+    cur.execute("""
+        SELECT file_path FROM session_progress 
+        WHERE is_paused = 1 OR cursor_position < total_characters
+    """)
     rows = [r[0] for r in cur.fetchall()]
     conn.close()
     return rows
+
+
+def is_session_incomplete(file_path: str) -> bool:
+    """Check if a file has an incomplete session.
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        True if file has incomplete session, False otherwise
+    """
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM session_progress 
+        WHERE file_path = ? 
+        AND (is_paused = 1 OR cursor_position < total_characters)
+    """, (file_path,))
+    result = cur.fetchone()
+    conn.close()
+    return result is not None

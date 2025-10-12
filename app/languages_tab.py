@@ -14,6 +14,7 @@ from PySide6.QtGui import QPixmap, QIcon
 from typing import Dict, List
 from app.file_scanner import scan_folders
 from app import settings
+from app.icon_manager import get_icon_manager
 
 
 class LanguageCard(QFrame):
@@ -33,10 +34,22 @@ class LanguageCard(QFrame):
         
         layout = QVBoxLayout(self)
         
-        # Language icon placeholder (will be replaced with actual icons later)
-        icon_label = QLabel("📄")
+        # Language icon - try to get from icon manager, fallback to emoji
+        icon_manager = get_icon_manager()
+        icon_pixmap = icon_manager.get_icon(language, size=48)
+        
+        icon_label = QLabel()
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setStyleSheet("font-size: 48px;")
+        
+        if icon_pixmap:
+            # Use downloaded icon
+            icon_label.setPixmap(icon_pixmap)
+        else:
+            # Fallback to emoji
+            emoji = icon_manager.get_emoji_fallback(language)
+            icon_label.setText(emoji)
+            icon_label.setStyleSheet("font-size: 48px;")
+        
         layout.addWidget(icon_label)
         
         # Language name
@@ -122,6 +135,10 @@ class LanguagesTab(QWidget):
             empty_label.setStyleSheet("color: gray; padding: 20px;")
             self.card_layout.addWidget(empty_label, 0, 0)
             return
+        
+        # Preload icons for all detected languages (non-blocking)
+        icon_manager = get_icon_manager()
+        icon_manager.preload_icons(list(language_files.keys()))
         
         # Create cards in grid layout
         row, col = 0, 0

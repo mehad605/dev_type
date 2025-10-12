@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QBrush, QColor
 from pathlib import Path
 from typing import List, Optional, Dict
 from app import settings, stats_db
@@ -31,6 +31,9 @@ class FileTreeWidget(QTreeWidget):
         
         # Connect selection signal
         self.itemClicked.connect(self.on_item_clicked)
+        
+        # Get incomplete sessions for highlighting
+        self.incomplete_files = set(stats_db.get_incomplete_sessions())
     
     def load_folder(self, folder_path: str):
         """Load a single folder and display its file tree."""
@@ -88,6 +91,9 @@ class FileTreeWidget(QTreeWidget):
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, str(file_path))
+                
+                # Highlight if incomplete session
+                self._apply_incomplete_highlight(file_item, file_path)
             
             folder_item.setExpanded(False)
     
@@ -113,7 +119,8 @@ class FileTreeWidget(QTreeWidget):
                     continue
                 
                 # Get actual WPM stats from database
-                stats = stats_db.get_file_stats(str(item))
+                file_path_str = str(item)
+                stats = stats_db.get_file_stats(file_path_str)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
                 
@@ -122,10 +129,39 @@ class FileTreeWidget(QTreeWidget):
                     best_wpm,
                     last_wpm
                 ])
-                file_item.setData(0, Qt.UserRole, str(item))
+                file_item.setData(0, Qt.UserRole, file_path_str)
+                
+                # Highlight if incomplete session
+                self._apply_incomplete_highlight(file_item, file_path_str)
     
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle item click - emit signal if it's a file."""
         file_path = item.data(0, Qt.UserRole)
         if file_path and Path(file_path).is_file():
             self.file_selected.emit(file_path)
+    
+    def _get_incomplete_highlight_color(self) -> QColor:
+        """Get the highlight color for incomplete files from theme settings."""
+        from app import settings
+        paused_color = settings.get_setting("color_paused_highlight", "#ffaa00")
+        # Make it slightly transparent for better visibility
+        color = QColor(paused_color)
+        color.setAlpha(80)  # 30% opacity
+        return color
+    
+    def _apply_incomplete_highlight(self, item: QTreeWidgetItem, file_path: str):
+        """Apply highlight to file item if it has an incomplete session."""
+        if file_path in self.incomplete_files:
+            highlight_color = self._get_incomplete_highlight_color()
+            brush = QBrush(highlight_color)
+            # Apply to all columns
+            for col in range(self.columnCount()):
+                item.setBackground(col, brush)
+            # Add indicator in the filename (⏸ pause symbol)
+            current_text = item.text(0)
+            if not current_text.endswith(" ⏸"):
+                item.setText(0, f"{current_text} ⏸")
+    
+    def refresh_incomplete_sessions(self):
+        """Refresh the list of incomplete sessions (call after completing a file)."""
+        self.incomplete_files = set(stats_db.get_incomplete_sessions())

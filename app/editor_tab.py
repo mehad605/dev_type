@@ -149,6 +149,9 @@ class EditorTab(QWidget):
             completed=True
         )
         
+        # Refresh file tree to update incomplete session highlights
+        self.file_tree.refresh_incomplete_sessions()
+        
         # Clear session progress
         stats_db.clear_session_progress(self.current_file)
         
