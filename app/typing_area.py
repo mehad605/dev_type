@@ -18,15 +18,18 @@ class TypingHighlighter(QSyntaxHighlighter):
         self.engine = engine
         self.show_typed_char = True  # Show what was typed vs expected
         
-        # Color formats
+        # Color formats - load from settings
         self.untyped_format = QTextCharFormat()
-        self.untyped_format.setForeground(QColor("#555555"))  # Gray
+        untyped_color = settings.get_setting("color_untyped", "#555555")
+        self.untyped_format.setForeground(QColor(untyped_color))
         
         self.correct_format = QTextCharFormat()
-        self.correct_format.setForeground(QColor("#00ff00"))  # Green
+        correct_color = settings.get_setting("color_correct", "#00ff00")
+        self.correct_format.setForeground(QColor(correct_color))
         
         self.incorrect_format = QTextCharFormat()
-        self.incorrect_format.setForeground(QColor("#ff0000"))  # Red
+        incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
+        self.incorrect_format.setForeground(QColor(incorrect_color))
         
         self.typed_chars = {}  # position -> (typed_char, is_correct)
     

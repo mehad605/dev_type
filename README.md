@@ -10,7 +10,9 @@ A Python-based typing practice application specifically designed for developers 
 - **Typing Practice**: Character-by-character typing validation with color coding
 - **Statistics Tracking**: WPM, accuracy, and keystroke metrics
 - **Session Persistence**: Resume incomplete typing sessions
-- **Customizable Themes**: Nord, Catppuccin, Dracula (dark mode)
+- **Dynamic Themes** ✨: 3 dark schemes (Nord, Catppuccin, Dracula) + light mode - switch instantly!
+- **Full Customization**: Colors, fonts, cursor styles, and more
+- **Import/Export**: Backup and restore settings and data
 - **Offline**: Works completely offline once set up
 
 ## Quick Start
@@ -53,14 +55,20 @@ dev_type/
 │   ├── stats_db.py           # Typing statistics database
 │   ├── file_scanner.py       # Language detection and file scanning
 │   ├── typing_engine.py      # Core typing logic (no GUI dependencies)
+│   ├── themes.py             # Theme system with color schemes
+│   ├── typing_area.py        # Typing area widget with syntax highlighting
+│   ├── stats_display.py      # Live stats display widget
 │   ├── file_tree.py          # File tree widget
+│   ├── editor_tab.py         # Editor/typing tab integration
 │   ├── languages_tab.py      # Languages tab widget
 │   └── ui_main.py            # Main window and UI
 ├── tests/
 │   ├── test_settings_db.py
 │   ├── test_stats_db.py
 │   ├── test_file_scanner.py
-│   └── test_typing_engine.py
+│   ├── test_typing_engine.py
+│   ├── test_themes.py
+│   └── test_expanded_settings.py
 ├── main.py                   # Application entry point
 ├── pyproject.toml            # Project configuration (managed by uv)
 └── README.md
@@ -235,7 +243,55 @@ Try the included demo files in `demo_files/`:
 
 ## Settings
 
-Settings are persisted in an SQLite database at:
+Access comprehensive settings from the **Settings** tab:
+
+### General Settings
+- **Delete confirmation dialogs**: Toggle confirmation when removing folders
+- **Show typed character**: Display what you typed (not expected character) when incorrect
+
+### Theme Settings ✨
+Switch themes instantly with no restart required!
+
+- **Theme**: Choose between **dark** and **light** mode
+- **Dark schemes**: Three beautiful options
+  - **Nord** (Default): Arctic, north-bluish palette - professional and calming
+  - **Catppuccin**: Soothing pastel theme - cozy and comfortable
+  - **Dracula**: Vibrant dark theme - bold and dramatic
+  
+**Theme colors apply instantly** to:
+- All UI elements (buttons, tabs, lists, trees, inputs)
+- Typing area text colors
+- Scroll bars, borders, and accents
+- Message dialogs
+
+### Color Customization
+- **Untyped text color**: Color for characters not yet typed (default: gray)
+- **Correct text color**: Color for correctly typed characters (default: green)
+- **Incorrect text color**: Color for incorrectly typed characters (default: red)
+- **Paused files highlight**: Color for incomplete session files (default: orange)
+- **Cursor color**: Color of the text cursor (default: white)
+- Each color has a **Reset** button to restore defaults
+
+### Cursor Settings
+- **Type**: Blinking or static cursor
+- **Style**: Block, underscore, or I-beam cursor
+
+### Font Settings
+- **Family**: Choose from popular monospace fonts (Consolas, Fira Code, JetBrains Mono, etc.)
+- **Size**: Font size from 8 to 32 pixels
+- **Ligatures**: Enable or disable font ligatures
+
+### Typing Settings
+- **Space character**: Choose how spaces are displayed: `␣`, `·`, ` ` (normal space), or custom character
+- **Auto-pause delay**: Seconds of inactivity before session pauses (default: 7 seconds)
+
+### Backup & Restore
+- **Export Settings**: Save all settings to a JSON file
+- **Import Settings**: Load settings from a JSON file
+- **Export Data**: Save typing statistics and progress to JSON
+- **Import Data**: Load typing statistics and progress from JSON
+
+All settings are persisted in an SQLite database at:
 - Windows: `%APPDATA%\dev_typing_app\data.db`
 - Linux/Mac: `~/.local/share/dev_typing_app/data.db`
 

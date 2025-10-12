@@ -65,6 +65,25 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("delete_confirm", "1"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_char", "1"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("pause_delay", "7"))
+    
+    # Color settings
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_untyped", "#555555"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_correct", "#00ff00"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_incorrect", "#ff0000"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_paused_highlight", "#ffaa00"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_cursor", "#ffffff"))
+    
+    # Cursor settings
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_type", "blinking"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_style", "block"))
+    
+    # Font settings
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_family", "Consolas"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_size", "12"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_ligatures", "0"))
+    
+    # Space character setting
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("space_char", "␣"))
     conn.commit()
     conn.close()
     
