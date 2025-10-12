@@ -1,0 +1,1 @@
+"""Dev Typing App package."""
