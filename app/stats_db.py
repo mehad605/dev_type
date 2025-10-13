@@ -2,6 +2,7 @@
 import sqlite3
 from typing import Any, Optional, Dict, List
 from app.settings import _db_file, _connect
+import app.settings as settings
 
 
 def init_stats_tables():
@@ -107,12 +108,24 @@ def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bo
     conn = _connect()
     cur = conn.cursor()
     
+    # Minimum accuracy required to update best WPM
+    try:
+        min_accuracy_raw = settings.get_setting("best_wpm_min_accuracy", "0.9")
+        min_accuracy = float(min_accuracy_raw) if min_accuracy_raw is not None else 0.9
+    except (TypeError, ValueError):
+        min_accuracy = 0.9
+    min_accuracy = max(0.0, min(1.0, min_accuracy))
+    meets_threshold = accuracy >= min_accuracy
+
     # Get current stats
     cur.execute("SELECT best_wpm, times_practiced FROM file_stats WHERE file_path = ?", (file_path,))
     row = cur.fetchone()
     
     if row:
-        best_wpm = max(row[0], wpm)
+        current_best = row[0] or 0.0
+        best_wpm = current_best
+        if meets_threshold and wpm > current_best:
+            best_wpm = wpm
         times = row[1] + 1
         cur.execute("""
             UPDATE file_stats 
@@ -122,12 +135,13 @@ def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bo
             WHERE file_path = ?
         """, (wpm, best_wpm, accuracy, times, completed, file_path))
     else:
+        initial_best = wpm if meets_threshold else 0.0
         cur.execute("""
             INSERT INTO file_stats 
             (file_path, best_wpm, last_wpm, best_accuracy, last_accuracy, 
              times_practiced, completed, last_practiced)
             VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
-        """, (file_path, wpm, wpm, accuracy, accuracy, completed))
+        """, (file_path, initial_best, wpm, accuracy, accuracy, completed))
     
     conn.commit()
     conn.close()

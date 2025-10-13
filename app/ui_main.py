@@ -537,8 +537,29 @@ class MainWindow(QMainWindow):
         self.pause_delay_spin.setSuffix(" seconds")
         pause_delay = int(float(settings.get_setting("pause_delay", "7")))
         self.pause_delay_spin.setValue(pause_delay)
+
+        best_wpm_min = settings.get_setting("best_wpm_min_accuracy", "0.9")
+        try:
+            best_wpm_percent = int(round(float(best_wpm_min) * 100)) if best_wpm_min is not None else 90
+        except (TypeError, ValueError):
+            best_wpm_percent = 90
+        if hasattr(self, "best_wpm_accuracy_spin"):
+            self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
         self.pause_delay_spin.valueChanged.connect(self.on_pause_delay_changed)
         typing_layout.addRow("Auto-pause delay:", self.pause_delay_spin)
+
+        # Best WPM accuracy threshold
+        self.best_wpm_accuracy_spin = QSpinBox()
+        self.best_wpm_accuracy_spin.setRange(0, 100)
+        self.best_wpm_accuracy_spin.setSuffix(" %")
+        try:
+            best_wpm_acc_raw = settings.get_setting("best_wpm_min_accuracy", "0.9")
+            best_wpm_percent = int(round(float(best_wpm_acc_raw) * 100)) if best_wpm_acc_raw is not None else 90
+        except (TypeError, ValueError):
+            best_wpm_percent = 90
+        self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
+        self.best_wpm_accuracy_spin.valueChanged.connect(self.on_best_wpm_accuracy_changed)
+        typing_layout.addRow("Best WPM min accuracy:", self.best_wpm_accuracy_spin)
         
         typing_group.setLayout(typing_layout)
         s_layout.addWidget(typing_group)
@@ -675,6 +696,11 @@ class MainWindow(QMainWindow):
     def on_pause_delay_changed(self, delay: int):
         settings.set_setting("pause_delay", str(delay))
         self.pause_delay_changed.emit(float(delay))
+
+    def on_best_wpm_accuracy_changed(self, percent: int):
+        clamped = max(0, min(100, int(percent)))
+        ratio = clamped / 100.0
+        settings.set_setting("best_wpm_min_accuracy", f"{ratio:.4f}")
     
     def on_export_settings(self):
         """Export settings to JSON file."""
