@@ -280,6 +280,7 @@ class MainWindow(QMainWindow):
     space_char_changed = Signal(str)
     pause_delay_changed = Signal(float)
     allow_continue_changed = Signal(bool)
+    show_typed_changed = Signal(bool)
     
     def __init__(self):
         super().__init__()
@@ -357,6 +358,39 @@ class MainWindow(QMainWindow):
 
         allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
         self._update_allow_continue_buttons(allow_continue)
+
+        # Show typed characters option
+        show_typed_label = QLabel("Show what you type")
+        show_typed_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(show_typed_label)
+
+        show_typed_description = QLabel(
+            "Display the characters you actually type instead of the reference text when mistakes happen."
+        )
+        show_typed_description.setWordWrap(True)
+        show_typed_description.setStyleSheet("color: #888888; font-size: 9pt;")
+        typing_behavior_layout.addWidget(show_typed_description)
+
+        show_button_row = QHBoxLayout()
+        show_button_row.setSpacing(8)
+
+        self.show_typed_enabled_btn = QPushButton("Enabled")
+        self.show_typed_disabled_btn = QPushButton("Disabled")
+        for btn in (self.show_typed_enabled_btn, self.show_typed_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.show_typed_enabled_btn.clicked.connect(lambda: self._handle_show_typed_button(True))
+        self.show_typed_disabled_btn.clicked.connect(lambda: self._handle_show_typed_button(False))
+
+        show_button_row.addWidget(self.show_typed_enabled_btn)
+        show_button_row.addWidget(self.show_typed_disabled_btn)
+        show_button_row.addStretch()
+        typing_behavior_layout.addLayout(show_button_row)
+
+        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        self._update_show_typed_buttons(show_typed)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -922,6 +956,8 @@ class MainWindow(QMainWindow):
         # Typing behavior
         allow_continue = settings.get_setting("allow_continue_mistakes", "0")
         self._update_allow_continue_buttons(allow_continue == "1")
+        show_typed_state = settings.get_setting("show_typed_characters", "0") == "1"
+        self._update_show_typed_buttons(show_typed_state)
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -947,7 +983,11 @@ class MainWindow(QMainWindow):
         # Allow continue with mistakes
         allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
         self.allow_continue_changed.emit(allow_continue)
-    
+
+        # Show typed characters
+        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        self.show_typed_changed.emit(show_typed)
+
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
         if hasattr(self.editor_tab, 'typing_area'):
@@ -957,6 +997,7 @@ class MainWindow(QMainWindow):
             self.space_char_changed.connect(self.editor_tab.typing_area.update_space_char)
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
             self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
+            self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed_characters)
     
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""
@@ -987,6 +1028,11 @@ class MainWindow(QMainWindow):
         self._update_allow_continue_buttons(allow_continue)
         self.allow_continue_changed.emit(allow_continue)
 
+        # Show typed characters
+        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        self._update_show_typed_buttons(show_typed)
+        self.show_typed_changed.emit(show_typed)
+
     def _update_allow_continue_buttons(self, enabled: bool):
         """Refresh the button styles for the allow-continue setting."""
         if not hasattr(self, 'allow_continue_enabled_btn'):
@@ -1013,6 +1059,32 @@ class MainWindow(QMainWindow):
         settings.set_setting("allow_continue_mistakes", "1" if enabled else "0")
         self._update_allow_continue_buttons(enabled)
         self.allow_continue_changed.emit(enabled)
+
+    def _update_show_typed_buttons(self, enabled: bool):
+        """Refresh the button styles for the show-typed setting."""
+        if not hasattr(self, 'show_typed_enabled_btn'):
+            return
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        self.show_typed_enabled_btn.setChecked(enabled)
+        self.show_typed_disabled_btn.setChecked(not enabled)
+        self.show_typed_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.show_typed_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_show_typed_button(self, enabled: bool):
+        """Handle clicks on the show-typed buttons."""
+        current = settings.get_setting("show_typed_characters", "0") == "1"
+        if current == enabled:
+            self._update_show_typed_buttons(enabled)
+            return
+        settings.set_setting("show_typed_characters", "1" if enabled else "0")
+        self._update_show_typed_buttons(enabled)
+        self.show_typed_changed.emit(enabled)
 
 
 def run_app():

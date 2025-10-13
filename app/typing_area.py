@@ -38,7 +38,7 @@ class TypingHighlighter(QSyntaxHighlighter):
             "typed": typed_char,
             "expected": expected_char,
             "is_correct": is_correct,
-            "length": max(len(expected_char), 1),
+            "length": max(len(expected_char), len(typed_char), 1),
         }
         self.rehighlight()
     
@@ -90,6 +90,7 @@ class TypingAreaWidget(QTextEdit):
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
+        self.show_typed_characters = settings.get_setting("show_typed_characters", "0") == "1"
 
         # Custom cursor state
         self.cursor_color = QColor(settings.get_setting("color_cursor", "#ffffff"))
@@ -198,9 +199,18 @@ class TypingAreaWidget(QTextEdit):
             return
 
         expected_len = info.get("length", max(len(info.get("expected", "")), 1))
-        # Always show the expected character (what should be typed)
-        target_char = info["expected"]
+        target_char = info["typed"] if self.show_typed_characters else info["expected"]
         self._replace_display_char(position, target_char, expected_len)
+
+    def _refresh_typed_display(self):
+        """Re-apply display text for all typed positions based on current visibility mode."""
+        if not self.highlighter or not self.highlighter.typed_chars:
+            return
+
+        for position, info in self.highlighter.typed_chars.items():
+            length = info.get("length", max(len(info.get("expected", "")), 1))
+            target_char = info["typed"] if self.show_typed_characters else info["expected"]
+            self._replace_display_char(position, target_char, length)
 
     def _restore_display_for_position(self, position: int):
         """Restore the original expected character at a position."""
@@ -571,6 +581,7 @@ class TypingAreaWidget(QTextEdit):
             self._update_cursor_position()
             if self.highlighter:
                 self.highlighter.rehighlight()
+                self._refresh_typed_display()
     
     def update_pause_delay(self, delay: float):
         """Update pause delay setting dynamically."""
@@ -599,3 +610,10 @@ class TypingAreaWidget(QTextEdit):
                 # Going back to strict mode: ensure cursor syncs with engine state
                 self.current_typing_position = self.engine.state.cursor_position
                 self._update_cursor_position()
+
+    def update_show_typed_characters(self, enabled: bool):
+        """Toggle visibility of the actual typed characters."""
+        if self.show_typed_characters == enabled:
+            return
+        self.show_typed_characters = enabled
+        self._refresh_typed_display()

@@ -86,6 +86,7 @@ def init_db(path: Optional[str] = None):
     
     # Typing behavior setting
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "0"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "0"))
     
     conn.commit()
     conn.close()
