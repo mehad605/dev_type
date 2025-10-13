@@ -63,7 +63,6 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("theme", "dark"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("dark_scheme", "nord"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("delete_confirm", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_char", "1"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("pause_delay", "7"))
     
     # Color settings

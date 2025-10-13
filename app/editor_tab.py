@@ -149,7 +149,10 @@ class EditorTab(QWidget):
             completed=True
         )
         
-        # Refresh file tree to update incomplete session highlights
+        # Refresh file tree to update stats in real-time
+        self.file_tree.refresh_file_stats(self.current_file)
+        
+        # Refresh incomplete session highlights
         self.file_tree.refresh_incomplete_sessions()
         
         # Clear session progress
@@ -163,12 +166,6 @@ class EditorTab(QWidget):
             f"WPM: {stats['wpm']:.1f}\n"
             f"Accuracy: {stats['accuracy']*100:.1f}%\n"
             f"Time: {stats['time']:.1f}s"
-        )
-        
-        # Refresh file tree to update stats
-        self.file_tree.on_item_clicked(
-            self.file_tree.currentItem(),
-            0
         )
     
     def _save_current_progress(self):

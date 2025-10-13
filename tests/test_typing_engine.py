@@ -38,13 +38,13 @@ def test_correct_keystroke():
 
 
 def test_incorrect_keystroke():
-    """Test processing incorrect keystroke without continue on error."""
+    """Test processing incorrect keystroke - cursor doesn't advance."""
     engine = TypingEngine("hello")
-    is_correct, expected = engine.process_keystroke("x", advance_on_error=False)
+    is_correct, expected = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
-    assert engine.state.cursor_position == 0  # Doesn't advance when advance_on_error=False
+    assert engine.state.cursor_position == 0  # Doesn't advance on error
     assert engine.state.correct_keystrokes == 0
     assert engine.state.incorrect_keystrokes == 1
 
@@ -83,16 +83,18 @@ def test_ctrl_backspace():
 
 
 def test_accuracy_calculation():
-    """Test accuracy calculation with advance_on_error enabled (default)."""
+    """Test accuracy calculation."""
     engine = TypingEngine("abc")
     
     engine.process_keystroke("a")  # Correct - advances to position 1
-    engine.process_keystroke("x", advance_on_error=True)  # Incorrect - advances to position 2
-    engine.process_keystroke("c")  # Correct at position 2
+    engine.process_keystroke("x")  # Incorrect - doesn't advance
+    engine.process_backspace()  # Backspace to clear mistake marker
+    engine.process_keystroke("b")  # Correct - advances to position 2
+    engine.process_keystroke("c")  # Correct - advances to position 3
     
-    # 2 correct out of 3 total = 66.67%
-    assert engine.state.total_keystrokes() == 3
-    assert abs(engine.state.accuracy() - 0.6667) < 0.01
+    # 3 correct out of 4 total (including the incorrect 'x') = 75%
+    assert engine.state.total_keystrokes() == 4
+    assert abs(engine.state.accuracy() - 0.75) < 0.01
 
 
 def test_wpm_calculation():
@@ -153,36 +155,50 @@ def test_load_progress():
 
 
 def test_continue_on_error_enabled():
-    """Test that cursor advances on incorrect keystroke when continue_on_error is enabled."""
+    """Test typing with mistake - requires backspace to continue."""
     engine = TypingEngine("hello")
     
-    # Type incorrect character with advance_on_error=True (default)
-    is_correct, expected = engine.process_keystroke("x", advance_on_error=True)
+    # Type incorrect character
+    is_correct, expected = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
-    assert engine.state.cursor_position == 1  # Advances despite error
+    assert engine.state.cursor_position == 0  # Does NOT advance on error
     assert engine.state.incorrect_keystrokes == 1
+    assert engine.mistake_at == 0  # Mistake marker set
     
-    # Can continue typing next character
-    is_correct2, expected2 = engine.process_keystroke("e", advance_on_error=True)
-    assert is_correct2 is True
-    assert engine.state.cursor_position == 2
+    # Trying to type again should be blocked
+    is_correct2, expected2 = engine.process_keystroke("e")
+    assert engine.state.cursor_position == 0  # Still at position 0
+    
+    # Must backspace first
+    engine.process_backspace()
+    assert engine.mistake_at is None  # Mistake marker cleared
+    
+    # Now can type the correct character
+    is_correct3, expected3 = engine.process_keystroke("h")
+    assert is_correct3 is True
+    assert engine.state.cursor_position == 1
 
 
 def test_continue_on_error_disabled():
-    """Test that cursor doesn't advance on incorrect keystroke when continue_on_error is disabled."""
+    """Test that backspace clears mistake and allows continuing."""
     engine = TypingEngine("hello")
     
-    # Type incorrect character with advance_on_error=False
-    is_correct, expected = engine.process_keystroke("x", advance_on_error=False)
+    # Type incorrect character
+    is_correct, expected = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
     assert engine.state.cursor_position == 0  # Does NOT advance
     assert engine.state.incorrect_keystrokes == 1
+    assert engine.mistake_at == 0
     
-    # Cursor still at position 0, must type correct character
-    is_correct2, expected2 = engine.process_keystroke("h", advance_on_error=False)
+    # Backspace to clear the mistake
+    engine.process_backspace()
+    assert engine.mistake_at is None
+    
+    # Now type correct character
+    is_correct2, expected2 = engine.process_keystroke("h")
     assert is_correct2 is True
     assert engine.state.cursor_position == 1

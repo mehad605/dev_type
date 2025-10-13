@@ -67,7 +67,6 @@ def test_typing_settings(tmp_path: Path):
     # Test defaults
     assert settings.get_setting("space_char", "") == "␣"
     assert settings.get_setting("pause_delay", "") == "7"
-    assert settings.get_setting("show_typed_char", "") == "1"
     
     # Test changing settings
     settings.set_setting("space_char", "·")
@@ -75,9 +74,6 @@ def test_typing_settings(tmp_path: Path):
     
     settings.set_setting("pause_delay", "10")
     assert settings.get_setting("pause_delay") == "10"
-    
-    settings.set_setting("show_typed_char", "0")
-    assert settings.get_setting("show_typed_char") == "0"
 
 
 def test_all_new_settings_exist(tmp_path: Path):
@@ -86,7 +82,7 @@ def test_all_new_settings_exist(tmp_path: Path):
     settings.init_db(str(db_file))
     
     expected_settings = [
-        "theme", "dark_scheme", "delete_confirm", "show_typed_char", "pause_delay",
+        "theme", "dark_scheme", "delete_confirm", "pause_delay",
         "color_untyped", "color_correct", "color_incorrect", 
         "color_paused_highlight", "color_cursor",
         "cursor_type", "cursor_style",

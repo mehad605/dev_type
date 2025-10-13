@@ -153,7 +153,6 @@ class MainWindow(QMainWindow):
     cursor_changed = Signal(str, str)  # type, style
     space_char_changed = Signal(str)
     pause_delay_changed = Signal(float)
-    show_typed_changed = Signal(bool)
     
     def __init__(self):
         super().__init__()
@@ -206,16 +205,6 @@ class MainWindow(QMainWindow):
         self.delete_confirm_cb.setChecked(cur_val == "1")
         self.delete_confirm_cb.stateChanged.connect(self.on_delete_confirm_changed)
         general_layout.addWidget(self.delete_confirm_cb)
-        
-        self.show_typed_cb = QCheckBox("Show what you actually typed (not what was expected)")
-        self.show_typed_cb.setToolTip(
-            "When CHECKED: If you type 'x' instead of 'c', you'll see 'x' in red\n"
-            "When UNCHECKED: If you type 'x' instead of 'c', you'll see 'c' in red"
-        )
-        show_typed = settings.get_setting("show_typed_char", "1")
-        self.show_typed_cb.setChecked(show_typed == "1")
-        self.show_typed_cb.stateChanged.connect(self.on_show_typed_changed)
-        general_layout.addWidget(self.show_typed_cb)
         
         general_group.setLayout(general_layout)
         s_layout.addWidget(general_group)
@@ -417,10 +406,6 @@ class MainWindow(QMainWindow):
         settings.set_setting("dark_scheme", scheme)
         self.apply_current_theme()
         self.update_color_buttons_from_theme()
-    
-    def on_show_typed_changed(self, state: int):
-        settings.set_setting("show_typed_char", "1" if state == Qt.Checked else "0")
-        self.show_typed_changed.emit(state == Qt.Checked)
     
     def on_color_pick(self, setting_key: str, button: QPushButton, label: str):
         """Open color picker dialog."""
@@ -749,12 +734,6 @@ class MainWindow(QMainWindow):
         delete_confirm = settings.get_setting("delete_confirm", "1")
         self.delete_confirm_cb.setChecked(delete_confirm == "1")
         
-        show_typed = settings.get_setting("show_typed_char", "1")
-        self.show_typed_cb.setChecked(show_typed == "1")
-        
-        allow_continue = settings.get_setting("allow_continue_on_error", "1")
-        self.allow_continue_cb.setChecked(allow_continue == "1")
-        
         # Theme settings
         theme = settings.get_setting("theme", "dark")
         self.theme_combo.setCurrentText(theme)
@@ -810,10 +789,6 @@ class MainWindow(QMainWindow):
         # Pause delay
         pause_delay = float(settings.get_setting("pause_delay", "7"))
         self.pause_delay_changed.emit(pause_delay)
-        
-        # Show typed character
-        show_typed = settings.get_setting("show_typed_char", "1") == "1"
-        self.show_typed_changed.emit(show_typed)
     
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
@@ -823,7 +798,6 @@ class MainWindow(QMainWindow):
             self.cursor_changed.connect(self.editor_tab.typing_area.update_cursor)
             self.space_char_changed.connect(self.editor_tab.typing_area.update_space_char)
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
-            self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed)
 
 
 def run_app():

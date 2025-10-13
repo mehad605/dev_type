@@ -16,7 +16,6 @@ class TypingHighlighter(QSyntaxHighlighter):
     def __init__(self, parent: QTextDocument, engine: TypingEngine):
         super().__init__(parent)
         self.engine = engine
-        self.show_typed_char = True  # Show what was typed vs expected
         
         # Color formats - load from settings
         self.untyped_format = QTextCharFormat()
@@ -88,7 +87,6 @@ class TypingAreaWidget(QTextEdit):
         
         # Load settings
         self.space_char = settings.get_setting("space_char", "␣")
-        self.show_typed_char = settings.get_setting("show_typed_char", "1") == "1"
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
@@ -199,17 +197,8 @@ class TypingAreaWidget(QTextEdit):
             return
 
         expected_len = info.get("length", max(len(info.get("expected", "")), 1))
-
-        if info["is_correct"] or not self.show_typed_char:
-            target_char = info["expected"]
-        else:
-            typed_char = info["typed"]
-            if len(typed_char) != expected_len:
-                # Length mismatch; fall back to expected character to keep layout stable
-                target_char = info["expected"]
-            else:
-                target_char = typed_char
-
+        # Always show the expected character (what should be typed)
+        target_char = info["expected"]
         self._replace_display_char(position, target_char, expected_len)
 
     def _restore_display_for_position(self, position: int):
@@ -437,7 +426,20 @@ class TypingAreaWidget(QTextEdit):
             # Update cursor position (engine already advanced if allowed)
             self.current_typing_position = self.engine.state.cursor_position
             
-            self._update_cursor_position()
+            # If there's a mistake, show cursor after the mistake visually
+            visual_cursor_pos = self.current_typing_position
+            if self.engine.mistake_at is not None and self.engine.mistake_at == self.current_typing_position:
+                # Show cursor after the mistake character so it's clear where the error is
+                visual_cursor_pos = self.current_typing_position + 1
+            
+            # Update visual cursor
+            cursor = self.textCursor()
+            cursor.setPosition(visual_cursor_pos, QTextCursor.MoveAnchor)
+            cursor.clearSelection()
+            self.setTextCursor(cursor)
+            self.ensureCursorVisible()
+            self._update_cursor_geometry()
+            
             self.stats_updated.emit()
             
             # Check if completed
@@ -547,16 +549,6 @@ class TypingAreaWidget(QTextEdit):
                 self.highlighter.rehighlight()
     
     def update_pause_delay(self, delay: float):
-        """Update auto-pause delay dynamically."""
+        """Update pause delay setting dynamically."""
         if self.engine:
             self.engine.pause_delay = delay
-    
-    def update_show_typed(self, show_typed: bool):
-        """Update show typed character setting dynamically."""
-        self.show_typed_char = show_typed
-        if self.highlighter:
-            self.highlighter.show_typed_char = show_typed
-            # Note: We don't rehighlight here because the display is determined
-            # at the time of typing, not stored in the highlighter
-            for pos in list(self.highlighter.typed_chars.keys()):
-                self._apply_display_for_position(pos)

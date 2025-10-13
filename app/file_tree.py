@@ -165,3 +165,61 @@ class FileTreeWidget(QTreeWidget):
     def refresh_incomplete_sessions(self):
         """Refresh the list of incomplete sessions (call after completing a file)."""
         self.incomplete_files = set(stats_db.get_incomplete_sessions())
+    
+    def refresh_file_stats(self, file_path: str):
+        """Update the stats display for a specific file in the tree."""
+        if not file_path:
+            return
+        
+        # Get fresh stats from database
+        stats = stats_db.get_file_stats(file_path)
+        if not stats:
+            return
+        
+        best_wpm = f"{stats['best_wpm']:.1f}" if stats['best_wpm'] > 0 else "--"
+        last_wpm = f"{stats['last_wpm']:.1f}" if stats['last_wpm'] > 0 else "--"
+        
+        # Find the item for this file in the tree
+        item = self._find_file_item(file_path)
+        if item:
+            # Update the Best and Last columns
+            item.setText(1, best_wpm)
+            item.setText(2, last_wpm)
+            
+            # Refresh incomplete session highlighting
+            self.refresh_incomplete_sessions()
+            # Remove highlight if no longer incomplete
+            if file_path not in self.incomplete_files:
+                for col in range(self.columnCount()):
+                    item.setBackground(col, QBrush())  # Clear background
+                # Remove pause symbol
+                current_text = item.text(0)
+                if current_text.endswith(" ⏸"):
+                    item.setText(0, current_text[:-2])
+    
+    def _find_file_item(self, file_path: str) -> Optional[QTreeWidgetItem]:
+        """Recursively search for a file item by its path."""
+        def search_item(parent: QTreeWidgetItem) -> Optional[QTreeWidgetItem]:
+            for i in range(parent.childCount()):
+                child = parent.child(i)
+                stored_path = child.data(0, Qt.UserRole)
+                if stored_path == file_path:
+                    return child
+                # Recursively search children
+                result = search_item(child)
+                if result:
+                    return result
+            return None
+        
+        # Search from root items
+        for i in range(self.topLevelItemCount()):
+            root_item = self.topLevelItem(i)
+            stored_path = root_item.data(0, Qt.UserRole)
+            if stored_path == file_path:
+                return root_item
+            # Search children
+            result = search_item(root_item)
+            if result:
+                return result
+        
+        return None

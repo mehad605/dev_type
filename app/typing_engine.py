@@ -119,18 +119,22 @@ class TypingEngine:
         else:
             self.state.incorrect_keystrokes += 1
             self.mistake_at = self.state.cursor_position
-            self.state.cursor_position += 1
+            # Don't advance cursor on incorrect keystroke
         
         self.update_elapsed_time()
         return is_correct, expected_char
     
     def process_backspace(self):
         """Process a backspace keystroke."""
+        # If there's a mistake at current position, clear it without moving cursor
+        if self.mistake_at is not None and self.state.cursor_position == self.mistake_at:
+            self.mistake_at = None
+            self.state.last_keystroke_time = time.time()
+            return
+        
+        # Normal backspace - move cursor back
         if self.state.cursor_position > 0:
             self.state.cursor_position -= 1
-            # If we corrected a mistake, clear the mistake lock
-            if self.mistake_at is not None and self.state.cursor_position == self.mistake_at:
-                self.mistake_at = None
             # Don't count backspace in keystroke stats
             self.state.last_keystroke_time = time.time()
     
