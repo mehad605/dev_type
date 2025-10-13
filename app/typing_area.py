@@ -103,6 +103,7 @@ class TypingAreaWidget(QTextEdit):
         
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
+        self.setTabChangesFocus(False)
         
         # Load font from settings
         font_family = settings.get_setting("font_family", "Consolas")
@@ -372,6 +373,10 @@ class TypingAreaWidget(QTextEdit):
         self._cursor_visible = False
         self._cursor_timer.stop()
         self._request_cursor_paint()
+
+    def focusNextPrevChild(self, next: bool) -> bool:
+        """Keep Tab/Shift+Tab inside the typing area instead of moving focus."""
+        return False
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
