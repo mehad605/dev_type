@@ -464,6 +464,29 @@ class TypingAreaWidget(QTextEdit):
             self._update_cursor_position()
             self.stats_updated.emit()
     
+    def _calculate_current_accuracy(self) -> float:
+        """Calculate accuracy based on current text correctness rather than keystroke history."""
+        if not self.engine:
+            return 1.0
+
+        typed_entries = self.highlighter.typed_chars if self.highlighter else {}
+        total_positions = len(typed_entries)
+        correct_positions = 0
+
+        if total_positions:
+            correct_positions = sum(1 for info in typed_entries.values() if info.get("is_correct"))
+
+        cursor_pos = self.engine.state.cursor_position
+        if cursor_pos > total_positions:
+            gap = cursor_pos - total_positions
+            total_positions += gap
+            correct_positions += gap
+
+        if total_positions == 0:
+            return 1.0
+
+        return correct_positions / total_positions
+
     def get_stats(self) -> dict:
         """Get current typing statistics."""
         if not self.engine:
@@ -480,7 +503,7 @@ class TypingAreaWidget(QTextEdit):
         
         return {
             "wpm": self.engine.state.wpm(),
-            "accuracy": self.engine.state.accuracy(),
+            "accuracy": self._calculate_current_accuracy(),
             "time": self.engine.state.elapsed_time,
             "correct": self.engine.state.correct_keystrokes,
             "incorrect": self.engine.state.incorrect_keystrokes,
