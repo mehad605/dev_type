@@ -11,11 +11,38 @@ APIs:
 import sqlite3
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 # Module-level variable to store the current DB path
 _current_db_path: Optional[Path] = None
 _db_initialized: bool = False
+_settings_cache: Dict[str, Optional[str]] = {}
+_settings_cache_loaded: bool = False
+
+
+def _reset_settings_cache():
+    """Clear the in-memory settings cache."""
+    global _settings_cache_loaded
+    _settings_cache.clear()
+    _settings_cache_loaded = False
+
+
+def _ensure_settings_cache_loaded():
+    """Populate the settings cache on first access."""
+    global _settings_cache_loaded
+    if _settings_cache_loaded:
+        return
+
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT key, value FROM settings")
+    rows = cur.fetchall()
+    conn.close()
+
+    for key, value in rows:
+        _settings_cache[key] = value
+
+    _settings_cache_loaded = True
 
 
 def get_data_dir() -> Path:
@@ -106,6 +133,8 @@ def init_db(path: Optional[str] = None):
     if path is None:
         _db_initialized = True
 
+    _reset_settings_cache()
+
 
 def _connect(path: Optional[str] = None):
     conn = sqlite3.connect(_db_file(path))
@@ -118,13 +147,16 @@ def _connect(path: Optional[str] = None):
 
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
-    r = cur.fetchone()
-    conn.close()
-    if r:
-        return r[0]
+    if key in _settings_cache:
+        cached = _settings_cache[key]
+        return cached if cached is not None else default
+
+    _ensure_settings_cache_loaded()
+
+    if key in _settings_cache:
+        cached = _settings_cache[key]
+        return cached if cached is not None else default
+
     return default
 
 
@@ -134,6 +166,8 @@ def set_setting(key: str, value: str):
     cur.execute("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", (key, value))
     conn.commit()
     conn.close()
+
+    _settings_cache[key] = value
 
 
 def get_folders() -> List[str]:

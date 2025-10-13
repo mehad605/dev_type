@@ -10,8 +10,13 @@ from PySide6.QtGui import QIcon, QBrush, QColor, QPixmap, QPainter, QFont
 from pathlib import Path
 from typing import List, Optional, Dict
 from app import settings, stats_db
-from app.icon_manager import get_icon_manager
 from app.file_scanner import LANGUAGE_MAP
+
+
+def _get_icon_manager():
+    from app.icon_manager import get_icon_manager
+
+    return get_icon_manager()
 
 
 class FileTreeWidget(QTreeWidget):
@@ -84,6 +89,8 @@ class FileTreeWidget(QTreeWidget):
             if parent not in folder_files:
                 folder_files[parent] = []
             folder_files[parent].append(file_path)
+
+        stats_cache = stats_db.get_file_stats_for_files(files)
         
         # Create tree items for each folder
         for folder, file_list in sorted(folder_files.items()):
@@ -95,7 +102,7 @@ class FileTreeWidget(QTreeWidget):
             for file_path in sorted(file_list):
                 file_path_obj = Path(file_path)
                 # Get actual WPM stats from database
-                stats = stats_db.get_file_stats(file_path)
+                stats = stats_cache.get(file_path)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
                 language = LANGUAGE_MAP.get(file_path_obj.suffix.lower())
@@ -120,6 +127,12 @@ class FileTreeWidget(QTreeWidget):
         except PermissionError:
             return
         
+        file_candidates = [
+            item for item in items
+            if item.is_file() and item.suffix.lower() in LANGUAGE_MAP
+        ]
+        stats_cache = stats_db.get_file_stats_for_files(str(item) for item in file_candidates)
+
         for item in items:
             if item.name.startswith('.'):
                 continue
@@ -133,10 +146,10 @@ class FileTreeWidget(QTreeWidget):
                 # Only show supported file types
                 if item.suffix.lower() not in LANGUAGE_MAP:
                     continue
-                
-                # Get actual WPM stats from database
+
+                # Get actual WPM stats from cache
                 file_path_str = str(item)
-                stats = stats_db.get_file_stats(file_path_str)
+                stats = stats_cache.get(file_path_str)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
                 language = LANGUAGE_MAP.get(item.suffix.lower())
@@ -248,7 +261,7 @@ class FileTreeWidget(QTreeWidget):
         if cache_key in self._icon_cache:
             return self._icon_cache[cache_key]
 
-        manager = get_icon_manager()
+        manager = _get_icon_manager()
         pixmap = manager.get_icon(language, size=24)
         if pixmap:
             icon = QIcon(pixmap)

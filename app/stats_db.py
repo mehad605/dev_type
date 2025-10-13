@@ -1,6 +1,6 @@
 """Database module for tracking typing statistics and session progress."""
 import sqlite3
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Iterable
 from app.settings import _db_file, _connect
 import app.settings as settings
 
@@ -101,6 +101,40 @@ def get_file_stats(file_path: str) -> Optional[Dict]:
             "completed": row[5],
         }
     return None
+
+
+def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    """Fetch stats for multiple files with a single query."""
+    paths = list({path for path in file_paths if path})
+    if not paths:
+        return {}
+
+    conn = _connect()
+    cur = conn.cursor()
+    placeholders = ",".join(["?"] * len(paths))
+    cur.execute(
+        f"""
+        SELECT file_path, best_wpm, last_wpm, best_accuracy, last_accuracy,
+               times_practiced, completed
+        FROM file_stats
+        WHERE file_path IN ({placeholders})
+        """,
+        paths,
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    stats_map: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        stats_map[row[0]] = {
+            "best_wpm": row[1],
+            "last_wpm": row[2],
+            "best_accuracy": row[3],
+            "last_accuracy": row[4],
+            "times_practiced": row[5],
+            "completed": row[6],
+        }
+    return stats_map
 
 
 def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bool = False):
