@@ -42,10 +42,11 @@ class TypingState:
 class TypingEngine:
     """Engine for managing typing session logic."""
     
-    def __init__(self, content: str, pause_delay: float = 7.0):
+    def __init__(self, content: str, pause_delay: float = 7.0, allow_continue_mistakes: bool = False):
         self.state = TypingState(content=content)
         self.pause_delay = pause_delay  # Seconds of inactivity before auto-pause
         self.mistake_at: Optional[int] = None
+        self.allow_continue_mistakes = allow_continue_mistakes  # Allow continuing despite mistakes
     
     def start(self):
         """Start or resume the typing session."""
@@ -97,8 +98,8 @@ class TypingEngine:
         if self.state.cursor_position >= len(self.state.content):
             return False, ""
         
-        # If there's a mistake, block all input except backspace
-        if self.mistake_at is not None:
+        # If there's a mistake and we're not allowing continuation, block input
+        if self.mistake_at is not None and not self.allow_continue_mistakes:
             # Count as incorrect keystroke but don't advance
             self.state.incorrect_keystrokes += 1
             self.update_elapsed_time()
@@ -111,6 +112,10 @@ class TypingEngine:
             self.state.correct_keystrokes += 1
             self.state.cursor_position += 1
             
+            # Clear mistake marker if we were allowing continuation and typed correctly
+            if self.mistake_at is not None and self.mistake_at < self.state.cursor_position:
+                self.mistake_at = None
+            
             # Check if we just completed the file
             if self.state.cursor_position >= len(self.state.content):
                 self.update_elapsed_time()
@@ -118,8 +123,16 @@ class TypingEngine:
                 self.state.is_paused = True  # Pause to stop timer
         else:
             self.state.incorrect_keystrokes += 1
-            self.mistake_at = self.state.cursor_position
-            # Don't advance cursor on incorrect keystroke
+            
+            if self.allow_continue_mistakes:
+                # Allow cursor to advance even on mistakes
+                self.state.cursor_position += 1
+                # Track that there was a mistake (for UI highlighting)
+                if self.mistake_at is None:
+                    self.mistake_at = self.state.cursor_position - 1
+            else:
+                # Don't advance cursor on incorrect keystroke
+                self.mistake_at = self.state.cursor_position
         
         self.update_elapsed_time()
         return is_correct, expected_char

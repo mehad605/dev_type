@@ -137,7 +137,8 @@ class TypingAreaWidget(QTextEdit):
         
         # Initialize engine
         pause_delay = float(settings.get_setting("pause_delay", "7"))
-        self.engine = TypingEngine(self.original_content, pause_delay=pause_delay)
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        self.engine = TypingEngine(self.original_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
         
         # Set display content
         self.setPlainText(self.display_content)
@@ -552,3 +553,11 @@ class TypingAreaWidget(QTextEdit):
         """Update pause delay setting dynamically."""
         if self.engine:
             self.engine.pause_delay = delay
+    
+    def update_allow_continue(self, allow_continue: bool):
+        """Update allow continue with mistakes setting dynamically."""
+        if self.engine:
+            self.engine.allow_continue_mistakes = allow_continue
+            # Clear mistake marker if we're now allowing continuation
+            if allow_continue and self.engine.mistake_at is not None:
+                self.engine.mistake_at = None

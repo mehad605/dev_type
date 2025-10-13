@@ -279,6 +279,7 @@ class MainWindow(QMainWindow):
     cursor_changed = Signal(str, str)  # type, style
     space_char_changed = Signal(str)
     pause_delay_changed = Signal(float)
+    allow_continue_changed = Signal(bool)
     
     def __init__(self):
         super().__init__()
@@ -308,6 +309,9 @@ class MainWindow(QMainWindow):
         
         # Connect settings signals to editor tab for dynamic updates
         self._connect_settings_signals()
+        
+        # Emit initial settings to apply them to the typing area
+        self._emit_initial_settings()
 
     def _create_settings_tab(self) -> QWidget:
         """Create and return the settings tab widget."""
@@ -322,8 +326,22 @@ class MainWindow(QMainWindow):
         settings_widget = QWidget()
         s_layout = QVBoxLayout(settings_widget)
         
-        # Note: General settings group removed as it only contained delete confirmation
-        # which is now handled inline with "Don't ask again" checkbox in dialogs
+        # Typing Behavior settings group
+        typing_behavior_group = QGroupBox("Typing Behavior")
+        typing_behavior_layout = QVBoxLayout()
+        
+        self.allow_continue_cb = QCheckBox("Allow continuing with mistypes")
+        self.allow_continue_cb.setToolTip(
+            "When CHECKED: You can continue typing even after making a mistake\n"
+            "When UNCHECKED: You must backspace and fix mistakes before continuing (strict mode)"
+        )
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0")
+        self.allow_continue_cb.setChecked(allow_continue == "1")
+        self.allow_continue_cb.stateChanged.connect(self.on_allow_continue_changed)
+        typing_behavior_layout.addWidget(self.allow_continue_cb)
+        
+        typing_behavior_group.setLayout(typing_behavior_layout)
+        s_layout.addWidget(typing_behavior_group)
         
         # Theme settings group
         theme_group = QGroupBox("Theme")
@@ -509,6 +527,11 @@ class MainWindow(QMainWindow):
     def refresh_languages_tab(self):
         """Refresh the languages tab after folders change."""
         self.languages_tab.refresh_languages()
+
+    def on_allow_continue_changed(self, state: int):
+        """Handle allow continue with mistakes setting change."""
+        settings.set_setting("allow_continue_mistakes", "1" if state == Qt.Checked else "0")
+        self.allow_continue_changed.emit(state == Qt.Checked)
 
     def on_theme_changed(self, theme: str):
         settings.set_setting("theme", theme)
@@ -877,6 +900,10 @@ class MainWindow(QMainWindow):
         
         pause_delay = int(float(settings.get_setting("pause_delay", "7")))
         self.pause_delay_spin.setValue(pause_delay)
+        
+        # Typing behavior
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0")
+        self.allow_continue_cb.setChecked(allow_continue == "1")
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -898,6 +925,10 @@ class MainWindow(QMainWindow):
         # Pause delay
         pause_delay = float(settings.get_setting("pause_delay", "7"))
         self.pause_delay_changed.emit(pause_delay)
+        
+        # Allow continue with mistakes
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        self.allow_continue_changed.emit(allow_continue)
     
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
@@ -907,6 +938,35 @@ class MainWindow(QMainWindow):
             self.cursor_changed.connect(self.editor_tab.typing_area.update_cursor)
             self.space_char_changed.connect(self.editor_tab.typing_area.update_space_char)
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
+            self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
+    
+    def _emit_initial_settings(self):
+        """Emit initial settings to apply them immediately after connection."""
+        # Font settings
+        family = settings.get_setting("font_family", "Consolas")
+        size = int(settings.get_setting("font_size", "12"))
+        ligatures = settings.get_setting("font_ligatures", "0") == "1"
+        self.font_changed.emit(family, size, ligatures)
+        
+        # Color settings
+        self.colors_changed.emit()
+        
+        # Cursor settings
+        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_style = settings.get_setting("cursor_style", "block")
+        self.cursor_changed.emit(cursor_type, cursor_style)
+        
+        # Space character
+        space_char = settings.get_setting("space_char", "␣")
+        self.space_char_changed.emit(space_char)
+        
+        # Pause delay
+        pause_delay = float(settings.get_setting("pause_delay", "7"))
+        self.pause_delay_changed.emit(pause_delay)
+        
+        # Allow continue with mistakes
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        self.allow_continue_changed.emit(allow_continue)
 
 
 def run_app():

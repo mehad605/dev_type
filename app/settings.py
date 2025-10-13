@@ -83,6 +83,10 @@ def init_db(path: Optional[str] = None):
     
     # Space character setting
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("space_char", "␣"))
+    
+    # Typing behavior setting
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "0"))
+    
     conn.commit()
     conn.close()
     
