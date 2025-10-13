@@ -404,8 +404,8 @@ class TypingAreaWidget(QTextEdit):
                 # Clear typed characters for removed range
                 for engine_index in range(new_engine_pos, old_engine_pos):
                     display_pos = self._engine_to_display_position(engine_index)
-                    self._restore_display_for_position(display_pos)
                     self.highlighter.clear_typed_char(display_pos)
+                    self._restore_display_for_position(display_pos)
                 self.current_typing_position = self._engine_to_display_position(new_engine_pos)
                 self._update_cursor_position()
             else:
@@ -414,8 +414,8 @@ class TypingAreaWidget(QTextEdit):
                     self.engine.process_backspace()
                     display_pos = self._engine_to_display_position(self.engine.state.cursor_position)
                     self.current_typing_position = display_pos
-                    self._restore_display_for_position(display_pos)
                     self.highlighter.clear_typed_char(display_pos)
+                    self._restore_display_for_position(display_pos)
                     self._update_cursor_position()
             self.stats_updated.emit()
             return
@@ -427,11 +427,16 @@ class TypingAreaWidget(QTextEdit):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
                 position = self._engine_to_display_position(self.engine.state.cursor_position)
-                is_correct, _ = self.engine.process_keystroke(' ')
+                expected_char = self.engine.state.content[self.engine.state.cursor_position]
+                expected_display = self._display_char_for(expected_char)
+                is_correct, expected_from_engine = self.engine.process_keystroke(' ')
+                if expected_from_engine == "" and not is_correct:
+                    self.stats_updated.emit()
+                    return
                 self.highlighter.set_typed_char(
                     position,
                     self.space_char,
-                    self.space_char,
+                    expected_display,
                     is_correct
                 )
                 self._apply_display_for_position(position)
