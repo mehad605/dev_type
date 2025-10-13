@@ -44,6 +44,7 @@ class TypingEngine:
     def __init__(self, content: str, pause_delay: float = 7.0):
         self.state = TypingState(content=content)
         self.pause_delay = pause_delay  # Seconds of inactivity before auto-pause
+        self.mistake_at: Optional[int] = None
     
     def start(self):
         """Start or resume the typing session."""
@@ -72,13 +73,12 @@ class TypingEngine:
                 return True
         return False
     
-    def process_keystroke(self, typed_char: str, advance_on_error: bool = True) -> Tuple[bool, str]:
+    def process_keystroke(self, typed_char: str) -> Tuple[bool, str]:
         """
         Process a single keystroke.
         
         Args:
             typed_char: The character that was typed
-            advance_on_error: Whether to advance cursor on incorrect keystroke
             
         Returns:
             (is_correct, expected_char) tuple
@@ -92,6 +92,13 @@ class TypingEngine:
         if self.state.cursor_position >= len(self.state.content):
             return False, ""
         
+        # If there's a mistake, block all input except backspace
+        if self.mistake_at is not None:
+            # Count as incorrect keystroke but don't advance
+            self.state.incorrect_keystrokes += 1
+            self.update_elapsed_time()
+            return False, ""
+            
         expected_char = self.state.content[self.state.cursor_position]
         is_correct = typed_char == expected_char
         
@@ -100,8 +107,8 @@ class TypingEngine:
             self.state.cursor_position += 1
         else:
             self.state.incorrect_keystrokes += 1
-            if advance_on_error:
-                self.state.cursor_position += 1
+            self.mistake_at = self.state.cursor_position
+            self.state.cursor_position += 1
         
         self.update_elapsed_time()
         return is_correct, expected_char
@@ -110,6 +117,9 @@ class TypingEngine:
         """Process a backspace keystroke."""
         if self.state.cursor_position > 0:
             self.state.cursor_position -= 1
+            # If we corrected a mistake, clear the mistake lock
+            if self.mistake_at is not None and self.state.cursor_position == self.mistake_at:
+                self.mistake_at = None
             # Don't count backspace in keystroke stats
             self.state.last_keystroke_time = time.time()
     
@@ -133,6 +143,10 @@ class TypingEngine:
         if pos > 0 or self.state.content[0].isspace():
             pos += 1
         
+        # If we backspaced over a mistake, clear the lock
+        if self.mistake_at is not None and pos <= self.mistake_at:
+            self.mistake_at = None
+            
         self.state.cursor_position = pos
         self.state.last_keystroke_time = time.time()
     
@@ -145,6 +159,7 @@ class TypingEngine:
         self.state.start_time = 0
         self.state.is_paused = True
         self.state.last_keystroke_time = 0
+        self.mistake_at = None
     
     def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float):
         """Load saved progress into the engine."""
@@ -154,3 +169,4 @@ class TypingEngine:
         self.state.elapsed_time = elapsed
         self.state.is_paused = True
         self.state.start_time = time.time() - elapsed  # Adjust start time
+        self.mistake_at = None  # Don't load mistake state

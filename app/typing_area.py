@@ -31,11 +31,16 @@ class TypingHighlighter(QSyntaxHighlighter):
         incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
         self.incorrect_format.setForeground(QColor(incorrect_color))
         
-        self.typed_chars = {}  # position -> (typed_char, is_correct)
+        self.typed_chars = {}  # position -> {typed, expected, is_correct}
     
-    def set_typed_char(self, position: int, typed_char: str, is_correct: bool):
+    def set_typed_char(self, position: int, typed_char: str, expected_char: str, is_correct: bool):
         """Record a typed character at a position."""
-        self.typed_chars[position] = (typed_char, is_correct)
+        self.typed_chars[position] = {
+            "typed": typed_char,
+            "expected": expected_char,
+            "is_correct": is_correct,
+            "length": max(len(expected_char), 1),
+        }
         self.rehighlight()
     
     def clear_typed_char(self, position: int):
@@ -57,8 +62,8 @@ class TypingHighlighter(QSyntaxHighlighter):
             pos = block_start + i
             
             if pos in self.typed_chars:
-                typed_char, is_correct = self.typed_chars[pos]
-                if is_correct:
+                info = self.typed_chars[pos]
+                if info["is_correct"]:
                     self.setFormat(i, 1, self.correct_format)
                 else:
                     self.setFormat(i, 1, self.incorrect_format)
@@ -166,6 +171,65 @@ class TypingAreaWidget(QTextEdit):
         result = result.replace('\t', self.space_char * 4)  # Tab = 4 spaces
         return result
     
+    def _display_char_for(self, char: str) -> str:
+        """Return the visual representation of a character."""
+        if char == ' ':
+            return self.space_char
+        if char == '\n':
+            return self.enter_char
+        if char == '\t':
+            return self.space_char * 4
+        return char
+
+    def _replace_display_char(self, position: int, new_char: str, length: int = 1):
+        """Replace the character shown at a position without changing engine state."""
+        original_cursor = self.textCursor()
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(position)
+        cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, length)
+        cursor.insertText(new_char)
+        self.setTextCursor(original_cursor)
+
+    def _apply_display_for_position(self, position: int):
+        """Ensure the displayed character matches settings for a typed position."""
+        if not self.highlighter:
+            return
+        info = self.highlighter.typed_chars.get(position)
+        if not info:
+            return
+
+        expected_len = info.get("length", max(len(info.get("expected", "")), 1))
+
+        if info["is_correct"] or not self.show_typed_char:
+            target_char = info["expected"]
+        else:
+            typed_char = info["typed"]
+            if len(typed_char) != expected_len:
+                # Length mismatch; fall back to expected character to keep layout stable
+                target_char = info["expected"]
+            else:
+                target_char = typed_char
+
+        self._replace_display_char(position, target_char, expected_len)
+
+    def _restore_display_for_position(self, position: int):
+        """Restore the original expected character at a position."""
+        info = self.highlighter.typed_chars.get(position) if self.highlighter else None
+        if info:
+            expected_char = info["expected"]
+            expected_len = info.get("length", max(len(expected_char), 1))
+        else:
+            if self.engine and position < len(self.engine.state.content):
+                expected_char = self._display_char_for(self.engine.state.content[position])
+            elif position < len(self.display_content):
+                expected_char = self.display_content[position]
+            else:
+                expected_char = ""
+            expected_len = max(len(expected_char), 1) if expected_char else 1
+
+        if expected_char:
+            self._replace_display_char(position, expected_char, expected_len)
+
     def _update_cursor_position(self):
         """Update visual cursor to current typing position."""
         cursor = self.textCursor()
@@ -302,6 +366,7 @@ class TypingAreaWidget(QTextEdit):
                 new_pos = self.engine.state.cursor_position
                 # Clear typed chars in range
                 for pos in range(new_pos, old_pos):
+                    self._restore_display_for_position(pos)
                     self.highlighter.clear_typed_char(pos)
                 self.current_typing_position = new_pos
                 self._update_cursor_position()
@@ -310,6 +375,7 @@ class TypingAreaWidget(QTextEdit):
                 if self.current_typing_position > 0:
                     self.engine.process_backspace()
                     self.current_typing_position = self.engine.state.cursor_position
+                    self._restore_display_for_position(self.current_typing_position)
                     self.highlighter.clear_typed_char(self.current_typing_position)
                     self._update_cursor_position()
             self.stats_updated.emit()
@@ -344,33 +410,29 @@ class TypingAreaWidget(QTextEdit):
             elif key == Qt.Key_Return or key == Qt.Key_Enter:
                 char = '\n'
             
-            # Check allow_continue setting
-            allow_continue = settings.get_setting("allow_continue_on_error", "1") == "1"
+            # Process keystroke
+            is_correct, expected = self.engine.process_keystroke(char)
             
-            # Process keystroke with continue on error setting
-            is_correct, expected = self.engine.process_keystroke(char, advance_on_error=allow_continue)
+            # If there's a mistake lock and this character was blocked, don't display anything
+            if expected == "" and not is_correct:
+                # Character was blocked by mistake lock, just update stats
+                self.stats_updated.emit()
+                return
             
-            # Display typed character or expected based on settings
-            # If correct, always show the correct character
-            # If incorrect:
-            #   - If show_typed_char is True: show what user typed (char)
-            #   - If show_typed_char is False: show what was expected (expected)
-            if is_correct:
-                display_char = char
-            else:
-                display_char = char if self.show_typed_char else expected
-            
-            # Convert for display
-            if display_char == ' ':
-                display_char = self.space_char
-            elif display_char == '\n':
-                display_char = self.enter_char
-            
+            # Track typed vs expected characters
+            typed_display = self._display_char_for(char)
+            expected_display = self._display_char_for(expected)
+
+            position = self.current_typing_position
+
             self.highlighter.set_typed_char(
-                self.current_typing_position, 
-                display_char,
+                position,
+                typed_display,
+                expected_display,
                 is_correct
             )
+
+            self._apply_display_for_position(position)
             
             # Update cursor position (engine already advanced if allowed)
             self.current_typing_position = self.engine.state.cursor_position
@@ -392,6 +454,7 @@ class TypingAreaWidget(QTextEdit):
         if self.engine:
             self.engine.reset()
             self.highlighter.clear_all()
+            self.setPlainText(self.display_content)
             self.current_typing_position = 0
             self._update_cursor_position()
             self.stats_updated.emit()
@@ -491,3 +554,5 @@ class TypingAreaWidget(QTextEdit):
             self.highlighter.show_typed_char = show_typed
             # Note: We don't rehighlight here because the display is determined
             # at the time of typing, not stored in the highlighter
+            for pos in list(self.highlighter.typed_chars.keys()):
+                self._apply_display_for_position(pos)
