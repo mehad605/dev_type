@@ -161,7 +161,7 @@ class TypingAreaWidget(QTextEdit):
                 incorrect=progress["incorrect"],
                 elapsed=progress["time"]
             )
-            self.current_typing_position = progress["cursor_position"]
+            self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             self._update_cursor_position()
     
     def _prepare_display_content(self, content: str) -> str:
@@ -238,6 +238,35 @@ class TypingAreaWidget(QTextEdit):
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
         self._update_cursor_geometry()
+
+    def _engine_to_display_position(self, engine_pos: int) -> int:
+        """Convert an engine cursor index to the displayed document index."""
+        if engine_pos <= 0:
+            return 0
+
+        if self.engine:
+            content = self.engine.state.content
+        else:
+            content = self.original_content
+
+        engine_pos = min(engine_pos, len(content))
+
+        display_pos = 0
+        space_len = len(self.space_char) if self.space_char else 1
+        enter_len = len(self.enter_char) if self.enter_char else 1
+
+        for idx in range(engine_pos):
+            ch = content[idx]
+            if ch == '\n':
+                display_pos += enter_len + 1  # symbol plus newline character
+            elif ch == '\t':
+                display_pos += space_len * 4
+            elif ch == ' ':
+                display_pos += space_len
+            else:
+                display_pos += 1
+
+        return display_pos
 
     def mousePressEvent(self, event):
         """Ignore left-click attempts to reposition the cursor."""
@@ -356,27 +385,32 @@ class TypingAreaWidget(QTextEdit):
         key = event.key()
         text = event.text()
         modifiers = event.modifiers()
+
+        # Keep display cursor aligned with engine state
+        self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
         
         # Handle Backspace
         if key == Qt.Key_Backspace:
             if modifiers & Qt.ControlModifier:
                 # Ctrl+Backspace
-                old_pos = self.engine.state.cursor_position
+                old_engine_pos = self.engine.state.cursor_position
                 self.engine.process_ctrl_backspace()
-                new_pos = self.engine.state.cursor_position
-                # Clear typed chars in range
-                for pos in range(new_pos, old_pos):
-                    self._restore_display_for_position(pos)
-                    self.highlighter.clear_typed_char(pos)
-                self.current_typing_position = new_pos
+                new_engine_pos = self.engine.state.cursor_position
+                # Clear typed characters for removed range
+                for engine_index in range(new_engine_pos, old_engine_pos):
+                    display_pos = self._engine_to_display_position(engine_index)
+                    self._restore_display_for_position(display_pos)
+                    self.highlighter.clear_typed_char(display_pos)
+                self.current_typing_position = self._engine_to_display_position(new_engine_pos)
                 self._update_cursor_position()
             else:
                 # Regular backspace
-                if self.current_typing_position > 0:
+                if self.engine.state.cursor_position > 0:
                     self.engine.process_backspace()
-                    self.current_typing_position = self.engine.state.cursor_position
-                    self._restore_display_for_position(self.current_typing_position)
-                    self.highlighter.clear_typed_char(self.current_typing_position)
+                    display_pos = self._engine_to_display_position(self.engine.state.cursor_position)
+                    self.current_typing_position = display_pos
+                    self._restore_display_for_position(display_pos)
+                    self.highlighter.clear_typed_char(display_pos)
                     self._update_cursor_position()
             self.stats_updated.emit()
             return
@@ -387,20 +421,23 @@ class TypingAreaWidget(QTextEdit):
             for _ in range(4):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
-                is_correct, expected = self.engine.process_keystroke(' ')
+                position = self._engine_to_display_position(self.engine.state.cursor_position)
+                is_correct, _ = self.engine.process_keystroke(' ')
                 self.highlighter.set_typed_char(
-                    self.current_typing_position, 
-                    self.space_char if not is_correct else self.space_char,
+                    position,
+                    self.space_char,
+                    self.space_char,
                     is_correct
                 )
-                if is_correct:
-                    self.current_typing_position += 1
+                self._apply_display_for_position(position)
+            self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             self._update_cursor_position()
             self.stats_updated.emit()
             return
         
         # Handle printable characters
         if text and len(text) == 1:
+            position = self._engine_to_display_position(self.engine.state.cursor_position)
             char = text
             
             # Map space to actual space
@@ -423,8 +460,6 @@ class TypingAreaWidget(QTextEdit):
             typed_display = self._display_char_for(char)
             expected_display = self._display_char_for(expected)
 
-            position = self.current_typing_position
-
             self.highlighter.set_typed_char(
                 position,
                 typed_display,
@@ -435,13 +470,15 @@ class TypingAreaWidget(QTextEdit):
             self._apply_display_for_position(position)
             
             # Update cursor position (engine already advanced if allowed)
-            self.current_typing_position = self.engine.state.cursor_position
+            self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             
             # If there's a mistake, show cursor after the mistake visually
             visual_cursor_pos = self.current_typing_position
-            if self.engine.mistake_at is not None and self.engine.mistake_at == self.current_typing_position:
-                # Show cursor after the mistake character so it's clear where the error is
-                visual_cursor_pos = self.current_typing_position + 1
+            if self.engine.mistake_at is not None:
+                mistake_display_pos = self._engine_to_display_position(self.engine.mistake_at)
+                if mistake_display_pos == visual_cursor_pos:
+                    # Show cursor after the mistake character so it's clear where the error is
+                    visual_cursor_pos = mistake_display_pos + 1
             
             # Update visual cursor
             cursor = self.textCursor()
@@ -601,14 +638,14 @@ class TypingAreaWidget(QTextEdit):
                         # Advance cursor to the position after the mistake so typing can continue
                         next_pos = min(mistake_pos + 1, len(self.engine.state.content))
                         self.engine.state.cursor_position = next_pos
-                        self.current_typing_position = next_pos
+                        self.current_typing_position = self._engine_to_display_position(next_pos)
                         self._update_cursor_position()
                     self.engine.mistake_at = None
                     if self.highlighter:
                         self.highlighter.rehighlight()
             else:
                 # Going back to strict mode: ensure cursor syncs with engine state
-                self.current_typing_position = self.engine.state.cursor_position
+                self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
                 self._update_cursor_position()
 
     def update_show_typed_characters(self, enabled: bool):
