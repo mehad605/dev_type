@@ -524,6 +524,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.settings_tab, "Settings")
 
         self.setCentralWidget(self.tabs)
+        self._last_tab_index = self.tabs.currentIndex()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         
         # Apply initial theme
         self.apply_current_theme()
@@ -533,6 +535,19 @@ class MainWindow(QMainWindow):
         
         # Emit initial settings to apply them to the typing area
         self._emit_initial_settings()
+
+    def _on_tab_changed(self, index: int):
+        """Persist typing progress whenever we leave the typing tab."""
+        typing_index = self.tabs.indexOf(self.editor_tab)
+        if typing_index != -1 and self._last_tab_index == typing_index and index != typing_index:
+            self.editor_tab.save_active_progress()
+        self._last_tab_index = index
+
+    def closeEvent(self, event):
+        """Ensure active typing progress is saved before exit."""
+        if hasattr(self, "editor_tab"):
+            self.editor_tab.save_active_progress()
+        super().closeEvent(event)
 
     def _create_settings_tab(self) -> QWidget:
         """Create and return the settings tab widget."""

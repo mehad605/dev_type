@@ -164,6 +164,13 @@ class TypingAreaWidget(QTextEdit):
             )
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             self._update_cursor_position()
+            if self.highlighter:
+                self.highlighter.rehighlight()
+        else:
+            if self.highlighter:
+                self.highlighter.clear_all()
+
+        self.stats_updated.emit()
     
     def _prepare_display_content(self, content: str) -> str:
         """Convert content for display with special characters."""

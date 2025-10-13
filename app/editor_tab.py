@@ -101,6 +101,7 @@ class EditorTab(QWidget):
         self.file_label.setText(file_path.split('\\')[-1] if '\\' in file_path else file_path.split('/')[-1])
         self.typing_area.load_file(file_path)
         self.typing_area.setFocus()
+        self.file_tree.refresh_file_stats(file_path)
         
         # Update stats display
         self.on_stats_updated()
@@ -123,6 +124,7 @@ class EditorTab(QWidget):
         self.typing_area.reset_session()
         # Clear saved progress
         stats_db.clear_session_progress(self.current_file)
+        self.file_tree.refresh_file_stats(self.current_file)
     
     def on_session_completed(self):
         """Handle completed typing session."""
@@ -151,15 +153,10 @@ class EditorTab(QWidget):
             duration=stats["time"],
             completed=True,
         )
-        
-        # Refresh file tree to update stats in real-time
-        self.file_tree.refresh_file_stats(self.current_file)
-        
-        # Refresh incomplete session highlights
-        self.file_tree.refresh_incomplete_sessions()
-        
-        # Clear session progress
+
+        # Clear session progress and refresh tree highlights/stats
         stats_db.clear_session_progress(self.current_file)
+        self.file_tree.refresh_file_stats(self.current_file)
 
         parent_window = self.window()
         if hasattr(parent_window, "refresh_languages_tab"):
@@ -183,9 +180,12 @@ class EditorTab(QWidget):
             return
         
         engine = self.typing_area.engine
+        engine.pause()
+        engine.update_elapsed_time()
         
-        # Only save if session has started and not completed
-        if engine.state.cursor_position > 0 and not engine.state.is_complete():
+        if engine.state.is_complete():
+            stats_db.clear_session_progress(self.current_file)
+        elif engine.state.cursor_position > 0:
             stats_db.save_session_progress(
                 self.current_file,
                 cursor_pos=engine.state.cursor_position,
@@ -195,6 +195,15 @@ class EditorTab(QWidget):
                 time=engine.state.elapsed_time,
                 is_paused=True
             )
+        else:
+            stats_db.clear_session_progress(self.current_file)
+
+        self.file_tree.refresh_incomplete_sessions()
+        self.file_tree.refresh_file_stats(self.current_file)
+
+    def save_active_progress(self):
+        """Pause the active session and persist progress, if any."""
+        self._save_current_progress()
     
     def apply_theme(self):
         """Apply current theme to stats display."""
