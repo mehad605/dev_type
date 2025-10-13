@@ -558,6 +558,21 @@ class TypingAreaWidget(QTextEdit):
         """Update allow continue with mistakes setting dynamically."""
         if self.engine:
             self.engine.allow_continue_mistakes = allow_continue
-            # Clear mistake marker if we're now allowing continuation
-            if allow_continue and self.engine.mistake_at is not None:
-                self.engine.mistake_at = None
+
+            if allow_continue:
+                # If we were previously blocking at a mistake, advance past it now
+                if self.engine.mistake_at is not None:
+                    mistake_pos = self.engine.mistake_at
+                    if self.engine.state.cursor_position == mistake_pos:
+                        # Advance cursor to the position after the mistake so typing can continue
+                        next_pos = min(mistake_pos + 1, len(self.engine.state.content))
+                        self.engine.state.cursor_position = next_pos
+                        self.current_typing_position = next_pos
+                        self._update_cursor_position()
+                    self.engine.mistake_at = None
+                    if self.highlighter:
+                        self.highlighter.rehighlight()
+            else:
+                # Going back to strict mode: ensure cursor syncs with engine state
+                self.current_typing_position = self.engine.state.cursor_position
+                self._update_cursor_position()

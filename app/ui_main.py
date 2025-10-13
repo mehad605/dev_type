@@ -330,15 +330,33 @@ class MainWindow(QMainWindow):
         typing_behavior_group = QGroupBox("Typing Behavior")
         typing_behavior_layout = QVBoxLayout()
         
-        self.allow_continue_cb = QCheckBox("Allow continuing with mistypes")
-        self.allow_continue_cb.setToolTip(
-            "When CHECKED: You can continue typing even after making a mistake\n"
-            "When UNCHECKED: You must backspace and fix mistakes before continuing (strict mode)"
+        description = QLabel(
+            "Switch between strict and lenient typing modes. In strict mode you must fix mistakes before continuing."
         )
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0")
-        self.allow_continue_cb.setChecked(allow_continue == "1")
-        self.allow_continue_cb.stateChanged.connect(self.on_allow_continue_changed)
-        typing_behavior_layout.addWidget(self.allow_continue_cb)
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #888888; font-size: 10pt;")
+        typing_behavior_layout.addWidget(description)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(8)
+
+        self.allow_continue_enabled_btn = QPushButton("Enabled")
+        self.allow_continue_disabled_btn = QPushButton("Disabled")
+        for btn in (self.allow_continue_enabled_btn, self.allow_continue_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.allow_continue_enabled_btn.clicked.connect(lambda: self._handle_allow_continue_button(True))
+        self.allow_continue_disabled_btn.clicked.connect(lambda: self._handle_allow_continue_button(False))
+
+        button_row.addWidget(self.allow_continue_enabled_btn)
+        button_row.addWidget(self.allow_continue_disabled_btn)
+        button_row.addStretch()
+        typing_behavior_layout.addLayout(button_row)
+
+        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        self._update_allow_continue_buttons(allow_continue)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -903,7 +921,7 @@ class MainWindow(QMainWindow):
         
         # Typing behavior
         allow_continue = settings.get_setting("allow_continue_mistakes", "0")
-        self.allow_continue_cb.setChecked(allow_continue == "1")
+        self._update_allow_continue_buttons(allow_continue == "1")
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -966,7 +984,35 @@ class MainWindow(QMainWindow):
         
         # Allow continue with mistakes
         allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        self._update_allow_continue_buttons(allow_continue)
         self.allow_continue_changed.emit(allow_continue)
+
+    def _update_allow_continue_buttons(self, enabled: bool):
+        """Refresh the button styles for the allow-continue setting."""
+        if not hasattr(self, 'allow_continue_enabled_btn'):
+            return
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        self.allow_continue_enabled_btn.setChecked(enabled)
+        self.allow_continue_disabled_btn.setChecked(not enabled)
+        self.allow_continue_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.allow_continue_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_allow_continue_button(self, enabled: bool):
+        """Handle clicks on the allow-continue buttons."""
+        current = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        if current == enabled:
+            # Still ensure buttons reflect state
+            self._update_allow_continue_buttons(enabled)
+            return
+        settings.set_setting("allow_continue_mistakes", "1" if enabled else "0")
+        self._update_allow_continue_buttons(enabled)
+        self.allow_continue_changed.emit(enabled)
 
 
 def run_app():
