@@ -33,28 +33,122 @@ class FoldersTab(QWidget):
         settings.init_db()
         self.s = None
         self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(12)
+        self.layout.setContentsMargins(16, 16, 16, 16)
 
+        # Modern header section
+        header = QWidget()
+        header_layout = QVBoxLayout(header)
+        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(0, 0, 0, 12)
+        
+        title_label = QLabel("📁 Code Folders")
+        title_label.setStyleSheet("font-size: 18pt; font-weight: bold;")
+        header_layout.addWidget(title_label)
+        
+        desc_label = QLabel("Add folders containing code files you want to practice typing.")
+        desc_label.setStyleSheet("color: #888888; font-size: 10pt;")
+        header_layout.addWidget(desc_label)
+        
+        self.layout.addWidget(header)
+
+        # Modern toolbar with styled buttons
         toolbar = QHBoxLayout()
-        self.add_btn = QPushButton("+")
-        self.add_btn.setToolTip("Add folder")
-        self.edit_btn = QPushButton("✎")
-        self.view_toggle = QPushButton("Detail View")
+        toolbar.setSpacing(8)
+        
+        self.add_btn = QPushButton("➕ Add Folder")
+        self.add_btn.setToolTip("Add a new folder")
+        self.add_btn.setMinimumHeight(36)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5e81ac;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #81a1c1;
+            }
+            QPushButton:pressed {
+                background-color: #4c566a;
+            }
+        """)
+        
+        self.edit_btn = QPushButton("✏️ Remove Mode")
+        self.edit_btn.setCheckable(True)
+        self.edit_btn.setMinimumHeight(36)
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #bf616a;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #d08770;
+            }
+            QPushButton:pressed {
+                background-color: #a54c56;
+            }
+            QPushButton:checked {
+                background-color: #d08770;
+            }
+        """)
+        
+        self.view_toggle = QPushButton("📋 Detail View")
+        self.view_toggle.setCheckable(True)
+        self.view_toggle.setMinimumHeight(36)
+        self.view_toggle.setStyleSheet("""
+            QPushButton {
+                background-color: #4c566a;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #5e81ac;
+            }
+        """)
+        
         toolbar.addWidget(self.add_btn)
         toolbar.addWidget(self.edit_btn)
         toolbar.addWidget(self.view_toggle)
         toolbar.addStretch()
 
-        container = QWidget()
-        container.setLayout(toolbar)
-        self.layout.addWidget(container)
+        self.layout.addLayout(toolbar)
 
+        # Styled list widget
         self.list = QListWidget()
+        self.list.setAlternatingRowColors(True)
+        self.list.setSpacing(4)
+        self.list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #4c566a;
+                border-radius: 8px;
+                background-color: #2e3440;
+                padding: 8px;
+            }
+            QListWidget::item {
+                padding: 12px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QListWidget::item:hover {
+                background-color: #3b4252;
+            }
+            QListWidget::item:selected {
+                background-color: #5e81ac;
+                color: white;
+            }
+        """)
         self.layout.addWidget(self.list)
 
         self.add_btn.clicked.connect(self.on_add)
-        self.edit_btn.setCheckable(True)
         self.edit_btn.toggled.connect(self.on_edit_toggled)
-        self.view_toggle.setCheckable(True)
         self.view_toggle.toggled.connect(self.on_view_toggled)
         self.list.itemDoubleClicked.connect(self.on_folder_double_clicked)
 
@@ -93,56 +187,88 @@ class FoldersTab(QWidget):
             parent_window.refresh_languages_tab()
 
     def on_edit_toggled(self, checked: bool):
-        # enter remove mode; show red X on items (simplified as suffix)
-        for i in range(self.list.count()):
-            it = self.list.item(i)
-            p = it.data(Qt.UserRole)
-            if checked:
-                it.setText(f"{p}  [remove]")
-                # attach click handler
-                self.list.itemClicked.connect(self._maybe_remove_item)
-            else:
-                it.setText(p)
-                try:
-                    self.list.itemClicked.disconnect(self._maybe_remove_item)
-                except Exception:
-                    pass
+        """Toggle remove mode for folders."""
+        if checked:
+            self.edit_btn.setText("✅ Done")
+            # Connect click handler for removal (only if not already connected)
+            self.list.itemClicked.connect(self._maybe_remove_item)
+            
+            # Update visual appearance
+            for i in range(self.list.count()):
+                it = self.list.item(i)
+                p = it.data(Qt.UserRole)
+                it.setText(f"🗑️ {p}")
+        else:
+            self.edit_btn.setText("✏️ Remove Mode")
+            # Disconnect click handler
+            try:
+                self.list.itemClicked.disconnect(self._maybe_remove_item)
+            except (RuntimeError, TypeError):
+                # Already disconnected or never connected
+                pass
+            
+            # Restore normal appearance
+            self.load_folders()
 
     def _maybe_remove_item(self, item: QListWidgetItem):
-        # Only active in edit mode
+        """Handle folder removal with optional confirmation."""
         if not self.edit_btn.isChecked():
             return
+        
         p = item.data(Qt.UserRole)
         delete_confirm = settings.get_setting("delete_confirm", "1")
-        do_confirm = delete_confirm == "1"
-        if do_confirm:
+        should_confirm = (delete_confirm == "1")
+        
+        should_remove = True
+        if should_confirm:
             mb = QMessageBox(self)
-            mb.setWindowTitle("Confirm remove")
-            mb.setText(f"Remove folder {p}?")
-            cb = QCheckBox("Don't ask again")
+            mb.setWindowTitle("Confirm Removal")
+            mb.setText(f"Remove folder from list?\n\n{p}")
+            mb.setIcon(QMessageBox.Question)
+            mb.setInformativeText("This will not delete the folder from your computer, only remove it from the app.")
+            
+            # Add "Don't ask again" checkbox
+            cb = QCheckBox("Don't ask me again")
             mb.setCheckBox(cb)
             mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            r = mb.exec()
-            if r == QMessageBox.Yes:
-                settings.remove_folder(p)
+            mb.setDefaultButton(QMessageBox.No)
+            
+            result = mb.exec()
+            
+            if result == QMessageBox.Yes:
+                # If "don't ask again" was checked, save the setting
                 if cb.isChecked():
                     settings.set_setting("delete_confirm", "0")
+                should_remove = True
             else:
-                return
-        else:
+                should_remove = False
+        
+        if should_remove:
+            # Remove the folder
             settings.remove_folder(p)
-        self.load_folders()
-        # Notify parent to refresh languages tab
-        parent_window = self.window()
-        if hasattr(parent_window, 'refresh_languages_tab'):
-            parent_window.refresh_languages_tab()
+            
+            # Immediately update the UI
+            self.load_folders()
+            
+            # Re-enter edit mode if we were in it
+            if self.edit_btn.isChecked():
+                for i in range(self.list.count()):
+                    it = self.list.item(i)
+                    folder_path = it.data(Qt.UserRole)
+                    it.setText(f"🗑️ {folder_path}")
+            
+            # Notify parent to refresh languages tab
+            parent_window = self.window()
+            if hasattr(parent_window, 'refresh_languages_tab'):
+                parent_window.refresh_languages_tab()
 
     def on_view_toggled(self, checked: bool):
+        """Toggle between list and icon view modes."""
         if checked:
-            self.view_toggle.setText("Icon View")
+            self.view_toggle.setText("🔲 Icon View")
             self.list.setViewMode(QListWidget.ViewMode.IconMode)
         else:
-            self.view_toggle.setText("Detail View")
+            self.view_toggle.setText("📋 Detail View")
             self.list.setViewMode(QListWidget.ViewMode.ListMode)
 
 
@@ -196,18 +322,8 @@ class MainWindow(QMainWindow):
         settings_widget = QWidget()
         s_layout = QVBoxLayout(settings_widget)
         
-        # General settings group
-        general_group = QGroupBox("General")
-        general_layout = QVBoxLayout()
-        
-        self.delete_confirm_cb = QCheckBox("Show delete confirmation dialogs")
-        cur_val = settings.get_setting("delete_confirm", "1")
-        self.delete_confirm_cb.setChecked(cur_val == "1")
-        self.delete_confirm_cb.stateChanged.connect(self.on_delete_confirm_changed)
-        general_layout.addWidget(self.delete_confirm_cb)
-        
-        general_group.setLayout(general_layout)
-        s_layout.addWidget(general_group)
+        # Note: General settings group removed as it only contained delete confirmation
+        # which is now handled inline with "Don't ask again" checkbox in dialogs
         
         # Theme settings group
         theme_group = QGroupBox("Theme")
@@ -393,9 +509,6 @@ class MainWindow(QMainWindow):
     def refresh_languages_tab(self):
         """Refresh the languages tab after folders change."""
         self.languages_tab.refresh_languages()
-
-    def on_delete_confirm_changed(self, state: int):
-        settings.set_setting("delete_confirm", "1" if state == Qt.Checked else "0")
 
     def on_theme_changed(self, theme: str):
         settings.set_setting("theme", theme)
@@ -730,10 +843,6 @@ class MainWindow(QMainWindow):
     
     def _refresh_all_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
-        # General settings
-        delete_confirm = settings.get_setting("delete_confirm", "1")
-        self.delete_confirm_cb.setChecked(delete_confirm == "1")
-        
         # Theme settings
         theme = settings.get_setting("theme", "dark")
         self.theme_combo.setCurrentText(theme)
