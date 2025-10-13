@@ -207,11 +207,21 @@ class MainWindow(QMainWindow):
         self.delete_confirm_cb.stateChanged.connect(self.on_delete_confirm_changed)
         general_layout.addWidget(self.delete_confirm_cb)
         
-        self.show_typed_cb = QCheckBox("Show typed character (not expected)")
+        self.show_typed_cb = QCheckBox("Show what you actually typed (not what was expected)")
+        self.show_typed_cb.setToolTip(
+            "When CHECKED: If you type 'x' instead of 'c', you'll see 'x' in red\n"
+            "When UNCHECKED: If you type 'x' instead of 'c', you'll see 'c' in red"
+        )
         show_typed = settings.get_setting("show_typed_char", "1")
         self.show_typed_cb.setChecked(show_typed == "1")
         self.show_typed_cb.stateChanged.connect(self.on_show_typed_changed)
         general_layout.addWidget(self.show_typed_cb)
+        
+        self.allow_continue_cb = QCheckBox("Allow continue typing on error (enabled by default)")
+        allow_continue = settings.get_setting("allow_continue_on_error", "1")
+        self.allow_continue_cb.setChecked(allow_continue == "1")
+        self.allow_continue_cb.stateChanged.connect(self.on_allow_continue_changed)
+        general_layout.addWidget(self.allow_continue_cb)
         
         general_group.setLayout(general_layout)
         s_layout.addWidget(general_group)
@@ -417,6 +427,10 @@ class MainWindow(QMainWindow):
     def on_show_typed_changed(self, state: int):
         settings.set_setting("show_typed_char", "1" if state == Qt.Checked else "0")
         self.show_typed_changed.emit(state == Qt.Checked)
+    
+    def on_allow_continue_changed(self, state: int):
+        settings.set_setting("allow_continue_on_error", "1" if state == Qt.Checked else "0")
+        # No signal needed - this is checked on each keystroke
     
     def on_color_pick(self, setting_key: str, button: QPushButton, label: str):
         """Open color picker dialog."""
@@ -744,6 +758,9 @@ class MainWindow(QMainWindow):
         
         show_typed = settings.get_setting("show_typed_char", "1")
         self.show_typed_cb.setChecked(show_typed == "1")
+        
+        allow_continue = settings.get_setting("allow_continue_on_error", "1")
+        self.allow_continue_cb.setChecked(allow_continue == "1")
         
         # Theme settings
         theme = settings.get_setting("theme", "dark")

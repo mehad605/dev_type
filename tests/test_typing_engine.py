@@ -38,13 +38,13 @@ def test_correct_keystroke():
 
 
 def test_incorrect_keystroke():
-    """Test processing incorrect keystroke."""
+    """Test processing incorrect keystroke without continue on error."""
     engine = TypingEngine("hello")
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected = engine.process_keystroke("x", advance_on_error=False)
     
     assert is_correct is False
     assert expected == "h"
-    assert engine.state.cursor_position == 0  # Doesn't advance
+    assert engine.state.cursor_position == 0  # Doesn't advance when advance_on_error=False
     assert engine.state.correct_keystrokes == 0
     assert engine.state.incorrect_keystrokes == 1
 
@@ -83,12 +83,12 @@ def test_ctrl_backspace():
 
 
 def test_accuracy_calculation():
-    """Test accuracy calculation."""
+    """Test accuracy calculation with advance_on_error enabled (default)."""
     engine = TypingEngine("abc")
     
-    engine.process_keystroke("a")  # Correct
-    engine.process_keystroke("x")  # Incorrect
-    engine.process_keystroke("b")  # Correct
+    engine.process_keystroke("a")  # Correct - advances to position 1
+    engine.process_keystroke("x", advance_on_error=True)  # Incorrect - advances to position 2
+    engine.process_keystroke("c")  # Correct at position 2
     
     # 2 correct out of 3 total = 66.67%
     assert engine.state.total_keystrokes() == 3
@@ -150,3 +150,39 @@ def test_load_progress():
     assert engine.state.incorrect_keystrokes == 1
     assert engine.state.elapsed_time == 10.5
     assert engine.state.is_paused
+
+
+def test_continue_on_error_enabled():
+    """Test that cursor advances on incorrect keystroke when continue_on_error is enabled."""
+    engine = TypingEngine("hello")
+    
+    # Type incorrect character with advance_on_error=True (default)
+    is_correct, expected = engine.process_keystroke("x", advance_on_error=True)
+    
+    assert is_correct is False
+    assert expected == "h"
+    assert engine.state.cursor_position == 1  # Advances despite error
+    assert engine.state.incorrect_keystrokes == 1
+    
+    # Can continue typing next character
+    is_correct2, expected2 = engine.process_keystroke("e", advance_on_error=True)
+    assert is_correct2 is True
+    assert engine.state.cursor_position == 2
+
+
+def test_continue_on_error_disabled():
+    """Test that cursor doesn't advance on incorrect keystroke when continue_on_error is disabled."""
+    engine = TypingEngine("hello")
+    
+    # Type incorrect character with advance_on_error=False
+    is_correct, expected = engine.process_keystroke("x", advance_on_error=False)
+    
+    assert is_correct is False
+    assert expected == "h"
+    assert engine.state.cursor_position == 0  # Does NOT advance
+    assert engine.state.incorrect_keystrokes == 1
+    
+    # Cursor still at position 0, must type correct character
+    is_correct2, expected2 = engine.process_keystroke("h", advance_on_error=False)
+    assert is_correct2 is True
+    assert engine.state.cursor_position == 1

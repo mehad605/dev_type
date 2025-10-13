@@ -1,10 +1,10 @@
 """Typing area widget with character-by-character validation and color coding."""
-from PySide6.QtWidgets import QTextEdit, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QTextEdit, QWidget, QVBoxLayout, QApplication
 from PySide6.QtGui import (
-    QTextCharFormat, QColor, QFont, QTextCursor, 
-    QKeyEvent, QPalette, QSyntaxHighlighter, QTextDocument
+    QTextCharFormat, QColor, QFont, QTextCursor,
+    QKeyEvent, QPalette, QSyntaxHighlighter, QTextDocument, QPainter
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QRect
 from typing import Optional
 from app.typing_engine import TypingEngine
 from app import settings
@@ -81,11 +81,21 @@ class TypingAreaWidget(QTextEdit):
         self.engine: Optional[TypingEngine] = None
         self.highlighter: Optional[TypingHighlighter] = None
         
-        # Load space character from settings
+        # Load settings
         self.space_char = settings.get_setting("space_char", "␣")
+        self.show_typed_char = settings.get_setting("show_typed_char", "1") == "1"
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
+
+        # Custom cursor state
+        self.cursor_color = QColor(settings.get_setting("color_cursor", "#ffffff"))
+        self.cursor_style = settings.get_setting("cursor_style", "block").lower()
+        self.cursor_blink_mode = settings.get_setting("cursor_type", "blinking").lower()
+        self._cursor_visible = True
+        self._cursor_rect = QRect()
+        self._cursor_timer = QTimer(self)
+        self._cursor_timer.timeout.connect(self._toggle_cursor_visible)
         
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
@@ -94,6 +104,14 @@ class TypingAreaWidget(QTextEdit):
         font_family = settings.get_setting("font_family", "Consolas")
         font_size = int(settings.get_setting("font_size", "12"))
         self.setFont(QFont(font_family, font_size))
+
+        # Track cursor position changes for custom drawing
+        self.cursorPositionChanged.connect(self._on_qt_cursor_changed)
+        
+        # Load cursor settings
+        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_style = settings.get_setting("cursor_style", "block")
+        self.update_cursor(cursor_type, cursor_style)
         
         # Auto-pause timer
         self.pause_timer = QTimer()
@@ -151,9 +169,120 @@ class TypingAreaWidget(QTextEdit):
     def _update_cursor_position(self):
         """Update visual cursor to current typing position."""
         cursor = self.textCursor()
-        cursor.setPosition(self.current_typing_position)
+        cursor.setPosition(self.current_typing_position, QTextCursor.MoveAnchor)
+        cursor.clearSelection()
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
+        self._update_cursor_geometry()
+
+    def mousePressEvent(self, event):
+        """Ignore left-click attempts to reposition the cursor."""
+        if event.button() == Qt.LeftButton:
+            self.setFocus(Qt.MouseFocusReason)
+            self._update_cursor_position()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Prevent double-click selection from changing cursor location."""
+        if event.button() == Qt.LeftButton:
+            self.setFocus(Qt.MouseFocusReason)
+            self._update_cursor_position()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Block drag selections that would alter cursor position."""
+        if event.buttons() & Qt.LeftButton:
+            self._update_cursor_position()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def _on_qt_cursor_changed(self):
+        """Keep custom cursor visuals in sync with Qt cursor changes."""
+        self._update_cursor_geometry()
+
+    def _update_cursor_geometry(self):
+        """Recalculate cursor rectangle based on style and schedule repaint."""
+        rect = QRect(self.cursorRect())
+        old_rect = QRect(self._cursor_rect)
+
+        if self.cursor_style == "block":
+            min_width = self.fontMetrics().averageCharWidth() or 1
+            rect.setWidth(max(rect.width(), min_width))
+        elif self.cursor_style == "underscore":
+            height = rect.height() or self.fontMetrics().height()
+            thickness = max(2, height // 6)
+            thickness = min(thickness, height)
+            width = max(rect.width(), self.fontMetrics().averageCharWidth(), 2)
+            y_pos = rect.y() + height - thickness
+            rect = QRect(rect.left(), y_pos, width, thickness)
+        else:  # ibeam
+            width = max(2, self.logicalDpiX() // 180)
+            rect = QRect(rect.left(), rect.top(), width, rect.height())
+
+        self._cursor_rect = rect
+        self._request_cursor_paint(old_rect)
+
+    def _request_cursor_paint(self, old_rect: Optional[QRect] = None):
+        """Schedule viewport update for cursor area."""
+        margin = 2
+        if old_rect and not old_rect.isNull():
+            self.viewport().update(old_rect.adjusted(-margin, -margin, margin, margin))
+        if not self._cursor_rect.isNull():
+            self.viewport().update(self._cursor_rect.adjusted(-margin, -margin, margin, margin))
+
+    def _toggle_cursor_visible(self):
+        """Blink cursor visibility."""
+        self._cursor_visible = not self._cursor_visible
+        self._request_cursor_paint()
+
+    def _update_blink_timer(self):
+        """Start or stop blink timer based on settings and focus."""
+        self._cursor_visible = True
+        if self.cursor_blink_mode == "blinking" and self.hasFocus():
+            flash_time = QApplication.instance().cursorFlashTime() if QApplication.instance() else 1000
+            if flash_time <= 0:
+                flash_time = 1000
+            self._cursor_timer.start(max(100, flash_time // 2))
+        else:
+            self._cursor_timer.stop()
+            self._request_cursor_paint()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        self._paint_custom_cursor()
+
+    def _paint_custom_cursor(self):
+        """Draw the custom cursor with configured color/style."""
+        if not self.hasFocus() or not self._cursor_visible or self._cursor_rect.isNull():
+            return
+
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self.cursor_color)
+        painter.drawRect(self._cursor_rect)
+        painter.end()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self._cursor_visible = True
+        self._update_cursor_geometry()
+        self._update_blink_timer()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self._cursor_visible = False
+        self._cursor_timer.stop()
+        self._request_cursor_paint()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_cursor_geometry()
     
     def keyPressEvent(self, event: QKeyEvent):
         """Handle keyboard input for typing."""
@@ -215,12 +344,21 @@ class TypingAreaWidget(QTextEdit):
             elif key == Qt.Key_Return or key == Qt.Key_Enter:
                 char = '\n'
             
-            # Process keystroke
-            is_correct, expected = self.engine.process_keystroke(char)
+            # Check allow_continue setting
+            allow_continue = settings.get_setting("allow_continue_on_error", "1") == "1"
+            
+            # Process keystroke with continue on error setting
+            is_correct, expected = self.engine.process_keystroke(char, advance_on_error=allow_continue)
             
             # Display typed character or expected based on settings
-            show_typed = settings.get_setting("show_typed_char", "1") == "1"
-            display_char = char if not is_correct and show_typed else expected
+            # If correct, always show the correct character
+            # If incorrect:
+            #   - If show_typed_char is True: show what user typed (char)
+            #   - If show_typed_char is False: show what was expected (expected)
+            if is_correct:
+                display_char = char
+            else:
+                display_char = char if self.show_typed_char else expected
             
             # Convert for display
             if display_char == ' ':
@@ -234,8 +372,8 @@ class TypingAreaWidget(QTextEdit):
                 is_correct
             )
             
-            if is_correct:
-                self.current_typing_position += 1
+            # Update cursor position (engine already advanced if allowed)
+            self.current_typing_position = self.engine.state.cursor_position
             
             self._update_cursor_position()
             self.stats_updated.emit()
@@ -287,6 +425,7 @@ class TypingAreaWidget(QTextEdit):
         if ligatures:
             font.setStyleHint(QFont.StyleHint.Monospace)
         self.setFont(font)
+        self._update_cursor_geometry()
     
     def update_colors(self):
         """Update color settings dynamically."""
@@ -303,19 +442,21 @@ class TypingAreaWidget(QTextEdit):
             
             # Trigger rehighlight to apply changes
             self.highlighter.rehighlight()
+
+        cursor_color_value = settings.get_setting("color_cursor", "#ffffff")
+        self.cursor_color = QColor(cursor_color_value)
+        self._request_cursor_paint()
     
     def update_cursor(self, cursor_type: str, cursor_style: str):
         """Update cursor settings dynamically."""
-        # Cursor visual updates are handled by Qt's cursor blinking
-        # The cursor_type (blinking/static) and cursor_style (block/underscore/ibeam)
-        # would need custom rendering implementation for full support
-        # For now, we'll use Qt's default cursor behavior
-        if cursor_style == "block":
-            self.setCursorWidth(10)
-        elif cursor_style == "underscore":
-            self.setCursorWidth(2)
-        elif cursor_style == "ibeam":
-            self.setCursorWidth(1)
+        self.cursor_blink_mode = (cursor_type or "blinking").lower()
+        self.cursor_style = (cursor_style or "block").lower()
+
+        # Hide Qt's default cursor so we can draw our own
+        self.setCursorWidth(0)
+        self._update_cursor_geometry()
+        self._update_blink_timer()
+        self.viewport().update()
     
     def update_space_char(self, space_char: str):
         """Update space character display dynamically."""
@@ -345,6 +486,8 @@ class TypingAreaWidget(QTextEdit):
     
     def update_show_typed(self, show_typed: bool):
         """Update show typed character setting dynamically."""
+        self.show_typed_char = show_typed
         if self.highlighter:
             self.highlighter.show_typed_char = show_typed
-            self.highlighter.rehighlight()
+            # Note: We don't rehighlight here because the display is determined
+            # at the time of typing, not stored in the highlighter

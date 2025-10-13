@@ -72,12 +72,13 @@ class TypingEngine:
                 return True
         return False
     
-    def process_keystroke(self, typed_char: str) -> Tuple[bool, str]:
+    def process_keystroke(self, typed_char: str, advance_on_error: bool = True) -> Tuple[bool, str]:
         """
         Process a single keystroke.
         
         Args:
             typed_char: The character that was typed
+            advance_on_error: Whether to advance cursor on incorrect keystroke
             
         Returns:
             (is_correct, expected_char) tuple
@@ -99,6 +100,8 @@ class TypingEngine:
             self.state.cursor_position += 1
         else:
             self.state.incorrect_keystrokes += 1
+            if advance_on_error:
+                self.state.cursor_position += 1
         
         self.update_elapsed_time()
         return is_correct, expected_char
