@@ -11,18 +11,25 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QIcon
-from typing import Dict, List
+from typing import Dict, List, Optional
 from app.file_scanner import scan_folders
-from app import settings
+from app import settings, stats_db
 from app.icon_manager import get_icon_manager
 
 
 class LanguageCard(QFrame):
     """Card widget displaying a single language with stats."""
-    
+
     clicked = Signal(str, list)  # language_name, file_paths
-    
-    def __init__(self, language: str, files: List[str], parent=None):
+
+    def __init__(
+        self,
+        language: str,
+        files: List[str],
+    average_wpm: Optional[float] = None,
+        sample_size: int = 0,
+        parent=None,
+    ):
         super().__init__(parent)
         self.language = language
         self.files = files
@@ -67,10 +74,10 @@ class LanguageCard(QFrame):
         layout.addWidget(count_label)
         
         # Avg WPM (placeholder)
-        wpm_label = QLabel("Avg WPM: --")
-        wpm_label.setAlignment(Qt.AlignCenter)
-        wpm_label.setStyleSheet("color: gray; font-size: 12px;")
-        layout.addWidget(wpm_label)
+        self.wpm_label = QLabel()
+        self.wpm_label.setAlignment(Qt.AlignCenter)
+        self._set_wpm_display(average_wpm, sample_size)
+        layout.addWidget(self.wpm_label)
         
         layout.addStretch()
     
@@ -79,6 +86,16 @@ class LanguageCard(QFrame):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.language, self.files)
         super().mousePressEvent(event)
+
+    def _set_wpm_display(self, average_wpm: Optional[float], sample_size: int):
+        """Update the WPM label contents and styling."""
+        if average_wpm is None or sample_size == 0:
+            self.wpm_label.setText("Avg WPM: --")
+            self.wpm_label.setStyleSheet("color: gray; font-size: 12px;")
+        else:
+            label = f"Avg WPM (last {sample_size}): {average_wpm:.1f}"
+            self.wpm_label.setText(label)
+            self.wpm_label.setStyleSheet("color: #88c0d0; font-size: 12px; font-weight: bold;")
 
 
 class LanguagesTab(QWidget):
@@ -145,7 +162,13 @@ class LanguagesTab(QWidget):
         max_cols = 4
         
         for lang, files in sorted(language_files.items()):
-            card = LanguageCard(lang, files)
+            recent = stats_db.get_recent_wpm_average(files, limit=10)
+            avg_wpm = None
+            sample_size = 0
+            if recent:
+                avg_wpm = recent.get("average")
+                sample_size = recent.get("count", 0)
+            card = LanguageCard(lang, files, avg_wpm, sample_size)
             card.clicked.connect(self.on_language_clicked)
             self.card_layout.addWidget(card, row, col)
             

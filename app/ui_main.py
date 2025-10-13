@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 import app.settings as settings
 from app.languages_tab import LanguagesTab
+from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
 
 
@@ -293,6 +294,10 @@ class MainWindow(QMainWindow):
         # Languages tab
         self.languages_tab = LanguagesTab()
         self.tabs.addTab(self.languages_tab, "Languages")
+
+        # History tab
+        self.history_tab = HistoryTab()
+        self.tabs.addTab(self.history_tab, "History")
         
         # Editor/Typing tab
         self.editor_tab = EditorTab()
@@ -569,16 +574,21 @@ class MainWindow(QMainWindow):
     def open_typing_tab(self, folder_path: str):
         """Switch to typing tab and load the specified folder."""
         self.editor_tab.load_folder(folder_path)
-        self.tabs.setCurrentIndex(2)  # Switch to typing tab
+        self.tabs.setCurrentWidget(self.editor_tab)
     
     def open_typing_tab_for_language(self, language: str, files: list):
         """Switch to typing tab and load files for a specific language."""
         self.editor_tab.load_language_files(language, files)
-        self.tabs.setCurrentIndex(2)  # Switch to typing tab
+        self.tabs.setCurrentWidget(self.editor_tab)
     
     def refresh_languages_tab(self):
         """Refresh the languages tab after folders change."""
         self.languages_tab.refresh_languages()
+
+    def refresh_history_tab(self):
+        """Refresh the session history tab."""
+        if hasattr(self, "history_tab"):
+            self.history_tab.refresh_history()
 
     def on_allow_continue_changed(self, state: int):
         """Handle allow continue with mistakes setting change."""

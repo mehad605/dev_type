@@ -8,6 +8,7 @@ from app.file_tree import FileTreeWidget
 from app.typing_area import TypingAreaWidget
 from app.stats_display import StatsDisplayWidget
 from app import stats_db
+from app.file_scanner import get_language_for_file
 
 
 class EditorTab(QWidget):
@@ -148,6 +149,18 @@ class EditorTab(QWidget):
             accuracy=stats["accuracy"],
             completed=True
         )
+
+        stats_db.record_session_history(
+            file_path=self.current_file,
+            language=get_language_for_file(self.current_file),
+            wpm=stats["wpm"],
+            accuracy=stats["accuracy"],
+            total_keystrokes=stats["total"],
+            correct_keystrokes=stats["correct"],
+            incorrect_keystrokes=stats["incorrect"],
+            duration=stats["time"],
+            completed=True,
+        )
         
         # Refresh file tree to update stats in real-time
         self.file_tree.refresh_file_stats(self.current_file)
@@ -157,6 +170,12 @@ class EditorTab(QWidget):
         
         # Clear session progress
         stats_db.clear_session_progress(self.current_file)
+
+        parent_window = self.window()
+        if hasattr(parent_window, "refresh_languages_tab"):
+            parent_window.refresh_languages_tab()
+        if hasattr(parent_window, "refresh_history_tab"):
+            parent_window.refresh_history_tab()
         
         # Show completion message
         QMessageBox.information(
