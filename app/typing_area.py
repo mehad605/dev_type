@@ -80,14 +80,20 @@ class TypingAreaWidget(QTextEdit):
         super().__init__(parent)
         self.engine: Optional[TypingEngine] = None
         self.highlighter: Optional[TypingHighlighter] = None
-        self.space_char = "␣"  # Default space character display
+        
+        # Load space character from settings
+        self.space_char = settings.get_setting("space_char", "␣")
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
         
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
-        self.setFont(QFont("Consolas", 12))
+        
+        # Load font from settings
+        font_family = settings.get_setting("font_family", "Consolas")
+        font_size = int(settings.get_setting("font_size", "12"))
+        self.setFont(QFont(font_family, font_size))
         
         # Auto-pause timer
         self.pause_timer = QTimer()
@@ -274,3 +280,71 @@ class TypingAreaWidget(QTextEdit):
             "total": self.engine.state.total_keystrokes(),
             "is_paused": self.engine.state.is_paused,
         }
+    
+    def update_font(self, family: str, size: int, ligatures: bool):
+        """Update font settings dynamically."""
+        font = QFont(family, size)
+        if ligatures:
+            font.setStyleHint(QFont.StyleHint.Monospace)
+        self.setFont(font)
+    
+    def update_colors(self):
+        """Update color settings dynamically."""
+        if self.highlighter:
+            # Reload colors from settings
+            untyped_color = settings.get_setting("color_untyped", "#555555")
+            self.highlighter.untyped_format.setForeground(QColor(untyped_color))
+            
+            correct_color = settings.get_setting("color_correct", "#00ff00")
+            self.highlighter.correct_format.setForeground(QColor(correct_color))
+            
+            incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
+            self.highlighter.incorrect_format.setForeground(QColor(incorrect_color))
+            
+            # Trigger rehighlight to apply changes
+            self.highlighter.rehighlight()
+    
+    def update_cursor(self, cursor_type: str, cursor_style: str):
+        """Update cursor settings dynamically."""
+        # Cursor visual updates are handled by Qt's cursor blinking
+        # The cursor_type (blinking/static) and cursor_style (block/underscore/ibeam)
+        # would need custom rendering implementation for full support
+        # For now, we'll use Qt's default cursor behavior
+        if cursor_style == "block":
+            self.setCursorWidth(10)
+        elif cursor_style == "underscore":
+            self.setCursorWidth(2)
+        elif cursor_style == "ibeam":
+            self.setCursorWidth(1)
+    
+    def update_space_char(self, space_char: str):
+        """Update space character display dynamically."""
+        old_space_char = self.space_char
+        self.space_char = space_char
+        
+        # If content is loaded, regenerate display content
+        if self.original_content:
+            self.display_content = self._prepare_display_content(self.original_content)
+            
+            # Save cursor position
+            cursor_pos = self.current_typing_position
+            
+            # Update text
+            self.setPlainText(self.display_content)
+            
+            # Restore cursor and highlighting
+            self.current_typing_position = cursor_pos
+            self._update_cursor_position()
+            if self.highlighter:
+                self.highlighter.rehighlight()
+    
+    def update_pause_delay(self, delay: float):
+        """Update auto-pause delay dynamically."""
+        if self.engine:
+            self.engine.pause_delay = delay
+    
+    def update_show_typed(self, show_typed: bool):
+        """Update show typed character setting dynamically."""
+        if self.highlighter:
+            self.highlighter.show_typed_char = show_typed
+            self.highlighter.rehighlight()

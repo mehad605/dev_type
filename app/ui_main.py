@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
 )
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QObject
 import sys
 from pathlib import Path
 import app.settings as settings
@@ -147,6 +147,14 @@ class FoldersTab(QWidget):
 
 
 class MainWindow(QMainWindow):
+    # Signals for dynamic settings updates
+    font_changed = Signal(str, int, bool)  # family, size, ligatures
+    colors_changed = Signal()
+    cursor_changed = Signal(str, str)  # type, style
+    space_char_changed = Signal(str)
+    pause_delay_changed = Signal(float)
+    show_typed_changed = Signal(bool)
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Dev Typing App")
@@ -172,6 +180,9 @@ class MainWindow(QMainWindow):
         
         # Apply initial theme
         self.apply_current_theme()
+        
+        # Connect settings signals to editor tab for dynamic updates
+        self._connect_settings_signals()
 
     def _create_settings_tab(self) -> QWidget:
         """Create and return the settings tab widget."""
@@ -405,6 +416,7 @@ class MainWindow(QMainWindow):
     
     def on_show_typed_changed(self, state: int):
         settings.set_setting("show_typed_char", "1" if state == Qt.Checked else "0")
+        self.show_typed_changed.emit(state == Qt.Checked)
     
     def on_color_pick(self, setting_key: str, button: QPushButton, label: str):
         """Open color picker dialog."""
@@ -418,44 +430,64 @@ class MainWindow(QMainWindow):
             color_hex = color.name()
             settings.set_setting(setting_key, color_hex)
             button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #666;")
+            self.colors_changed.emit()
     
     def on_color_reset(self, setting_key: str, default: str, button: QPushButton):
         """Reset color to default."""
         settings.set_setting(setting_key, default)
         button.setStyleSheet(f"background-color: {default}; border: 1px solid #666;")
+        self.colors_changed.emit()
     
     def on_cursor_type_changed(self, cursor_type: str):
         settings.set_setting("cursor_type", cursor_type)
+        cursor_style = settings.get_setting("cursor_style", "block")
+        self.cursor_changed.emit(cursor_type, cursor_style)
     
     def on_cursor_style_changed(self, cursor_style: str):
         settings.set_setting("cursor_style", cursor_style)
+        cursor_type = settings.get_setting("cursor_type", "blinking")
+        self.cursor_changed.emit(cursor_type, cursor_style)
     
     def on_font_family_changed(self, font_family: str):
         settings.set_setting("font_family", font_family)
+        self._emit_font_changed()
     
     def on_font_size_changed(self, font_size: int):
         settings.set_setting("font_size", str(font_size))
+        self._emit_font_changed()
     
     def on_font_ligatures_changed(self, state: int):
         settings.set_setting("font_ligatures", "1" if state == Qt.Checked else "0")
+        self._emit_font_changed()
+    
+    def _emit_font_changed(self):
+        """Helper to emit font_changed signal with current font settings."""
+        family = settings.get_setting("font_family", "Consolas")
+        size = int(settings.get_setting("font_size", "12"))
+        ligatures = settings.get_setting("font_ligatures", "0") == "1"
+        self.font_changed.emit(family, size, ligatures)
     
     def on_space_char_changed(self, char_option: str):
         """Handle space character dropdown change."""
         if char_option != "custom":
             settings.set_setting("space_char", char_option)
             self.space_char_custom.setEnabled(False)
+            self.space_char_changed.emit(char_option)
         else:
             self.space_char_custom.setEnabled(True)
             if self.space_char_custom.text():
                 settings.set_setting("space_char", self.space_char_custom.text())
+                self.space_char_changed.emit(self.space_char_custom.text())
     
     def on_space_char_custom_changed(self, text: str):
         """Handle custom space character input."""
         if text and self.space_char_combo.currentText() == "custom":
             settings.set_setting("space_char", text)
+            self.space_char_changed.emit(text)
     
     def on_pause_delay_changed(self, delay: int):
         settings.set_setting("pause_delay", str(delay))
+        self.pause_delay_changed.emit(float(delay))
     
     def on_export_settings(self):
         """Export settings to JSON file."""
@@ -500,9 +532,14 @@ class MainWindow(QMainWindow):
                 for key, value in settings_dict.items():
                     settings.set_setting(key, value)
                 
+                # Apply settings dynamically
+                self._refresh_all_settings_ui()
+                self.apply_current_theme()
+                self._emit_all_settings_signals()
+                
                 QMessageBox.information(
                     self, "Success", 
-                    "Settings imported successfully! Restart the app for changes to take full effect."
+                    "Settings imported and applied successfully!"
                 )
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to import settings: {e}")
@@ -614,7 +651,14 @@ class MainWindow(QMainWindow):
                 conn.commit()
                 conn.close()
                 
-                QMessageBox.information(self, "Success", "Data imported successfully!")
+                # Refresh UI to show imported data
+                if hasattr(self.editor_tab, 'file_tree'):
+                    self.editor_tab.file_tree.refresh_tree()
+                    self.editor_tab.file_tree.refresh_incomplete_sessions()
+                
+                self.refresh_languages_tab()
+                
+                QMessageBox.information(self, "Success", "Data imported and UI refreshed successfully!")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to import data: {e}")
     
@@ -691,6 +735,85 @@ class MainWindow(QMainWindow):
             self.color_cursor_btn.setStyleSheet(
                 f"background-color: {scheme.cursor_color}; border: 1px solid #666;"
             )
+    
+    def _refresh_all_settings_ui(self):
+        """Refresh all settings UI controls to match imported settings."""
+        # General settings
+        delete_confirm = settings.get_setting("delete_confirm", "1")
+        self.delete_confirm_cb.setChecked(delete_confirm == "1")
+        
+        show_typed = settings.get_setting("show_typed_char", "1")
+        self.show_typed_cb.setChecked(show_typed == "1")
+        
+        # Theme settings
+        theme = settings.get_setting("theme", "dark")
+        self.theme_combo.setCurrentText(theme)
+        
+        scheme = settings.get_setting("dark_scheme", "nord")
+        self.scheme_combo.setCurrentText(scheme)
+        
+        # Cursor settings
+        cursor_type = settings.get_setting("cursor_type", "blinking")
+        self.cursor_type_combo.setCurrentText(cursor_type)
+        
+        cursor_style = settings.get_setting("cursor_style", "block")
+        self.cursor_style_combo.setCurrentText(cursor_style)
+        
+        # Font settings
+        font_family = settings.get_setting("font_family", "Consolas")
+        self.font_family_combo.setCurrentText(font_family)
+        
+        font_size = int(settings.get_setting("font_size", "12"))
+        self.font_size_spin.setValue(font_size)
+        
+        ligatures = settings.get_setting("font_ligatures", "0")
+        self.font_ligatures_cb.setChecked(ligatures == "1")
+        
+        # Typing settings
+        space_char = settings.get_setting("space_char", "␣")
+        if space_char in ["␣", "·", " "]:
+            self.space_char_combo.setCurrentText(space_char)
+        else:
+            self.space_char_combo.setCurrentText("custom")
+            self.space_char_custom.setText(space_char)
+        
+        pause_delay = int(float(settings.get_setting("pause_delay", "7")))
+        self.pause_delay_spin.setValue(pause_delay)
+    
+    def _emit_all_settings_signals(self):
+        """Emit all settings signals to update connected components."""
+        # Font settings
+        self._emit_font_changed()
+        
+        # Color settings
+        self.colors_changed.emit()
+        
+        # Cursor settings
+        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_style = settings.get_setting("cursor_style", "block")
+        self.cursor_changed.emit(cursor_type, cursor_style)
+        
+        # Space character
+        space_char = settings.get_setting("space_char", "␣")
+        self.space_char_changed.emit(space_char)
+        
+        # Pause delay
+        pause_delay = float(settings.get_setting("pause_delay", "7"))
+        self.pause_delay_changed.emit(pause_delay)
+        
+        # Show typed character
+        show_typed = settings.get_setting("show_typed_char", "1") == "1"
+        self.show_typed_changed.emit(show_typed)
+    
+    def _connect_settings_signals(self):
+        """Connect settings change signals to editor tab for dynamic updates."""
+        if hasattr(self.editor_tab, 'typing_area'):
+            self.font_changed.connect(self.editor_tab.typing_area.update_font)
+            self.colors_changed.connect(self.editor_tab.typing_area.update_colors)
+            self.cursor_changed.connect(self.editor_tab.typing_area.update_cursor)
+            self.space_char_changed.connect(self.editor_tab.typing_area.update_space_char)
+            self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
+            self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed)
 
 
 def run_app():
