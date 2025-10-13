@@ -59,6 +59,7 @@ class LanguageCard(QFrame):
         files: List[str],
         average_wpm: Optional[float] = None,
         sample_size: int = 0,
+        completed_count: int = 0,
         parent=None,
     ):
         super().__init__(parent)
@@ -95,15 +96,14 @@ class LanguageCard(QFrame):
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(name_label)
-        
+
         # File count (completed/total)
-        # TODO: Track completed files in database
-        completed = 0  # Placeholder
+        completed = max(0, completed_count)
         total = len(files)
         count_label = QLabel(f"{completed}/{total} files")
         count_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(count_label)
-        
+
         # Avg WPM (placeholder)
         self.wpm_label = QLabel()
         self.wpm_label.setAlignment(Qt.AlignCenter)
@@ -196,6 +196,9 @@ class LanguagesTab(QWidget):
 
         row, col = 0, 0
         max_cols = 4
+        all_files = [path for paths in language_files.values() for path in paths]
+        stats_map = stats_db.get_file_stats_for_files(all_files)
+
         for lang, files in sorted(language_files.items()):
             recent = stats_db.get_recent_wpm_average(files, limit=10)
             avg_wpm = None
@@ -203,7 +206,10 @@ class LanguagesTab(QWidget):
             if recent:
                 avg_wpm = recent.get("average")
                 sample_size = recent.get("count", 0)
-            card = LanguageCard(lang, files, avg_wpm, sample_size)
+            completed_count = sum(
+                1 for path in files if stats_map.get(path, {}).get("completed")
+            )
+            card = LanguageCard(lang, files, avg_wpm, sample_size, completed_count)
             card.clicked.connect(self.on_language_clicked)
             self.card_layout.addWidget(card, row, col)
 
