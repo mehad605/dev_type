@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
 )
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt, Signal, QObject, QSize
+from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
 import sys
 from pathlib import Path
 from typing import Optional
@@ -192,7 +192,6 @@ class FolderCardWidget(QFrame):
 class FoldersTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        settings.init_db()
         self.s = None
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(12)
@@ -500,6 +499,7 @@ class MainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
+        settings.init_db()
         self.setWindowTitle("Dev Typing App")
         self.resize(900, 600)
         self.tabs = QTabWidget()
@@ -519,7 +519,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.editor_tab, "Typing")
 
         # Settings tab
-        settings.init_db()
         self.settings_tab = self._create_settings_tab()
         self.tabs.addTab(self.settings_tab, "Settings")
 
@@ -536,11 +535,18 @@ class MainWindow(QMainWindow):
         # Emit initial settings to apply them to the typing area
         self._emit_initial_settings()
 
+        # Trigger a lazy language scan shortly after launch without blocking the UI.
+        QTimer.singleShot(250, self.languages_tab.ensure_loaded)
+
     def _on_tab_changed(self, index: int):
         """Persist typing progress whenever we leave the typing tab."""
         typing_index = self.tabs.indexOf(self.editor_tab)
         if typing_index != -1 and self._last_tab_index == typing_index and index != typing_index:
             self.editor_tab.save_active_progress()
+
+        languages_index = self.tabs.indexOf(self.languages_tab)
+        if index == languages_index and languages_index != -1:
+            self.languages_tab.ensure_loaded()
         self._last_tab_index = index
 
     def closeEvent(self, event):
@@ -851,7 +857,9 @@ class MainWindow(QMainWindow):
     
     def refresh_languages_tab(self):
         """Refresh the languages tab after folders change."""
-        self.languages_tab.refresh_languages()
+        self.languages_tab.mark_dirty()
+        if self.tabs.currentWidget() is self.languages_tab:
+            self.languages_tab.ensure_loaded(force=True)
 
     def refresh_history_tab(self):
         """Refresh the session history tab."""

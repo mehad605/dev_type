@@ -227,8 +227,14 @@ class TypingAreaWidget(QTextEdit):
             expected_char = info["expected"]
             expected_len = info.get("length", max(len(expected_char), 1))
         else:
-            if self.engine and position < len(self.engine.state.content):
-                expected_char = self._display_char_for(self.engine.state.content[position])
+            if self.engine:
+                engine_pos = self._display_position_to_engine(position)
+                if engine_pos is not None and engine_pos < len(self.engine.state.content):
+                    expected_char = self._display_char_for(self.engine.state.content[engine_pos])
+                elif position < len(self.display_content):
+                    expected_char = self.display_content[position]
+                else:
+                    expected_char = ""
             elif position < len(self.display_content):
                 expected_char = self.display_content[position]
             else:
@@ -237,6 +243,56 @@ class TypingAreaWidget(QTextEdit):
 
         if expected_char:
             self._replace_display_char(position, expected_char, expected_len)
+
+    def _display_position_to_engine(self, display_pos: int) -> Optional[int]:
+        """Map a display index back to the underlying engine index."""
+        if display_pos <= 0:
+            return 0
+
+        content = self.engine.state.content if self.engine else self.original_content
+        if not content:
+            return 0
+
+        space_len = len(self.space_char) if self.space_char else 1
+        enter_len = len(self.enter_char) if self.enter_char else 1
+        current_display = 0
+
+        for idx, ch in enumerate(content):
+            if ch == '\n':
+                step = enter_len + 1
+            elif ch == '\t':
+                step = space_len * 4
+            elif ch == ' ':
+                step = space_len
+            else:
+                step = 1
+
+            if current_display + step > display_pos:
+                return idx
+
+            current_display += step
+
+        return len(content)
+
+    def _clear_and_restore_engine_position(self, engine_index: int):
+        """Clear typed state and redraw the expected character for an engine index."""
+        if engine_index < 0 or not self.engine:
+            return
+
+        display_pos = self._engine_to_display_position(engine_index)
+
+        if self.highlighter:
+            self.highlighter.clear_typed_char(display_pos)
+
+        if engine_index < len(self.engine.state.content):
+            expected_char = self._display_char_for(self.engine.state.content[engine_index])
+        elif display_pos < len(self.display_content):
+            expected_char = self.display_content[display_pos]
+        else:
+            expected_char = ""
+
+        if expected_char:
+            self._replace_display_char(display_pos, expected_char, max(len(expected_char), 1))
 
     def _update_cursor_position(self):
         """Update visual cursor to current typing position."""
@@ -410,19 +466,16 @@ class TypingAreaWidget(QTextEdit):
                 new_engine_pos = self.engine.state.cursor_position
                 # Clear typed characters for removed range
                 for engine_index in range(new_engine_pos, old_engine_pos):
-                    display_pos = self._engine_to_display_position(engine_index)
-                    self.highlighter.clear_typed_char(display_pos)
-                    self._restore_display_for_position(display_pos)
+                    self._clear_and_restore_engine_position(engine_index)
                 self.current_typing_position = self._engine_to_display_position(new_engine_pos)
                 self._update_cursor_position()
             else:
                 # Regular backspace
-                if self.engine.state.cursor_position > 0:
+                if self.engine.state.cursor_position > 0 or self.engine.mistake_at is not None:
                     self.engine.process_backspace()
-                    display_pos = self._engine_to_display_position(self.engine.state.cursor_position)
-                    self.current_typing_position = display_pos
-                    self.highlighter.clear_typed_char(display_pos)
-                    self._restore_display_for_position(display_pos)
+                    target_index = self.engine.state.cursor_position
+                    self._clear_and_restore_engine_position(target_index)
+                    self.current_typing_position = self._engine_to_display_position(target_index)
                     self._update_cursor_position()
             self.stats_updated.emit()
             return

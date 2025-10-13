@@ -15,6 +15,7 @@ from typing import Optional, List
 
 # Module-level variable to store the current DB path
 _current_db_path: Optional[Path] = None
+_db_initialized: bool = False
 
 
 def get_data_dir() -> Path:
@@ -40,8 +41,14 @@ def _db_file(path: Optional[str] = None) -> Path:
 
 
 def init_db(path: Optional[str] = None):
-    db = _db_file(path)
-    conn = sqlite3.connect(db)
+    global _db_initialized
+    db_path = _db_file(path)
+
+    # Avoid re-running initialization work repeatedly for the default DB.
+    if path is None and _db_initialized:
+        return
+
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
         """
@@ -91,14 +98,23 @@ def init_db(path: Optional[str] = None):
     
     conn.commit()
     conn.close()
-    
+
     # Also initialize stats tables
     from app import stats_db
     stats_db.init_stats_tables()
 
+    if path is None:
+        _db_initialized = True
+
 
 def _connect(path: Optional[str] = None):
-    return sqlite3.connect(_db_file(path))
+    conn = sqlite3.connect(_db_file(path))
+    # Apply pragmatic defaults tuned for interactive desktop apps.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-64000")  # ~64MB cache, negative => KB units in memory
+    return conn
 
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:

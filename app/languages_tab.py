@@ -2,19 +2,50 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QHBoxLayout,
     QScrollArea,
     QLabel,
-    QPushButton,
     QFrame,
     QGridLayout,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QIcon
-from typing import Dict, List, Optional
-from app.file_scanner import scan_folders
+from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool
+from typing import Callable, Dict, List, Optional, Tuple
 from app import settings, stats_db
-from app.icon_manager import get_icon_manager
+from app.language_cache import build_signature, load_cached_snapshot, save_snapshot
+
+
+def _get_icon_manager():
+    # Delay icon loader import until a card draws
+    from app.icon_manager import get_icon_manager
+
+    return get_icon_manager()
+
+
+def _get_folder_scanner():
+    # Fetch scanner lazily to avoid loading heavy modules on startup
+    from app.file_scanner import scan_folders
+
+    return scan_folders
+
+
+class _LanguageScanSignals(QObject):
+    completed = Signal(dict, tuple)
+
+
+class _LanguageScanTask(QRunnable):
+    """Background task that scans folders for language groupings."""
+
+    def __init__(self, folders_snapshot: Tuple[str, ...], scanner: Callable[[List[str]], Dict[str, List[str]]]):
+        super().__init__()
+        self.folders_snapshot = folders_snapshot
+        self.signals = _LanguageScanSignals()
+        self._scanner = scanner
+
+    def run(self):
+        try:
+            result = self._scanner(list(self.folders_snapshot))
+        except Exception:
+            result = {}
+        self.signals.completed.emit(result, self.folders_snapshot)
 
 
 class LanguageCard(QFrame):
@@ -26,7 +57,7 @@ class LanguageCard(QFrame):
         self,
         language: str,
         files: List[str],
-    average_wpm: Optional[float] = None,
+        average_wpm: Optional[float] = None,
         sample_size: int = 0,
         parent=None,
     ):
@@ -40,9 +71,9 @@ class LanguageCard(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         
         layout = QVBoxLayout(self)
-        
+
         # Language icon - try to get from icon manager, fallback to emoji
-        icon_manager = get_icon_manager()
+        icon_manager = _get_icon_manager()
         icon_pixmap = icon_manager.get_icon(language, size=48)
         
         icon_label = QLabel()
@@ -104,6 +135,22 @@ class LanguagesTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
+        self._thread_pool = QThreadPool.globalInstance()
+        self._loaded = False
+        self._loading = False
+        self._cached_language_files: Dict[str, List[str]] = {}
+        self._last_snapshot: Tuple[str, ...] = tuple()
+        self._pending_snapshot: Tuple[str, ...] = tuple()
+        self._last_signature: Optional[str] = None
+        self._pending_signature: Optional[str] = None
+        self._active_task: Optional[_LanguageScanTask] = None
+        self._status_label: Optional[QLabel] = None
+
+        cached = load_cached_snapshot()
+        if cached:
+            signature, language_files = cached
+            self._cached_language_files = language_files
+            self._last_signature = signature
         
         # Header
         header = QLabel("Languages detected in your folders")
@@ -123,44 +170,32 @@ class LanguagesTab(QWidget):
         scroll.setWidget(self.card_container)
         
         self.layout.addWidget(scroll)
-        
-        self.refresh_languages()
+        self._show_message("Languages load when needed. Switch to this tab to scan your folders.")
     
-    def refresh_languages(self):
-        """Scan folders and update language cards."""
-        # Clear existing cards
+    def _clear_cards(self):
         while self.card_layout.count():
             item = self.card_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        
-        # Get folders from settings
-        folders = settings.get_folders()
-        if not folders:
-            empty_label = QLabel("No folders added. Go to Folders tab to add some.")
-            empty_label.setAlignment(Qt.AlignCenter)
-            empty_label.setStyleSheet("color: gray; padding: 20px;")
-            self.card_layout.addWidget(empty_label, 0, 0)
-            return
-        
-        # Scan and group files
-        language_files = scan_folders(folders)
-        
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self._status_label = None
+
+    def _show_message(self, message: str):
+        self._clear_cards()
+        label = QLabel(message)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("color: gray; padding: 20px;")
+        self.card_layout.addWidget(label, 0, 0)
+        self._status_label = label
+
+    def _populate_cards(self, language_files: Dict[str, List[str]]):
+        self._clear_cards()
         if not language_files:
-            empty_label = QLabel("No code files found in added folders.")
-            empty_label.setAlignment(Qt.AlignCenter)
-            empty_label.setStyleSheet("color: gray; padding: 20px;")
-            self.card_layout.addWidget(empty_label, 0, 0)
+            self._show_message("No code files found in added folders.")
             return
-        
-        # Preload icons for all detected languages (non-blocking)
-        icon_manager = get_icon_manager()
-        icon_manager.preload_icons(list(language_files.keys()))
-        
-        # Create cards in grid layout
+
         row, col = 0, 0
         max_cols = 4
-        
         for lang, files in sorted(language_files.items()):
             recent = stats_db.get_recent_wpm_average(files, limit=10)
             avg_wpm = None
@@ -171,11 +206,90 @@ class LanguagesTab(QWidget):
             card = LanguageCard(lang, files, avg_wpm, sample_size)
             card.clicked.connect(self.on_language_clicked)
             self.card_layout.addWidget(card, row, col)
-            
+
             col += 1
             if col >= max_cols:
                 col = 0
                 row += 1
+
+    def ensure_loaded(self, force: bool = False):
+        """Ensure the tab has loaded language data, triggering a scan if needed."""
+        if self._loading:
+            return
+
+        folders = settings.get_folders()
+        snapshot = tuple(sorted(folders))
+
+        if not folders:
+            self._cached_language_files = {}
+            self._loaded = True
+            self._last_snapshot = snapshot
+            self._last_signature = None
+            self._show_message("No folders added. Go to Folders tab to add some.")
+            return
+
+        signature = build_signature(folders)
+
+        if not force and snapshot == self._last_snapshot and signature == self._last_signature:
+            if self._cached_language_files:
+                self._populate_cards(self._cached_language_files)
+                self._loaded = True
+            return
+
+        if (
+            not force
+            and self._cached_language_files
+            and signature == self._last_signature
+        ):
+            self._populate_cards(self._cached_language_files)
+            self._loaded = True
+            self._last_snapshot = snapshot
+            return
+
+        self._loading = True
+        self._pending_snapshot = snapshot
+        self._pending_signature = signature
+        self._show_message("Scanning folders…")
+
+        scanner = _get_folder_scanner()
+        task = _LanguageScanTask(snapshot, scanner)
+        task.signals.completed.connect(self._on_scan_finished)
+        self._active_task = task
+        self._thread_pool.start(task)
+
+    def _on_scan_finished(self, language_files: Dict[str, List[str]], snapshot: Tuple[str, ...]):
+        if snapshot != self._pending_snapshot:
+            return
+
+        self._loading = False
+        self._active_task = None
+        self._last_snapshot = snapshot
+        self._last_signature = self._pending_signature
+        self._pending_signature = None
+        self._cached_language_files = language_files
+        self._loaded = True
+        if self._last_signature is not None:
+            try:
+                save_snapshot(self._last_signature, language_files)
+            except OSError:
+                pass
+
+        if not language_files:
+            self._show_message("No code files found in added folders.")
+        else:
+            self._populate_cards(language_files)
+
+    def refresh_languages(self, force: bool = False):
+        """Public method to refresh language data, optionally forcing a rescan."""
+        self.ensure_loaded(force=force)
+
+    def mark_dirty(self):
+        """Indicate folder data changed so a fresh scan runs next time."""
+        self._loaded = False
+        self._cached_language_files = {}
+        self._pending_snapshot = tuple()
+        self._pending_signature = None
+        self._last_signature = None
     
     def on_language_clicked(self, language: str, files: List[str]):
         """Handle language card click - navigate to typing tab."""
