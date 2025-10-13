@@ -111,7 +111,7 @@ class EditorTab(QWidget):
     
     def update_display(self):
         """Periodic update of stats display."""
-        if self.typing_area.engine and not self.typing_area.engine.state.is_paused:
+        if self.typing_area.engine and not self.typing_area.engine.state.is_paused and not self.typing_area.engine.state.is_finished:
             self.typing_area.engine.update_elapsed_time()
             self.on_stats_updated()
     

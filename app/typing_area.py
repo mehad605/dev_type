@@ -441,7 +441,9 @@ class TypingAreaWidget(QTextEdit):
             self.stats_updated.emit()
             
             # Check if completed
-            if self.engine.state.is_complete():
+            if self.engine.state.is_finished:
+                # Emit one final stats update with the completion stats
+                self.stats_updated.emit()
                 self.session_completed.emit()
     
     def _check_auto_pause(self):
@@ -470,6 +472,7 @@ class TypingAreaWidget(QTextEdit):
                 "incorrect": 0,
                 "total": 0,
                 "is_paused": True,
+                "is_finished": False,
             }
         
         return {
@@ -480,6 +483,7 @@ class TypingAreaWidget(QTextEdit):
             "incorrect": self.engine.state.incorrect_keystrokes,
             "total": self.engine.state.total_keystrokes(),
             "is_paused": self.engine.state.is_paused,
+            "is_finished": self.engine.state.is_finished,
         }
     
     def update_font(self, family: str, size: int, ligatures: bool):

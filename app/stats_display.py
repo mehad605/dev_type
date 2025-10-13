@@ -241,6 +241,12 @@ class StatsDisplayWidget(QWidget):
         self.active_label.hide()
         status_layout.addWidget(self.active_label)
         
+        self.finished_label = QLabel("✓\nFINISHED")
+        self.finished_label.setAlignment(Qt.AlignCenter)
+        self.finished_label.setFont(pause_font)
+        self.finished_label.hide()
+        status_layout.addWidget(self.finished_label)
+        
         layout.addWidget(status_container, 1)
         
         self.status_container = status_container
@@ -269,9 +275,17 @@ class StatsDisplayWidget(QWidget):
         self.keystroke_box.update_stats(correct, incorrect, total)
         
         # Status indicator
+        is_finished = stats.get("is_finished", False)
         is_paused = stats.get("is_paused", True)
-        self.paused_label.setVisible(is_paused)
-        self.active_label.setVisible(not is_paused)
+        
+        if is_finished:
+            self.finished_label.setVisible(True)
+            self.paused_label.setVisible(False)
+            self.active_label.setVisible(False)
+        else:
+            self.finished_label.setVisible(False)
+            self.paused_label.setVisible(is_paused)
+            self.active_label.setVisible(not is_paused)
     
     def apply_theme(self):
         """Apply current theme to all components."""
@@ -306,6 +320,10 @@ class StatsDisplayWidget(QWidget):
         self.status_label.setStyleSheet(f"color: {text_color};")
         self.paused_label.setStyleSheet(f"color: {paused_color};")
         self.active_label.setStyleSheet(f"color: {active_color};")
+        
+        # Finished color - use green/success color
+        finished_color = "#a3be8c" if theme == "dark" else "#a3be8c"
+        self.finished_label.setStyleSheet(f"color: {finished_color};")
         
         # Update all boxes
         self.wpm_box.apply_theme()

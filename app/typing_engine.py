@@ -15,6 +15,7 @@ class TypingState:
     elapsed_time: float = 0
     is_paused: bool = True
     last_keystroke_time: float = 0
+    is_finished: bool = False  # Track if session is completed
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -83,6 +84,10 @@ class TypingEngine:
         Returns:
             (is_correct, expected_char) tuple
         """
+        # Don't process if already finished
+        if self.state.is_finished:
+            return False, ""
+            
         # Start session if paused
         if self.state.is_paused:
             self.start()
@@ -105,6 +110,12 @@ class TypingEngine:
         if is_correct:
             self.state.correct_keystrokes += 1
             self.state.cursor_position += 1
+            
+            # Check if we just completed the file
+            if self.state.cursor_position >= len(self.state.content):
+                self.update_elapsed_time()
+                self.state.is_finished = True
+                self.state.is_paused = True  # Pause to stop timer
         else:
             self.state.incorrect_keystrokes += 1
             self.mistake_at = self.state.cursor_position
@@ -159,6 +170,7 @@ class TypingEngine:
         self.state.start_time = 0
         self.state.is_paused = True
         self.state.last_keystroke_time = 0
+        self.state.is_finished = False
         self.mistake_at = None
     
     def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float):
