@@ -7,6 +7,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QListWidget,
     QListWidgetItem,
+    QFrame,
+    QStackedLayout,
+    QSizePolicy,
     QFileDialog,
     QLabel,
     QToolBar,
@@ -19,13 +22,171 @@ from PySide6.QtWidgets import (
     QFormLayout,
 )
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QObject, QSize
 import sys
 from pathlib import Path
+from typing import Optional
 import app.settings as settings
 from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
+
+
+class FolderCardWidget(QFrame):
+    """Stylized folder row used within the folders list."""
+
+    BADGE_STYLE = (
+        "background-color: #bf616a; color: white; padding: 2px 10px;"
+        "border-radius: 10px; font-size: 10px; text-transform: uppercase;"
+    )
+
+    def __init__(self, folder_path: str, parent=None):
+        super().__init__(parent)
+        self.setObjectName("folderCard")
+        self.folder_path = folder_path
+        self._list_widget: Optional[QListWidget] = None
+        self._list_item: Optional[QListWidgetItem] = None
+        self._selected = False
+        self._remove_mode = False
+        self._compact = False
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        self.stack = QStackedLayout()
+        self.stack.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.stack)
+
+        # Detail layout
+        self.detail_widget = QWidget()
+        detail_layout = QHBoxLayout(self.detail_widget)
+        detail_layout.setContentsMargins(16, 12, 16, 12)
+        detail_layout.setSpacing(12)
+
+        self.detail_icon = QLabel("📁")
+        self.detail_icon.setObjectName("folderIcon")
+        self.detail_icon.setStyleSheet("font-size: 22px;")
+        detail_layout.addWidget(self.detail_icon)
+
+        detail_text = QVBoxLayout()
+        detail_text.setContentsMargins(0, 0, 0, 0)
+        detail_text.setSpacing(2)
+        self.detail_name = QLabel(Path(folder_path).name or folder_path)
+        self.detail_name.setObjectName("folderName")
+        self.detail_info = QLabel(folder_path)
+        self.detail_info.setObjectName("folderPath")
+        self.detail_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        detail_text.addWidget(self.detail_name)
+        detail_text.addWidget(self.detail_info)
+        detail_layout.addLayout(detail_text, stretch=1)
+
+        self.detail_remove = QLabel("Remove")
+        self.detail_remove.setObjectName("removeBadgeDetail")
+        self.detail_remove.setStyleSheet(self.BADGE_STYLE)
+        self.detail_remove.setVisible(False)
+        detail_layout.addWidget(self.detail_remove, alignment=Qt.AlignRight | Qt.AlignTop)
+
+        self.stack.addWidget(self.detail_widget)
+
+        # Compact layout
+        self.compact_widget = QWidget()
+        compact_layout = QVBoxLayout(self.compact_widget)
+        compact_layout.setContentsMargins(16, 16, 16, 16)
+        compact_layout.setSpacing(6)
+        compact_layout.setAlignment(Qt.AlignCenter)
+
+        self.compact_icon = QLabel("📁")
+        self.compact_icon.setObjectName("compactFolderIcon")
+        self.compact_icon.setStyleSheet("font-size: 28px;")
+        compact_layout.addWidget(self.compact_icon, alignment=Qt.AlignHCenter)
+
+        self.compact_name = QLabel(Path(folder_path).name or folder_path)
+        self.compact_name.setObjectName("compactFolderName")
+        self.compact_name.setAlignment(Qt.AlignCenter)
+        compact_layout.addWidget(self.compact_name)
+
+        self.compact_remove = QLabel("Remove")
+        self.compact_remove.setObjectName("removeBadgeCompact")
+        self.compact_remove.setStyleSheet(self.BADGE_STYLE)
+        self.compact_remove.setVisible(False)
+        compact_layout.addWidget(self.compact_remove, alignment=Qt.AlignHCenter)
+
+        self.stack.addWidget(self.compact_widget)
+
+        self._apply_style()
+
+    def sizeHint(self):  # noqa: D401 - simple override for predictable sizing
+        """Return preferred size depending on active layout."""
+        if self._compact:
+            return QSize(200, 150)
+        return QSize(360, 76)
+
+    def attach(self, list_widget: QListWidget, list_item: QListWidgetItem):
+        self._list_widget = list_widget
+        self._list_item = list_item
+
+    def set_selected(self, selected: bool):
+        self._selected = selected
+        self._apply_style()
+
+    def set_remove_mode(self, enabled: bool):
+        self._remove_mode = enabled
+        self.detail_remove.setVisible(enabled)
+        self.compact_remove.setVisible(enabled)
+        self._apply_style()
+
+    def set_compact(self, compact: bool):
+        if self._compact == compact:
+            return
+        self._compact = compact
+        if compact:
+            self.stack.setCurrentWidget(self.compact_widget)
+            self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            hint = self.sizeHint()
+            self.setMinimumSize(hint)
+            self.setMaximumSize(hint)
+        else:
+            self.stack.setCurrentWidget(self.detail_widget)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            detail_height = self.sizeHint().height()
+            self.setMinimumHeight(detail_height)
+            self.setMaximumHeight(detail_height)
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16777215)
+            self.setMaximumSize(QSize(16777215, detail_height))
+        self.updateGeometry()
+        self._apply_style()
+
+    def _apply_style(self):
+        base_color = "rgba(236, 239, 244, 0.05)"
+        border_color = "rgba(236, 239, 244, 0.10)"
+        if self._selected:
+            base_color = "rgba(129, 161, 193, 0.20)"
+            border_color = "#81a1c1"
+        if self._remove_mode:
+            border_color = "#bf616a"
+
+        self.setStyleSheet(
+            f"QFrame#folderCard {{"
+            f"background-color: {base_color};"
+            f"border: 1px solid {border_color};"
+            "border-radius: 12px;"
+            "}"
+            "QFrame#folderCard:hover { border-color: #88c0d0; }"
+            "QLabel#folderName, QLabel#compactFolderName { color: #eceff4; font-weight: 600; }"
+            "QLabel#folderPath { color: #a5abb6; font-size: 11px; }"
+        )
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if event.button() == Qt.LeftButton and self._list_widget and self._list_item:
+            self._list_widget.setCurrentItem(self._list_item)
+            self._list_widget.itemClicked.emit(self._list_item)
+
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        if event.button() == Qt.LeftButton and self._list_widget and self._list_item:
+            self._list_widget.setCurrentItem(self._list_item)
+            self._list_widget.itemDoubleClicked.emit(self._list_item)
 
 
 class FoldersTab(QWidget):
@@ -124,26 +285,21 @@ class FoldersTab(QWidget):
 
         # Styled list widget
         self.list = QListWidget()
-        self.list.setAlternatingRowColors(True)
-        self.list.setSpacing(4)
+        self.list.setFrameShape(QFrame.NoFrame)
+        self.list.setSpacing(12)
+        self.list.setSelectionMode(QListWidget.SingleSelection)
         self.list.setStyleSheet("""
             QListWidget {
-                border: 1px solid #4c566a;
-                border-radius: 8px;
-                background-color: #2e3440;
-                padding: 8px;
+                background: transparent;
+                border: none;
+                padding: 4px 0;
             }
             QListWidget::item {
-                padding: 12px;
-                border-radius: 4px;
-                margin: 2px;
-            }
-            QListWidget::item:hover {
-                background-color: #3b4252;
+                margin: 0;
+                padding: 0;
             }
             QListWidget::item:selected {
-                background-color: #5e81ac;
-                color: white;
+                background: transparent;
             }
         """)
         self.layout.addWidget(self.list)
@@ -152,6 +308,7 @@ class FoldersTab(QWidget):
         self.edit_btn.toggled.connect(self.on_edit_toggled)
         self.view_toggle.toggled.connect(self.on_view_toggled)
         self.list.itemDoubleClicked.connect(self.on_folder_double_clicked)
+        self.list.itemSelectionChanged.connect(self._update_folder_selection_state)
 
         self.load_folders()
 
@@ -167,10 +324,21 @@ class FoldersTab(QWidget):
 
     def load_folders(self):
         self.list.clear()
-        for p in settings.get_folders():
-            it = QListWidgetItem(QIcon.fromTheme("folder"), str(p))
-            it.setData(Qt.UserRole, p)
-            self.list.addItem(it)
+        folders = settings.get_folders()
+        for path_str in folders:
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, path_str)
+            item.setText(path_str)
+            card = FolderCardWidget(path_str)
+            card.attach(self.list, item)
+            card.set_compact(self.view_toggle.isChecked())
+            item.setSizeHint(card.sizeHint())
+            self.list.addItem(item)
+            self.list.setItemWidget(item, card)
+
+        self._update_folder_selection_state()
+        self._set_remove_mode_for_cards(self.edit_btn.isChecked())
+        self._apply_view_mode_styles()
 
     def on_add(self):
         dlg = QFileDialog(self, "Select folder to add")
@@ -193,12 +361,7 @@ class FoldersTab(QWidget):
             self.edit_btn.setText("✅ Done")
             # Connect click handler for removal (only if not already connected)
             self.list.itemClicked.connect(self._maybe_remove_item)
-            
-            # Update visual appearance
-            for i in range(self.list.count()):
-                it = self.list.item(i)
-                p = it.data(Qt.UserRole)
-                it.setText(f"🗑️ {p}")
+            self._set_remove_mode_for_cards(True)
         else:
             self.edit_btn.setText("✏️ Remove Mode")
             # Disconnect click handler
@@ -207,9 +370,8 @@ class FoldersTab(QWidget):
             except (RuntimeError, TypeError):
                 # Already disconnected or never connected
                 pass
-            
-            # Restore normal appearance
-            self.load_folders()
+            self._set_remove_mode_for_cards(False)
+            self._update_folder_selection_state()
 
     def _maybe_remove_item(self, item: QListWidgetItem):
         """Handle folder removal with optional confirmation."""
@@ -250,13 +412,8 @@ class FoldersTab(QWidget):
             
             # Immediately update the UI
             self.load_folders()
-            
-            # Re-enter edit mode if we were in it
             if self.edit_btn.isChecked():
-                for i in range(self.list.count()):
-                    it = self.list.item(i)
-                    folder_path = it.data(Qt.UserRole)
-                    it.setText(f"🗑️ {folder_path}")
+                self._set_remove_mode_for_cards(True)
             
             # Notify parent to refresh languages tab
             parent_window = self.window()
@@ -271,6 +428,64 @@ class FoldersTab(QWidget):
         else:
             self.view_toggle.setText("📋 Detail View")
             self.list.setViewMode(QListWidget.ViewMode.ListMode)
+        self._apply_view_mode_to_cards(checked)
+        self._apply_view_mode_styles()
+
+    def _update_folder_selection_state(self):
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_selected(item.isSelected())
+
+    def _set_remove_mode_for_cards(self, enabled: bool):
+        for i in range(self.list.count()):
+            widget = self.list.itemWidget(self.list.item(i))
+            if isinstance(widget, FolderCardWidget):
+                widget.set_remove_mode(enabled)
+
+    def _apply_view_mode_to_cards(self, compact: bool):
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_compact(compact)
+                item.setSizeHint(widget.sizeHint())
+
+    def _apply_view_mode_styles(self):
+        compact = self.view_toggle.isChecked()
+        if compact:
+            self.list.setSpacing(16)
+            self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.list.setResizeMode(QListWidget.Adjust)
+            self.list.setWrapping(True)
+            self.list.setFlow(QListWidget.LeftToRight)
+            self.list.setUniformItemSizes(True)
+            card_size = self._first_card_size()
+            if card_size:
+                self.list.setGridSize(QSize(card_size.width() + 20, card_size.height() + 20))
+        else:
+            self.list.setSpacing(8)
+            self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.list.setWrapping(False)
+            self.list.setFlow(QListWidget.TopToBottom)
+            self.list.setUniformItemSizes(False)
+            self.list.setGridSize(QSize())
+        # minimize the native list highlight to let cards show their own focus
+        self.list.setStyleSheet(
+            "QListWidget::item { margin: 0; padding: 0; }"
+            "QListWidget::item:selected { background-color: transparent; }"
+        )
+
+    def _first_card_size(self) -> Optional[QSize]:
+        if not self.list.count():
+            return None
+        widget = self.list.itemWidget(self.list.item(0))
+        if isinstance(widget, FolderCardWidget):
+            return widget.sizeHint()
+        else:
+            return None
 
 
 class MainWindow(QMainWindow):
@@ -596,6 +811,19 @@ class MainWindow(QMainWindow):
         """Switch to typing tab and load the specified folder."""
         self.editor_tab.load_folder(folder_path)
         self.tabs.setCurrentWidget(self.editor_tab)
+
+    def _update_folder_selection_state(self):
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_selected(item.isSelected())
+
+    def _set_remove_mode_for_cards(self, enabled: bool):
+        for i in range(self.list.count()):
+            widget = self.list.itemWidget(self.list.item(i))
+            if isinstance(widget, FolderCardWidget):
+                widget.set_remove_mode(enabled)
     
     def open_typing_tab_for_language(self, language: str, files: list):
         """Switch to typing tab and load files for a specific language."""

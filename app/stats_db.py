@@ -240,6 +240,7 @@ def list_history_languages() -> List[str]:
 
 def fetch_session_history(
     language: Optional[str] = None,
+    file_contains: Optional[str] = None,
     min_wpm: Optional[float] = None,
     max_wpm: Optional[float] = None,
     min_duration: Optional[float] = None,
@@ -258,6 +259,14 @@ def fetch_session_history(
     if language:
         query.append("AND language = ?")
         params.append(language)
+    if file_contains:
+        # Create fuzzy pattern such that "pow" will match "power.py" (p%o%w)
+        raw = file_contains.lower().strip()
+        if raw:
+            escaped = raw.replace("%", r"\%").replace("_", r"\_")
+            pattern = "%" + "%".join(escaped) + "%"
+            query.append("AND LOWER(file_path) LIKE ? ESCAPE '\\'")
+            params.append(pattern)
     if min_wpm is not None:
         query.append("AND wpm >= ?")
         params.append(min_wpm)

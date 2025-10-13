@@ -47,6 +47,13 @@ class HistoryTab(QWidget):
         self.language_combo.setMinimumWidth(150)
         filter_row.addWidget(self.language_combo)
 
+        name_label = QLabel("File")
+        filter_row.addWidget(name_label)
+
+        self.name_filter_input = QLineEdit()
+        self.name_filter_input.setPlaceholderText("Contains")
+        filter_row.addWidget(self.name_filter_input)
+
         wpm_label = QLabel("WPM")
         filter_row.addWidget(wpm_label)
 
@@ -109,9 +116,36 @@ class HistoryTab(QWidget):
             "Incorrect",
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.NoSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSortingEnabled(True)
+        self.table.setShowGrid(True)
+        self.table.setStyleSheet(
+            "QTableWidget {"
+            "gridline-color: rgba(236, 239, 244, 0.25);"
+            "background-color: transparent;"
+            "border: 1px solid rgba(236, 239, 244, 0.20);"
+            "border-radius: 8px;"
+            "}"
+            "QHeaderView::section {"
+            "background-color: rgba(129, 161, 193, 0.18);"
+            "color: #eceff4;"
+            "padding: 6px;"
+            "border: none;"
+            "}"
+            "QTableWidget::item {"
+            "color: #e5e9f0;"
+            "border-right: 1px solid rgba(236, 239, 244, 0.1);"
+            "border-bottom: 1px solid rgba(236, 239, 244, 0.1);"
+            "}"
+            "QTableWidget::item:selected {"
+            "background-color: rgba(136, 192, 208, 0.28);"
+            "color: #eceff4;"
+            "}"
+        )
         layout.addWidget(self.table)
 
         self.refresh_filters()
@@ -146,6 +180,7 @@ class HistoryTab(QWidget):
         """Apply current filter values and reload table."""
         filters = {
             "language": self.language_combo.currentData(),
+            "file_contains": (self.name_filter_input.text().strip() or None),
             "min_wpm": self._parse_float(self.min_wpm_input.text()),
             "max_wpm": self._parse_float(self.max_wpm_input.text()),
             "min_duration": self._parse_float(self.min_duration_input.text()),
@@ -165,6 +200,7 @@ class HistoryTab(QWidget):
     def clear_filters(self):
         """Clear all filter inputs."""
         self.language_combo.setCurrentIndex(0)
+        self.name_filter_input.clear()
         for widget in (self.min_wpm_input, self.max_wpm_input, self.min_duration_input, self.max_duration_input):
             widget.clear()
         self.apply_filters()
@@ -231,46 +267,73 @@ class HistoryTab(QWidget):
         filters = getattr(self, "current_filters", {})
         history = stats_db.fetch_session_history(
             language=filters.get("language"),
+            file_contains=filters.get("file_contains"),
             min_wpm=filters.get("min_wpm"),
             max_wpm=filters.get("max_wpm"),
             min_duration=filters.get("min_duration"),
             max_duration=filters.get("max_duration"),
         )
 
+        header = self.table.horizontalHeader()
+        sort_col = header.sortIndicatorSection()
+        sort_order = header.sortIndicatorOrder()
+
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         for record in history:
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            timestamp_item = QTableWidgetItem(self._format_timestamp(record.get("recorded_at")))
+            timestamp_value = record.get("recorded_at")
+            timestamp_item = QTableWidgetItem(self._format_timestamp(timestamp_value))
             timestamp_item.setData(Qt.UserRole, record.get("id"))
+            if timestamp_value:
+                timestamp_item.setData(Qt.EditRole, timestamp_value)
+            timestamp_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 0, timestamp_item)
 
             language_item = QTableWidgetItem(record.get("language") or "Unknown")
+            language_item.setData(Qt.EditRole, (record.get("language") or "Unknown"))
+            language_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 1, language_item)
 
             file_path = record.get("file_path") or ""
             file_name = Path(file_path).name if file_path else ""
             file_item = QTableWidgetItem(file_name)
+            file_item.setData(Qt.EditRole, file_name.lower())
+            file_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 2, file_item)
 
             wpm_item = QTableWidgetItem(f"{record.get('wpm', 0.0):.1f}")
+            wpm_item.setData(Qt.EditRole, record.get("wpm", 0.0))
+            wpm_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 3, wpm_item)
 
             accuracy = record.get("accuracy", 0.0)
             accuracy_item = QTableWidgetItem(f"{accuracy * 100:.1f}%")
+            accuracy_item.setData(Qt.EditRole, accuracy)
+            accuracy_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 4, accuracy_item)
 
             duration_item = QTableWidgetItem(f"{record.get('duration', 0.0):.1f}")
+            duration_item.setData(Qt.EditRole, record.get("duration", 0.0))
+            duration_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 5, duration_item)
 
             correct_item = QTableWidgetItem(str(record.get("correct", 0)))
+            correct_item.setData(Qt.EditRole, record.get("correct", 0))
+            correct_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 6, correct_item)
 
             incorrect_item = QTableWidgetItem(str(record.get("incorrect", 0)))
+            incorrect_item.setData(Qt.EditRole, record.get("incorrect", 0))
+            incorrect_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 7, incorrect_item)
 
         self.count_label.setText(f"Showing {len(history)} session(s)")
+        self.table.setSortingEnabled(True)
+        if self.table.rowCount() and 0 <= sort_col < self.table.columnCount():
+            self.table.sortItems(sort_col, sort_order)
 
     def _format_timestamp(self, value: Optional[str]) -> str:
         """Format timestamp string for display."""
