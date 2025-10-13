@@ -190,6 +190,11 @@ class EditorTab(QWidget):
                 is_paused=True
             )
     
+    def apply_theme(self):
+        """Apply current theme to stats display."""
+        if hasattr(self, 'stats_display'):
+            self.stats_display.apply_theme()
+    
     def closeEvent(self, event):
         """Handle widget close - save progress."""
         self._save_current_progress()

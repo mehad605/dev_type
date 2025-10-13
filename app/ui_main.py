@@ -685,6 +685,9 @@ class MainWindow(QMainWindow):
         # Update typing area colors if editor tab is initialized
         if hasattr(self, 'editor_tab') and hasattr(self.editor_tab, 'typing_area'):
             self.update_typing_colors(scheme)
+            # Update stats display theme
+            if hasattr(self.editor_tab, 'stats_display'):
+                self.editor_tab.stats_display.apply_theme()
     
     def update_typing_colors(self, scheme):
         """Update typing area highlighter colors from scheme."""

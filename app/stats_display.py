@@ -1,155 +1,250 @@
 """Stats display widget showing live typing statistics."""
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGridLayout
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
+from app import settings
 
 
 class StatsBox(QFrame):
-    """Individual stat display box."""
+    """Individual stat display box with theme support."""
     
-    def __init__(self, title: str, color: str = "#ffffff", parent=None):
+    def __init__(self, title: str, value_key: str = None, parent=None):
         super().__init__(parent)
-        self.setFrameStyle(QFrame.Box | QFrame.Raised)
-        self.setLineWidth(1)
+        self.value_key = value_key
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(4)
         
         # Title
         self.title_label = QLabel(title)
         self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("font-size: 11px; color: #aaaaaa;")
+        font = QFont()
+        font.setPointSize(9)
+        font.setBold(False)
+        self.title_label.setFont(font)
         layout.addWidget(self.title_label)
         
         # Value
         self.value_label = QLabel("--")
         self.value_label.setAlignment(Qt.AlignCenter)
-        self.value_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+        value_font = QFont()
+        value_font.setPointSize(20)
+        value_font.setBold(True)
+        self.value_label.setFont(value_font)
         layout.addWidget(self.value_label)
+        
+        self.apply_theme()
     
     def set_value(self, value: str):
         """Update the displayed value."""
         self.value_label.setText(value)
+    
+    def apply_theme(self):
+        """Apply current theme colors."""
+        theme = settings.get_setting("theme", "dark")
+        
+        if theme == "dark":
+            bg_color = "#2e3440"
+            border_color = "#4c566a"
+            title_color = "#d8dee9"
+            
+            # Value colors based on stat type
+            if self.value_key == "wpm":
+                value_color = "#88c0d0"  # Nord frost blue
+            elif self.value_key == "accuracy":
+                value_color = "#a3be8c"  # Nord green
+            elif self.value_key == "time":
+                value_color = "#ebcb8b"  # Nord yellow
+            else:
+                value_color = "#d8dee9"
+        else:
+            bg_color = "#eceff4"
+            border_color = "#d8dee9"
+            title_color = "#2e3440"
+            
+            if self.value_key == "wpm":
+                value_color = "#5e81ac"  # Nord blue
+            elif self.value_key == "accuracy":
+                value_color = "#a3be8c"  # Nord green
+            elif self.value_key == "time":
+                value_color = "#d08770"  # Nord orange
+            else:
+                value_color = "#2e3440"
+        
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+            }}
+        """)
+        self.title_label.setStyleSheet(f"color: {title_color};")
+        self.value_label.setStyleSheet(f"color: {value_color};")
 
 
 class KeystrokeBox(QFrame):
-    """Detailed keystroke statistics box."""
+    """Detailed keystroke statistics box with theme support."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFrameStyle(QFrame.Box | QFrame.Raised)
-        self.setLineWidth(1)
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(6)
         
         # Title
-        title = QLabel("Keystrokes")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size: 11px; color: #aaaaaa;")
-        layout.addWidget(title)
+        self.title = QLabel("Keystrokes")
+        self.title.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(9)
+        font.setBold(False)
+        self.title.setFont(font)
+        layout.addWidget(self.title)
         
-        # Counts section
-        counts_layout = QHBoxLayout()
+        # Grid for stats
+        grid = QGridLayout()
+        grid.setSpacing(8)
         
+        # Correct keystrokes
+        self.correct_icon = QLabel("✓")
+        self.correct_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.correct_count = QLabel("0")
-        self.correct_count.setStyleSheet("color: #00ff00; font-weight: bold;")
-        self.correct_count.setAlignment(Qt.AlignCenter)
+        self.correct_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        count_font = QFont()
+        count_font.setPointSize(14)
+        count_font.setBold(True)
+        self.correct_count.setFont(count_font)
         
+        # Incorrect keystrokes
+        self.incorrect_icon = QLabel("✗")
+        self.incorrect_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.incorrect_count = QLabel("0")
-        self.incorrect_count.setStyleSheet("color: #ff0000; font-weight: bold;")
-        self.incorrect_count.setAlignment(Qt.AlignCenter)
+        self.incorrect_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.incorrect_count.setFont(count_font)
         
+        # Total keystrokes
+        self.total_icon = QLabel("Σ")
+        self.total_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.total_count = QLabel("0")
-        self.total_count.setStyleSheet("color: #00bfff; font-weight: bold;")
-        self.total_count.setAlignment(Qt.AlignCenter)
+        self.total_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.total_count.setFont(count_font)
         
-        counts_layout.addWidget(QLabel("✓"))
-        counts_layout.addWidget(self.correct_count)
-        counts_layout.addStretch()
-        counts_layout.addWidget(QLabel("✗"))
-        counts_layout.addWidget(self.incorrect_count)
-        counts_layout.addStretch()
-        counts_layout.addWidget(QLabel("Σ"))
-        counts_layout.addWidget(self.total_count)
+        grid.addWidget(self.correct_icon, 0, 0)
+        grid.addWidget(self.correct_count, 0, 1)
+        grid.addWidget(self.incorrect_icon, 1, 0)
+        grid.addWidget(self.incorrect_count, 1, 1)
+        grid.addWidget(self.total_icon, 2, 0)
+        grid.addWidget(self.total_count, 2, 1)
         
-        layout.addLayout(counts_layout)
+        layout.addLayout(grid)
         
-        # Percentages section
-        percent_layout = QHBoxLayout()
-        
-        self.correct_percent = QLabel("100%")
-        self.correct_percent.setStyleSheet("color: #00ff00; font-size: 11px;")
-        self.correct_percent.setAlignment(Qt.AlignCenter)
-        
-        self.incorrect_percent = QLabel("0%")
-        self.incorrect_percent.setStyleSheet("color: #ff0000; font-size: 11px;")
-        self.incorrect_percent.setAlignment(Qt.AlignCenter)
-        
-        self.total_percent = QLabel("100%")
-        self.total_percent.setStyleSheet("color: #00bfff; font-size: 11px;")
-        self.total_percent.setAlignment(Qt.AlignCenter)
-        
-        percent_layout.addWidget(self.correct_percent)
-        percent_layout.addStretch()
-        percent_layout.addWidget(self.incorrect_percent)
-        percent_layout.addStretch()
-        percent_layout.addWidget(self.total_percent)
-        
-        layout.addLayout(percent_layout)
+        self.apply_theme()
     
     def update_stats(self, correct: int, incorrect: int, total: int):
         """Update keystroke statistics."""
         self.correct_count.setText(str(correct))
         self.incorrect_count.setText(str(incorrect))
         self.total_count.setText(str(total))
+    
+    def apply_theme(self):
+        """Apply current theme colors."""
+        theme = settings.get_setting("theme", "dark")
+        correct_color = settings.get_setting("color_correct", "#00ff00")
+        incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
         
-        if total > 0:
-            correct_pct = (correct / total) * 100
-            incorrect_pct = (incorrect / total) * 100
-            self.correct_percent.setText(f"{correct_pct:.1f}%")
-            self.incorrect_percent.setText(f"{incorrect_pct:.1f}%")
-            self.total_percent.setText("100%")
+        if theme == "dark":
+            bg_color = "#2e3440"
+            border_color = "#4c566a"
+            title_color = "#d8dee9"
+            total_color = "#88c0d0"
+            icon_color = "#d8dee9"
         else:
-            self.correct_percent.setText("--")
-            self.incorrect_percent.setText("--")
-            self.total_percent.setText("--")
+            bg_color = "#eceff4"
+            border_color = "#d8dee9"
+            title_color = "#2e3440"
+            total_color = "#5e81ac"
+            icon_color = "#4c566a"
+        
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+            }}
+        """)
+        
+        self.title.setStyleSheet(f"color: {title_color};")
+        self.correct_icon.setStyleSheet(f"color: {icon_color};")
+        self.incorrect_icon.setStyleSheet(f"color: {icon_color};")
+        self.total_icon.setStyleSheet(f"color: {icon_color};")
+        self.correct_count.setStyleSheet(f"color: {correct_color};")
+        self.incorrect_count.setStyleSheet(f"color: {incorrect_color};")
+        self.total_count.setStyleSheet(f"color: {total_color};")
 
 
 class StatsDisplayWidget(QWidget):
-    """Widget displaying live typing statistics."""
+    """Widget displaying live typing statistics with theme support."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         
         layout = QHBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(8, 8, 8, 8)
         
         # WPM box
-        self.wpm_box = StatsBox("WPM", color="#00ff00")
-        layout.addWidget(self.wpm_box)
-        
-        # Time box
-        self.time_box = StatsBox("Time", color="#c0c0c0")
-        layout.addWidget(self.time_box)
+        self.wpm_box = StatsBox("Words Per Minute", value_key="wpm")
+        layout.addWidget(self.wpm_box, 1)
         
         # Accuracy box
-        self.accuracy_box = StatsBox("Accuracy", color="#00ff00")
-        layout.addWidget(self.accuracy_box)
+        self.accuracy_box = StatsBox("Accuracy", value_key="accuracy")
+        layout.addWidget(self.accuracy_box, 1)
+        
+        # Time box
+        self.time_box = StatsBox("Time Elapsed", value_key="time")
+        layout.addWidget(self.time_box, 1)
         
         # Keystrokes box
         self.keystroke_box = KeystrokeBox()
-        layout.addWidget(self.keystroke_box)
+        layout.addWidget(self.keystroke_box, 1)
         
-        # Paused indicator
-        self.paused_label = QLabel("⏸ PAUSED")
+        # Status indicator (paused/active)
+        status_container = QFrame()
+        status_container.setFrameShape(QFrame.StyledPanel)
+        status_container.setFrameShadow(QFrame.Raised)
+        status_layout = QVBoxLayout(status_container)
+        status_layout.setContentsMargins(12, 8, 12, 8)
+        
+        self.status_label = QLabel("Status")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(9)
+        self.status_label.setFont(font)
+        status_layout.addWidget(self.status_label)
+        
+        self.paused_label = QLabel("⏸\nPAUSED")
         self.paused_label.setAlignment(Qt.AlignCenter)
-        self.paused_label.setStyleSheet(
-            "font-size: 16px; font-weight: bold; color: #ffaa00; "
-            "background-color: #333333; padding: 10px; border-radius: 5px;"
-        )
-        self.paused_label.hide()
-        layout.addWidget(self.paused_label)
+        pause_font = QFont()
+        pause_font.setPointSize(12)
+        pause_font.setBold(True)
+        self.paused_label.setFont(pause_font)
+        status_layout.addWidget(self.paused_label)
         
-        layout.addStretch()
+        self.active_label = QLabel("▶\nACTIVE")
+        self.active_label.setAlignment(Qt.AlignCenter)
+        self.active_label.setFont(pause_font)
+        self.active_label.hide()
+        status_layout.addWidget(self.active_label)
+        
+        layout.addWidget(status_container, 1)
+        
+        self.status_container = status_container
+        self.apply_theme()
     
     def update_stats(self, stats: dict):
         """Update all statistics displays."""
@@ -173,6 +268,47 @@ class StatsDisplayWidget(QWidget):
         total = stats.get("total", 0)
         self.keystroke_box.update_stats(correct, incorrect, total)
         
-        # Paused indicator
+        # Status indicator
         is_paused = stats.get("is_paused", True)
         self.paused_label.setVisible(is_paused)
+        self.active_label.setVisible(not is_paused)
+    
+    def apply_theme(self):
+        """Apply current theme to all components."""
+        theme = settings.get_setting("theme", "dark")
+        paused_color = settings.get_setting("color_paused_highlight", "#ffaa00")
+        
+        if theme == "dark":
+            bg_color = "#2e3440"
+            border_color = "#4c566a"
+            text_color = "#d8dee9"
+            active_color = "#a3be8c"
+        else:
+            bg_color = "#eceff4"
+            border_color = "#d8dee9"
+            text_color = "#2e3440"
+            active_color = "#a3be8c"
+        
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {bg_color};
+            }}
+        """)
+        
+        self.status_container.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+            }}
+        """)
+        
+        self.status_label.setStyleSheet(f"color: {text_color};")
+        self.paused_label.setStyleSheet(f"color: {paused_color};")
+        self.active_label.setStyleSheet(f"color: {active_color};")
+        
+        # Update all boxes
+        self.wpm_box.apply_theme()
+        self.accuracy_box.apply_theme()
+        self.time_box.apply_theme()
+        self.keystroke_box.apply_theme()
