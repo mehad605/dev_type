@@ -551,8 +551,12 @@ class MainWindow(QMainWindow):
         typing_behavior_group = QGroupBox("Typing Behavior")
         typing_behavior_layout = QVBoxLayout()
         
+        lenient_label = QLabel("Lenient Mode")
+        lenient_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(lenient_label)
+
         description = QLabel(
-            "Switch between strict and lenient typing modes. In strict mode you must fix mistakes before continuing."
+            "In lenient mode you can continue typing without fixing your mistypes."
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #888888; font-size: 10pt;")

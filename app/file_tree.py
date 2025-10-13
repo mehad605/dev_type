@@ -3,12 +3,15 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QHeaderView,
+    QStyle,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QBrush, QColor
+from PySide6.QtGui import QIcon, QBrush, QColor, QPixmap, QPainter, QFont
 from pathlib import Path
 from typing import List, Optional, Dict
 from app import settings, stats_db
+from app.icon_manager import get_icon_manager
+from app.file_scanner import LANGUAGE_MAP
 
 
 class FileTreeWidget(QTreeWidget):
@@ -34,6 +37,11 @@ class FileTreeWidget(QTreeWidget):
         
         # Get incomplete sessions for highlighting
         self.incomplete_files = set(stats_db.get_incomplete_sessions())
+
+        # Cache icons so we do not recreate them per row
+        self._icon_cache: Dict[str, QIcon] = {}
+        self.folder_icon = self.style().standardIcon(QStyle.SP_DirIcon)
+        self.generic_file_icon = self.style().standardIcon(QStyle.SP_FileIcon)
     
     def load_folder(self, folder_path: str):
         """Load a single folder and display its file tree."""
@@ -44,6 +52,7 @@ class FileTreeWidget(QTreeWidget):
         
         root_item = QTreeWidgetItem(self, [root_path.name, "", ""])
         root_item.setData(0, Qt.UserRole, str(root_path))
+        root_item.setIcon(0, self.folder_icon)
         self._populate_tree(root_item, root_path)
         root_item.setExpanded(False)
     
@@ -57,6 +66,7 @@ class FileTreeWidget(QTreeWidget):
             
             root_item = QTreeWidgetItem(self, [root_path.name, "", ""])
             root_item.setData(0, Qt.UserRole, str(root_path))
+            root_item.setIcon(0, self.folder_icon)
             self._populate_tree(root_item, root_path)
             root_item.setExpanded(False)
     
@@ -77,6 +87,7 @@ class FileTreeWidget(QTreeWidget):
             folder_path = Path(folder)
             folder_item = QTreeWidgetItem(self, [folder_path.name, "", ""])
             folder_item.setData(0, Qt.UserRole, folder)
+            folder_item.setIcon(0, self.folder_icon)
             
             for file_path in sorted(file_list):
                 file_path_obj = Path(file_path)
@@ -84,6 +95,7 @@ class FileTreeWidget(QTreeWidget):
                 stats = stats_db.get_file_stats(file_path)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
+                language = LANGUAGE_MAP.get(file_path_obj.suffix.lower())
                 
                 file_item = QTreeWidgetItem(folder_item, [
                     file_path_obj.name,
@@ -91,6 +103,7 @@ class FileTreeWidget(QTreeWidget):
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, str(file_path))
+                file_item.setIcon(0, self._icon_for_language(language))
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path)
@@ -111,10 +124,10 @@ class FileTreeWidget(QTreeWidget):
             if item.is_dir():
                 folder_item = QTreeWidgetItem(parent_item, [item.name, "", ""])
                 folder_item.setData(0, Qt.UserRole, str(item))
+                folder_item.setIcon(0, self.folder_icon)
                 self._populate_tree(folder_item, item)
             elif item.is_file():
                 # Only show supported file types
-                from app.file_scanner import LANGUAGE_MAP
                 if item.suffix.lower() not in LANGUAGE_MAP:
                     continue
                 
@@ -123,6 +136,7 @@ class FileTreeWidget(QTreeWidget):
                 stats = stats_db.get_file_stats(file_path_str)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
+                language = LANGUAGE_MAP.get(item.suffix.lower())
                 
                 file_item = QTreeWidgetItem(parent_item, [
                     item.name,
@@ -130,6 +144,7 @@ class FileTreeWidget(QTreeWidget):
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, file_path_str)
+                file_item.setIcon(0, self._icon_for_language(language))
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path_str)
@@ -223,3 +238,43 @@ class FileTreeWidget(QTreeWidget):
                 return result
         
         return None
+
+    def _icon_for_language(self, language: Optional[str]) -> QIcon:
+        """Return an icon appropriate for the detected language."""
+        if not language:
+            return self.generic_file_icon
+
+        cache_key = f"lang::{language}"
+        if cache_key in self._icon_cache:
+            return self._icon_cache[cache_key]
+
+        manager = get_icon_manager()
+        pixmap = manager.get_icon(language, size=24)
+        if pixmap:
+            icon = QIcon(pixmap)
+            self._icon_cache[cache_key] = icon
+            return icon
+
+        emoji = manager.get_emoji_fallback(language)
+        icon = self._emoji_icon(emoji)
+        self._icon_cache[cache_key] = icon
+        return icon
+
+    def _emoji_icon(self, emoji: str) -> QIcon:
+        cache_key = f"emoji::{emoji}"
+        if cache_key in self._icon_cache:
+            return self._icon_cache[cache_key]
+
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        font = QFont()
+        font.setPointSize(14)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+        painter.end()
+
+        icon = QIcon(pixmap)
+        self._icon_cache[cache_key] = icon
+        return icon

@@ -120,19 +120,9 @@ class EditorTab(QWidget):
         """Handle reset button click."""
         if not self.current_file:
             return
-        
-        # Confirm reset
-        reply = QMessageBox.question(
-            self,
-            "Reset Session",
-            "Reset typing session to the beginning of the file?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            self.typing_area.reset_session()
-            # Clear saved progress
-            stats_db.clear_session_progress(self.current_file)
+        self.typing_area.reset_session()
+        # Clear saved progress
+        stats_db.clear_session_progress(self.current_file)
     
     def on_session_completed(self):
         """Handle completed typing session."""
