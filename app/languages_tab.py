@@ -12,6 +12,9 @@ from typing import Callable, Dict, List, Optional, Tuple
 from app import settings, stats_db
 from app.language_cache import build_signature, load_cached_snapshot, save_snapshot
 
+# Debug timing flag
+DEBUG_STARTUP_TIMING = True
+
 
 def _get_icon_manager():
     # Delay icon loader import until a card draws
@@ -133,6 +136,10 @@ class LanguagesTab(QWidget):
     """Tab displaying all detected languages as cards."""
     
     def __init__(self, parent=None):
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_start = time.time()
+        
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self._thread_pool = QThreadPool.globalInstance()
@@ -146,11 +153,15 @@ class LanguagesTab(QWidget):
         self._active_task: Optional[_LanguageScanTask] = None
         self._status_label: Optional[QLabel] = None
 
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         cached = load_cached_snapshot()
         if cached:
             signature, language_files = cached
             self._cached_language_files = language_files
             self._last_signature = signature
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [LanguagesTab] Load cache: {time.time() - t:.3f}s")
         
         # Header
         header = QLabel("Languages detected in your folders")
@@ -171,6 +182,9 @@ class LanguagesTab(QWidget):
         
         self.layout.addWidget(scroll)
         self._show_message("Languages load when needed. Switch to this tab to scan your folders.")
+        
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [LanguagesTab] TOTAL: {time.time() - t_start:.3f}s")
     
     def _clear_cards(self):
         while self.card_layout.count():

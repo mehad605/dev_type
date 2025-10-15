@@ -1,3 +1,13 @@
+"""
+Main UI module for Dev Typing App.
+
+DEBUG_STARTUP_TIMING flag controls detailed startup performance profiling.
+Set to True to see timing breakdowns during app initialization.
+Also update the flag in:
+  - app/editor_tab.py
+  - app/languages_tab.py
+for complete profiling coverage.
+"""
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -30,6 +40,9 @@ import app.settings as settings
 from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
+
+# Toggle for startup timing debug output - set to False in production
+DEBUG_STARTUP_TIMING = True
 
 
 class FolderCardWidget(QFrame):
@@ -191,6 +204,10 @@ class FolderCardWidget(QFrame):
 
 class FoldersTab(QWidget):
     def __init__(self, parent=None):
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_start = time.time()
+        
         super().__init__(parent)
         self.s = None
         self.layout = QVBoxLayout(self)
@@ -198,6 +215,8 @@ class FoldersTab(QWidget):
         self.layout.setContentsMargins(16, 16, 16, 16)
 
         # Modern header section
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setSpacing(8)
@@ -212,6 +231,8 @@ class FoldersTab(QWidget):
         header_layout.addWidget(desc_label)
         
         self.layout.addWidget(header)
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [FoldersTab] Header setup: {time.time() - t:.3f}s")
 
         # Modern toolbar with styled buttons
         toolbar = QHBoxLayout()
@@ -309,7 +330,12 @@ class FoldersTab(QWidget):
         self.list.itemDoubleClicked.connect(self.on_folder_double_clicked)
         self.list.itemSelectionChanged.connect(self._update_folder_selection_state)
 
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.load_folders()
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [FoldersTab] load_folders(): {time.time() - t:.3f}s")
+            print(f"    [FoldersTab] TOTAL: {time.time() - t_start:.3f}s")
 
     def on_folder_double_clicked(self, item: QListWidgetItem):
         """Navigate to typing tab when folder is double-clicked."""
@@ -322,21 +348,69 @@ class FoldersTab(QWidget):
             parent_window.open_typing_tab(folder_path)
 
     def load_folders(self):
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t0 = time.time()
+        
         self.list.clear()
+        
+        if DEBUG_STARTUP_TIMING:
+            t1 = time.time()
+            print(f"      [FOLDERS] clear(): {t1-t0:.3f}s")
+        
         folders = settings.get_folders()
-        for path_str in folders:
+        
+        if DEBUG_STARTUP_TIMING:
+            t2 = time.time()
+            print(f"      [FOLDERS] get_folders() [{len(folders)} folders]: {t2-t1:.3f}s")
+        
+        for i, path_str in enumerate(folders):
+            if DEBUG_STARTUP_TIMING:
+                t_folder_start = time.time()
+            
             item = QListWidgetItem()
             item.setData(Qt.UserRole, path_str)
             item.setText(path_str)
+            
+            if DEBUG_STARTUP_TIMING:
+                t_item_created = time.time()
+            
             card = FolderCardWidget(path_str)
+            
+            if DEBUG_STARTUP_TIMING:
+                t_card_created = time.time()
+                print(f"        [FOLDERS] Folder {i+1}: FolderCardWidget: {t_card_created-t_item_created:.3f}s")
+            
             card.attach(self.list, item)
             card.set_compact(self.view_toggle.isChecked())
             item.setSizeHint(card.sizeHint())
+            
+            if DEBUG_STARTUP_TIMING:
+                t_setup = time.time()
+                print(f"        [FOLDERS] Folder {i+1}: setup: {t_setup-t_card_created:.3f}s")
+            
             self.list.addItem(item)
+            
+            if DEBUG_STARTUP_TIMING:
+                t_added = time.time()
+                print(f"        [FOLDERS] Folder {i+1}: addItem(): {t_added-t_setup:.3f}s")
+            
             self.list.setItemWidget(item, card)
+            
+            if DEBUG_STARTUP_TIMING:
+                t_widget_set = time.time()
+                print(f"        [FOLDERS] Folder {i+1}: setItemWidget(): {t_widget_set-t_added:.3f}s")
 
+        if DEBUG_STARTUP_TIMING:
+            t3 = time.time()
+            print(f"      [FOLDERS] Total widget creation: {t3-t2:.3f}s")
+        
         self._update_folder_selection_state()
         self._set_remove_mode_for_cards(self.edit_btn.isChecked())
+        
+        if DEBUG_STARTUP_TIMING:
+            t4 = time.time()
+            print(f"      [FOLDERS] Final setup: {t4-t3:.3f}s")
         self._apply_view_mode_styles()
 
     def on_add(self):
@@ -498,28 +572,58 @@ class MainWindow(QMainWindow):
     show_typed_changed = Signal(bool)
     
     def __init__(self):
+        if DEBUG_STARTUP_TIMING:
+            import time
+        
         super().__init__()
+        
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         settings.init_db()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] DB initialization: {time.time() - t:.3f}s")
+        
         self.setWindowTitle("Dev Typing App")
         self.resize(900, 600)
         self.tabs = QTabWidget()
+        
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.folders_tab = FoldersTab()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] FoldersTab: {time.time() - t:.3f}s")
         self.tabs.addTab(self.folders_tab, "Folders")
         
         # Languages tab
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.languages_tab = LanguagesTab()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] LanguagesTab: {time.time() - t:.3f}s")
         self.tabs.addTab(self.languages_tab, "Languages")
 
         # History tab
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.history_tab = HistoryTab()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] HistoryTab: {time.time() - t:.3f}s")
         self.tabs.addTab(self.history_tab, "History")
         
         # Editor/Typing tab
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.editor_tab = EditorTab()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] EditorTab: {time.time() - t:.3f}s")
         self.tabs.addTab(self.editor_tab, "Typing")
 
         # Settings tab
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.settings_tab = self._create_settings_tab()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] SettingsTab: {time.time() - t:.3f}s")
         self.tabs.addTab(self.settings_tab, "Settings")
 
         self.setCentralWidget(self.tabs)
@@ -527,13 +631,25 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
         
         # Apply initial theme
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.apply_current_theme()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] Apply theme: {time.time() - t:.3f}s")
         
         # Connect settings signals to editor tab for dynamic updates
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self._connect_settings_signals()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] Connect signals: {time.time() - t:.3f}s")
         
         # Emit initial settings to apply them to the typing area
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self._emit_initial_settings()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] Emit settings: {time.time() - t:.3f}s")
 
         # Trigger a lazy language scan shortly after launch without blocking the UI.
         QTimer.singleShot(250, self.languages_tab.ensure_loaded)
@@ -557,9 +673,15 @@ class MainWindow(QMainWindow):
 
     def _create_settings_tab(self) -> QWidget:
         """Create and return the settings tab widget."""
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_start = time.time()
+        
         from PySide6.QtWidgets import QScrollArea, QSlider, QSpinBox, QLineEdit, QColorDialog
         from PySide6.QtCore import QSize
         
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         # Main scroll area for settings
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -567,6 +689,8 @@ class MainWindow(QMainWindow):
         
         settings_widget = QWidget()
         s_layout = QVBoxLayout(settings_widget)
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [SettingsTab] Basic setup: {time.time() - t:.3f}s")
         
         # Typing Behavior settings group
         typing_behavior_group = QGroupBox("Typing Behavior")
@@ -830,6 +954,10 @@ class MainWindow(QMainWindow):
         s_layout.addStretch()
         
         scroll.setWidget(settings_widget)
+        
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [SettingsTab] TOTAL: {time.time() - t_start:.3f}s")
+        
         return scroll
 
     def open_typing_tab(self, folder_path: str):
@@ -1379,9 +1507,30 @@ class MainWindow(QMainWindow):
 
 
 def run_app():
+    if DEBUG_STARTUP_TIMING:
+        import time
+        start = time.time()
+        print("[STARTUP] Starting app initialization...")
+    
+    if DEBUG_STARTUP_TIMING:
+        t1 = time.time()
     app = QApplication(sys.argv)
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
+    
+    if DEBUG_STARTUP_TIMING:
+        t2 = time.time()
     win = MainWindow()
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] MainWindow created: {time.time() - t2:.3f}s")
+    
+    if DEBUG_STARTUP_TIMING:
+        t3 = time.time()
     win.show()
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Window shown: {time.time() - t3:.3f}s")
+        print(f"[STARTUP] TOTAL TIME: {time.time() - start:.3f}s")
+    
     sys.exit(app.exec())
 
 

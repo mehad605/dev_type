@@ -10,11 +10,18 @@ from app.stats_display import StatsDisplayWidget
 from app import stats_db
 from app.file_scanner import get_language_for_file
 
+# Debug timing flag - should match ui_main.DEBUG_STARTUP_TIMING
+DEBUG_STARTUP_TIMING = True
+
 
 class EditorTab(QWidget):
     """Complete editor/typing tab with tree, typing area, and stats."""
     
     def __init__(self, parent=None):
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_start = time.time()
+        
         super().__init__(parent)
         self.current_file: Optional[str] = None
         
@@ -26,7 +33,11 @@ class EditorTab(QWidget):
         h_splitter = QSplitter(Qt.Horizontal)
         
         # Left side: File tree
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.file_tree = FileTreeWidget()
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [EditorTab] FileTreeWidget: {time.time() - t:.3f}s")
         self.file_tree.file_selected.connect(self.on_file_selected)
         h_splitter.addWidget(self.file_tree)
         
@@ -53,13 +64,21 @@ class EditorTab(QWidget):
         v_splitter = QSplitter(Qt.Vertical)
         
         # Typing area (larger)
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.typing_area = TypingAreaWidget()
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [EditorTab] TypingAreaWidget: {time.time() - t:.3f}s")
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
         v_splitter.addWidget(self.typing_area)
         
         # Stats display (smaller)
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.stats_display = StatsDisplayWidget()
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [EditorTab] StatsDisplayWidget: {time.time() - t:.3f}s")
         v_splitter.addWidget(self.stats_display)
         
         # Set initial sizes (70% typing, 30% stats)
@@ -77,6 +96,9 @@ class EditorTab(QWidget):
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
         self.update_timer.start(100)  # Update every 100ms
+        
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [EditorTab] TOTAL: {time.time() - t_start:.3f}s")
     
     def load_folder(self, folder_path: str):
         """Load a single folder for practice."""
