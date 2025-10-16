@@ -280,25 +280,10 @@ class FoldersTab(QWidget):
             }
         """)
         
-        self.view_toggle = QPushButton("📋 Detail View")
-        self.view_toggle.setCheckable(True)
-        self.view_toggle.setMinimumHeight(36)
-        self.view_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: #4c566a;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #5e81ac;
-            }
-        """)
+        # View toggle removed in simple mode
         
         toolbar.addWidget(self.add_btn)
         toolbar.addWidget(self.edit_btn)
-        toolbar.addWidget(self.view_toggle)
         toolbar.addStretch()
 
         self.layout.addLayout(toolbar)
@@ -326,9 +311,7 @@ class FoldersTab(QWidget):
 
         self.add_btn.clicked.connect(self.on_add)
         self.edit_btn.toggled.connect(self.on_edit_toggled)
-        self.view_toggle.toggled.connect(self.on_view_toggled)
         self.list.itemDoubleClicked.connect(self.on_folder_double_clicked)
-        self.list.itemSelectionChanged.connect(self._update_folder_selection_state)
 
         if DEBUG_STARTUP_TIMING:
             t = time.time()
@@ -348,6 +331,7 @@ class FoldersTab(QWidget):
             parent_window.open_typing_tab(folder_path)
 
     def load_folders(self):
+        """Load folders as simple text items - ultra-fast version."""
         if DEBUG_STARTUP_TIMING:
             import time
             t0 = time.time()
@@ -364,54 +348,24 @@ class FoldersTab(QWidget):
             t2 = time.time()
             print(f"      [FOLDERS] get_folders() [{len(folders)} folders]: {t2-t1:.3f}s")
         
+        # Simple text-only version - no custom widgets
         for i, path_str in enumerate(folders):
             if DEBUG_STARTUP_TIMING:
                 t_folder_start = time.time()
             
-            item = QListWidgetItem()
+            # Create simple list item with text only
+            item = QListWidgetItem(f"📁 {path_str}")
             item.setData(Qt.UserRole, path_str)
-            item.setText(path_str)
-            
-            if DEBUG_STARTUP_TIMING:
-                t_item_created = time.time()
-            
-            card = FolderCardWidget(path_str)
-            
-            if DEBUG_STARTUP_TIMING:
-                t_card_created = time.time()
-                print(f"        [FOLDERS] Folder {i+1}: FolderCardWidget: {t_card_created-t_item_created:.3f}s")
-            
-            card.attach(self.list, item)
-            card.set_compact(self.view_toggle.isChecked())
-            item.setSizeHint(card.sizeHint())
-            
-            if DEBUG_STARTUP_TIMING:
-                t_setup = time.time()
-                print(f"        [FOLDERS] Folder {i+1}: setup: {t_setup-t_card_created:.3f}s")
-            
             self.list.addItem(item)
             
             if DEBUG_STARTUP_TIMING:
-                t_added = time.time()
-                print(f"        [FOLDERS] Folder {i+1}: addItem(): {t_added-t_setup:.3f}s")
-            
-            self.list.setItemWidget(item, card)
-            
-            if DEBUG_STARTUP_TIMING:
-                t_widget_set = time.time()
-                print(f"        [FOLDERS] Folder {i+1}: setItemWidget(): {t_widget_set-t_added:.3f}s")
+                t_folder_end = time.time()
+                print(f"        [FOLDERS] Folder {i+1}: {t_folder_end-t_folder_start:.3f}s")
 
         if DEBUG_STARTUP_TIMING:
             t3 = time.time()
-            print(f"      [FOLDERS] Total widget creation: {t3-t2:.3f}s")
-        
-        self._update_folder_selection_state()
-        self._set_remove_mode_for_cards(self.edit_btn.isChecked())
-        
-        if DEBUG_STARTUP_TIMING:
-            t4 = time.time()
-            print(f"      [FOLDERS] Final setup: {t4-t3:.3f}s")
-        self._apply_view_mode_styles()
+            print(f"      [FOLDERS] Total items creation: {t3-t2:.3f}s")
+            print(f"      [FOLDERS] TOTAL load_folders(): {t3-t0:.3f}s")
 
     def on_add(self):
         dlg = QFileDialog(self, "Select folder to add")
@@ -433,8 +387,11 @@ class FoldersTab(QWidget):
         if checked:
             self.edit_btn.setText("✅ Done")
             # Connect click handler for removal (only if not already connected)
-            self.list.itemClicked.connect(self._maybe_remove_item)
-            self._set_remove_mode_for_cards(True)
+            try:
+                self.list.itemClicked.connect(self._maybe_remove_item)
+            except (RuntimeError, TypeError):
+                # Already connected
+                pass
         else:
             self.edit_btn.setText("✏️ Remove Mode")
             # Disconnect click handler
@@ -443,8 +400,6 @@ class FoldersTab(QWidget):
             except (RuntimeError, TypeError):
                 # Already disconnected or never connected
                 pass
-            self._set_remove_mode_for_cards(False)
-            self._update_folder_selection_state()
 
     def _maybe_remove_item(self, item: QListWidgetItem):
         """Handle folder removal with optional confirmation."""
@@ -485,8 +440,6 @@ class FoldersTab(QWidget):
             
             # Immediately update the UI
             self.load_folders()
-            if self.edit_btn.isChecked():
-                self._set_remove_mode_for_cards(True)
             
             # Notify parent to refresh languages tab
             parent_window = self.window()
@@ -494,57 +447,24 @@ class FoldersTab(QWidget):
                 parent_window.refresh_languages_tab()
 
     def on_view_toggled(self, checked: bool):
-        """Toggle between list and icon view modes."""
-        if checked:
-            self.view_toggle.setText("🔲 Icon View")
-            self.list.setViewMode(QListWidget.ViewMode.IconMode)
-        else:
-            self.view_toggle.setText("📋 Detail View")
-            self.list.setViewMode(QListWidget.ViewMode.ListMode)
-        self._apply_view_mode_to_cards(checked)
-        self._apply_view_mode_styles()
+        """View toggle disabled in simple mode."""
+        pass
 
     def _update_folder_selection_state(self):
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            widget = self.list.itemWidget(item)
-            if isinstance(widget, FolderCardWidget):
-                widget.set_selected(item.isSelected())
+        """No-op in simple mode."""
+        pass
 
     def _set_remove_mode_for_cards(self, enabled: bool):
-        for i in range(self.list.count()):
-            widget = self.list.itemWidget(self.list.item(i))
-            if isinstance(widget, FolderCardWidget):
-                widget.set_remove_mode(enabled)
+        """No-op in simple mode."""
+        pass
 
     def _apply_view_mode_to_cards(self, compact: bool):
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            widget = self.list.itemWidget(item)
-            if isinstance(widget, FolderCardWidget):
-                widget.set_compact(compact)
-                item.setSizeHint(widget.sizeHint())
+        """No-op in simple mode."""
+        pass
 
     def _apply_view_mode_styles(self):
-        compact = self.view_toggle.isChecked()
-        if compact:
-            self.list.setSpacing(16)
-            self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.list.setResizeMode(QListWidget.Adjust)
-            self.list.setWrapping(True)
-            self.list.setFlow(QListWidget.LeftToRight)
-            self.list.setUniformItemSizes(True)
-            card_size = self._first_card_size()
-            if card_size:
-                self.list.setGridSize(QSize(card_size.width() + 20, card_size.height() + 20))
-        else:
-            self.list.setSpacing(8)
-            self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.list.setWrapping(False)
-            self.list.setFlow(QListWidget.TopToBottom)
-            self.list.setUniformItemSizes(False)
-            self.list.setGridSize(QSize())
+        """No-op in simple mode."""
+        pass
         # minimize the native list highlight to let cards show their own focus
         self.list.setStyleSheet(
             "QListWidget::item { margin: 0; padding: 0; }"
