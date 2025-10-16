@@ -24,10 +24,36 @@ class EditorTab(QWidget):
         
         super().__init__(parent)
         self.current_file: Optional[str] = None
+        self._loaded = False  # Lazy loading flag
         
-        # Main layout
+        # Main layout with placeholder
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Placeholder for lazy loading
+        placeholder = QLabel("Loading editor...")
+        placeholder.setAlignment(Qt.AlignCenter)
+        placeholder.setStyleSheet("color: #888888; padding: 40px; font-size: 14pt;")
+        main_layout.addWidget(placeholder)
+        
+        if DEBUG_STARTUP_TIMING:
+            print(f"    [EditorTab] TOTAL (lazy): {time.time() - t_start:.3f}s")
+    
+    def ensure_loaded(self):
+        """Lazy initialization of the editor tab UI."""
+        if self._loaded:
+            return
+        
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_start = time.time()
+        
+        # Clear placeholder
+        layout = self.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
         
         # Horizontal splitter: file tree | typing area
         h_splitter = QSplitter(Qt.Horizontal)
@@ -37,7 +63,7 @@ class EditorTab(QWidget):
             t = time.time()
         self.file_tree = FileTreeWidget()
         if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab] FileTreeWidget: {time.time() - t:.3f}s")
+            print(f"    [EditorTab-LAZY] FileTreeWidget: {time.time() - t:.3f}s")
         self.file_tree.file_selected.connect(self.on_file_selected)
         h_splitter.addWidget(self.file_tree)
         
@@ -68,7 +94,7 @@ class EditorTab(QWidget):
             t = time.time()
         self.typing_area = TypingAreaWidget()
         if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab] TypingAreaWidget: {time.time() - t:.3f}s")
+            print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
         v_splitter.addWidget(self.typing_area)
@@ -78,7 +104,7 @@ class EditorTab(QWidget):
             t = time.time()
         self.stats_display = StatsDisplayWidget()
         if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab] StatsDisplayWidget: {time.time() - t:.3f}s")
+            print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
         v_splitter.addWidget(self.stats_display)
         
         # Set initial sizes (70% typing, 30% stats)
@@ -90,30 +116,41 @@ class EditorTab(QWidget):
         # Set initial sizes (30% tree, 70% typing)
         h_splitter.setSizes([300, 700])
         
-        main_layout.addWidget(h_splitter)
+        self.layout().addWidget(h_splitter)
         
         # Timer for updating stats display
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
         self.update_timer.start(100)  # Update every 100ms
         
+        self._loaded = True
+        
         if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab] TOTAL: {time.time() - t_start:.3f}s")
+            print(f"    [EditorTab-LAZY] Load complete: {time.time() - t_start:.3f}s")
+    
+    def showEvent(self, event):
+        """Trigger lazy loading when tab is shown."""
+        super().showEvent(event)
+        self.ensure_loaded()
     
     def load_folder(self, folder_path: str):
         """Load a single folder for practice."""
+        self.ensure_loaded()
         self.file_tree.load_folder(folder_path)
     
     def load_folders(self, folder_paths: List[str]):
         """Load multiple folders for practice."""
+        self.ensure_loaded()
         self.file_tree.load_folders(folder_paths)
     
     def load_language_files(self, language: str, files: List[str]):
         """Load files filtered by language."""
+        self.ensure_loaded()
         self.file_tree.load_language_files(language, files)
     
     def on_file_selected(self, file_path: str):
         """Handle file selection from tree."""
+        self.ensure_loaded()
         # Save progress of current file if any
         if self.current_file and self.typing_area.engine:
             self._save_current_progress()
@@ -130,17 +167,22 @@ class EditorTab(QWidget):
     
     def on_stats_updated(self):
         """Handle stats update from typing area."""
+        if not self._loaded:
+            return
         stats = self.typing_area.get_stats()
         self.stats_display.update_stats(stats)
     
     def update_display(self):
         """Periodic update of stats display."""
+        if not self._loaded:
+            return
         if self.typing_area.engine and not self.typing_area.engine.state.is_paused and not self.typing_area.engine.state.is_finished:
             self.typing_area.engine.update_elapsed_time()
             self.on_stats_updated()
     
     def on_reset_clicked(self):
         """Handle reset button click."""
+        self.ensure_loaded()
         if not self.current_file:
             return
         self.typing_area.reset_session()
@@ -150,6 +192,8 @@ class EditorTab(QWidget):
     
     def on_session_completed(self):
         """Handle completed typing session."""
+        if not self._loaded:
+            return
         if not self.current_file or not self.typing_area.engine:
             return
         
@@ -198,6 +242,8 @@ class EditorTab(QWidget):
     
     def _save_current_progress(self):
         """Save progress of current file."""
+        if not self._loaded:
+            return
         if not self.current_file or not self.typing_area.engine:
             return
         
@@ -229,7 +275,7 @@ class EditorTab(QWidget):
     
     def apply_theme(self):
         """Apply current theme to stats display."""
-        if hasattr(self, 'stats_display'):
+        if self._loaded and hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
     
     def closeEvent(self, event):

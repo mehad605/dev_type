@@ -494,8 +494,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         if DEBUG_STARTUP_TIMING:
             import time
+            t_init_start = time.time()
         
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         super().__init__()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] QMainWindow.__init__: {time.time() - t:.3f}s")
         
         if DEBUG_STARTUP_TIMING:
             t = time.time()
@@ -503,52 +508,75 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] DB initialization: {time.time() - t:.3f}s")
         
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.setWindowTitle("Dev Typing App")
         self.resize(900, 600)
         self.tabs = QTabWidget()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
         
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.folders_tab = FoldersTab()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] FoldersTab: {time.time() - t:.3f}s")
+            t_add = time.time()
+            print(f"  [INIT] FoldersTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.folders_tab, "Folders")
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] FoldersTab.addTab: {time.time() - t_add:.3f}s")
         
         # Languages tab
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.languages_tab = LanguagesTab()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] LanguagesTab: {time.time() - t:.3f}s")
+            t_add = time.time()
+            print(f"  [INIT] LanguagesTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.languages_tab, "Languages")
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] LanguagesTab.addTab: {time.time() - t_add:.3f}s")
 
         # History tab
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.history_tab = HistoryTab()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] HistoryTab: {time.time() - t:.3f}s")
+            t_add = time.time()
+            print(f"  [INIT] HistoryTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.history_tab, "History")
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] HistoryTab.addTab: {time.time() - t_add:.3f}s")
         
         # Editor/Typing tab
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.editor_tab = EditorTab()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] EditorTab: {time.time() - t:.3f}s")
+            t_add = time.time()
+            print(f"  [INIT] EditorTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.editor_tab, "Typing")
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] EditorTab.addTab: {time.time() - t_add:.3f}s")
 
         # Settings tab
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.settings_tab = self._create_settings_tab()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] SettingsTab: {time.time() - t:.3f}s")
+            t_add = time.time()
+            print(f"  [INIT] SettingsTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.settings_tab, "Settings")
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] SettingsTab.addTab: {time.time() - t_add:.3f}s")
 
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         self.setCentralWidget(self.tabs)
         self._last_tab_index = self.tabs.currentIndex()
         self.tabs.currentChanged.connect(self._on_tab_changed)
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] setCentralWidget + signals: {time.time() - t:.3f}s")
         
         # Apply initial theme
         if DEBUG_STARTUP_TIMING:
@@ -572,7 +600,12 @@ class MainWindow(QMainWindow):
             print(f"  [INIT] Emit settings: {time.time() - t:.3f}s")
 
         # Trigger a lazy language scan shortly after launch without blocking the UI.
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         QTimer.singleShot(250, self.languages_tab.ensure_loaded)
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] QTimer.singleShot: {time.time() - t:.3f}s")
+            print(f"  [INIT] === TOTAL MainWindow.__init__: {time.time() - t_init_start:.3f}s ===")
 
     def _on_tab_changed(self, index: int):
         """Persist typing progress whenever we leave the typing tab."""
