@@ -147,9 +147,20 @@ class KeystrokeBox(QFrame):
     
     def update_stats(self, correct: int, incorrect: int, total: int):
         """Update keystroke statistics."""
-        self.correct_count.setText(str(correct))
-        self.incorrect_count.setText(str(incorrect))
-        self.total_count.setText(str(total))
+        # Calculate percentages
+        if total > 0:
+            correct_pct = (correct / total) * 100
+            incorrect_pct = (incorrect / total) * 100
+            total_pct = 100.0
+        else:
+            correct_pct = 0.0
+            incorrect_pct = 0.0
+            total_pct = 0.0
+        
+        # Format as "count(percentage%)"
+        self.correct_count.setText(f"{correct}({correct_pct:.0f}%)")
+        self.incorrect_count.setText(f"{incorrect}({incorrect_pct:.0f}%)")
+        self.total_count.setText(f"{total}({total_pct:.0f}%)")
     
     def apply_theme(self):
         """Apply current theme colors."""
