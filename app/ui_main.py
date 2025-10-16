@@ -578,13 +578,6 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] setCentralWidget + signals: {time.time() - t:.3f}s")
         
-        # Apply initial theme
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
-        self.apply_current_theme()
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] Apply theme: {time.time() - t:.3f}s")
-        
         # Connect settings signals to editor tab for dynamic updates
         if DEBUG_STARTUP_TIMING:
             t = time.time()
@@ -1471,6 +1464,17 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
+    # Pre-warm Qt's stylesheet engine with a dummy widget
+    if DEBUG_STARTUP_TIMING:
+        t_warm = time.time()
+    dummy = QLabel("warming up")
+    dummy.setStyleSheet("QLabel { background: #2e3440; color: #eceff4; border-radius: 4px; padding: 4px; }")
+    dummy.show()
+    dummy.hide()
+    dummy.deleteLater()
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Style engine pre-warmed: {time.time() - t_warm:.3f}s")
+    
     if DEBUG_STARTUP_TIMING:
         t2 = time.time()
     win = MainWindow()
@@ -1482,6 +1486,13 @@ def run_app():
     win.show()
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Window shown: {time.time() - t3:.3f}s")
+    
+    # Apply theme after window is visible (deferred to avoid blocking startup)
+    if DEBUG_STARTUP_TIMING:
+        t4 = time.time()
+    QTimer.singleShot(0, win.apply_current_theme)
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Theme deferred: {time.time() - t4:.3f}s")
         print(f"[STARTUP] TOTAL TIME: {time.time() - start:.3f}s")
     
     sys.exit(app.exec())
