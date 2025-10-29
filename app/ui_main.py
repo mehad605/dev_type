@@ -1452,6 +1452,75 @@ class MainWindow(QMainWindow):
         self.show_typed_changed.emit(enabled)
 
 
+def create_splash_screen(app):
+    """Create and show a splash screen during startup."""
+    from PySide6.QtGui import QFont, QColor
+    
+    # Create a simple splash widget
+    splash_widget = QWidget()
+    splash_widget.setFixedSize(450, 250)
+    splash_widget.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+    splash_widget.setStyleSheet("""
+        QWidget {
+            background-color: #2e3440;
+            border: 3px solid #88c0d0;
+            border-radius: 12px;
+        }
+        QLabel {
+            color: #eceff4;
+            background: transparent;
+        }
+    """)
+    
+    layout = QVBoxLayout(splash_widget)
+    layout.setContentsMargins(40, 40, 40, 40)
+    layout.setSpacing(20)
+    
+    # Title
+    title = QLabel("⌨️ Dev Typing App")
+    title.setAlignment(Qt.AlignCenter)
+    title_font = QFont("Segoe UI", 22)
+    title_font.setBold(True)
+    title.setFont(title_font)
+    layout.addWidget(title)
+    
+    # Subtitle
+    subtitle = QLabel("Practice coding by typing")
+    subtitle.setAlignment(Qt.AlignCenter)
+    subtitle.setFont(QFont("Segoe UI", 11))
+    subtitle.setStyleSheet("color: #88c0d0;")
+    layout.addWidget(subtitle)
+    
+    layout.addStretch()
+    
+    # Status label
+    status = QLabel("Initializing...")
+    status.setAlignment(Qt.AlignCenter)
+    status.setFont(QFont("Segoe UI", 10))
+    status.setStyleSheet("color: #d8dee9;")
+    layout.addWidget(status)
+    
+    # Version/loading indicator
+    version = QLabel("•  •  •")
+    version.setAlignment(Qt.AlignCenter)
+    version.setFont(QFont("Segoe UI", 14))
+    version.setStyleSheet("color: #4c566a;")
+    layout.addWidget(version)
+    
+    # Center on screen
+    from PySide6.QtGui import QGuiApplication
+    screen = QGuiApplication.primaryScreen().geometry()
+    splash_widget.move(
+        (screen.width() - splash_widget.width()) // 2,
+        (screen.height() - splash_widget.height()) // 2
+    )
+    
+    splash_widget.show()
+    app.processEvents()
+    
+    return splash_widget, status
+
+
 def run_app():
     if DEBUG_STARTUP_TIMING:
         import time
@@ -1464,9 +1533,19 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
+    # Show splash screen immediately
+    if DEBUG_STARTUP_TIMING:
+        t_splash = time.time()
+    splash, status_label = create_splash_screen(app)
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Splash screen shown: {time.time() - t_splash:.3f}s")
+    
     # Pre-warm Qt's stylesheet engine with a dummy widget
     if DEBUG_STARTUP_TIMING:
         t_warm = time.time()
+    status_label.setText("Loading UI engine...")
+    app.processEvents()
+    
     dummy = QLabel("warming up")
     dummy.setStyleSheet("QLabel { background: #2e3440; color: #eceff4; border-radius: 4px; padding: 4px; }")
     dummy.show()
@@ -1475,17 +1554,27 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Style engine pre-warmed: {time.time() - t_warm:.3f}s")
     
+    # Load main window
     if DEBUG_STARTUP_TIMING:
         t2 = time.time()
+    status_label.setText("Loading main window...")
+    app.processEvents()
+    
     win = MainWindow()
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] MainWindow created: {time.time() - t2:.3f}s")
     
+    # Show window and close splash
     if DEBUG_STARTUP_TIMING:
         t3 = time.time()
+    status_label.setText("Ready!")
+    app.processEvents()
+    
     win.show()
+    splash.close()  # Close splash when main window is ready
+    
     if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Window shown: {time.time() - t3:.3f}s")
+        print(f"[STARTUP] Window shown & splash closed: {time.time() - t3:.3f}s")
     
     # Apply theme after window is visible (deferred to avoid blocking startup)
     if DEBUG_STARTUP_TIMING:
