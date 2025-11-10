@@ -4,7 +4,7 @@ from PySide6.QtGui import (
     QTextCharFormat, QColor, QFont, QTextCursor,
     QKeyEvent, QPalette, QSyntaxHighlighter, QTextDocument, QPainter
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QRect
+from PySide6.QtCore import Qt, Signal, QTimer, QRect, QPoint, QPropertyAnimation, QEasingCurve, QObject, Property
 from typing import Optional
 from app.typing_engine import TypingEngine
 from app import settings
@@ -102,6 +102,17 @@ class TypingAreaWidget(QTextEdit):
         self._cursor_timer = QTimer(self)
         self._cursor_timer.timeout.connect(self._toggle_cursor_visible)
         
+        # Smooth cursor animation
+        self._target_cursor_rect = QRect()
+        self._animated_cursor_x = 0.0
+        self._animated_cursor_y = 0.0
+        self._cursor_animation_x = QPropertyAnimation(self, b"_cursor_x_pos")
+        self._cursor_animation_x.setDuration(80)  # 0.08 seconds like the example
+        self._cursor_animation_x.setEasingCurve(QEasingCurve.OutCubic)  # Smooth ease-out
+        self._cursor_animation_y = QPropertyAnimation(self, b"_cursor_y_pos")
+        self._cursor_animation_y.setDuration(80)
+        self._cursor_animation_y.setEasingCurve(QEasingCurve.OutCubic)
+        
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
         self.setTabChangesFocus(False)
@@ -126,6 +137,39 @@ class TypingAreaWidget(QTextEdit):
         
         # Cursor position tracking
         self.current_typing_position = 0
+    
+    # Property for smooth cursor animation
+    def _get_cursor_x_pos(self):
+        return self._animated_cursor_x
+    
+    def _set_cursor_x_pos(self, value):
+        self._animated_cursor_x = value
+        self._update_animated_cursor_rect()
+    
+    _cursor_x_pos = Property(float, _get_cursor_x_pos, _set_cursor_x_pos)
+    
+    def _get_cursor_y_pos(self):
+        return self._animated_cursor_y
+    
+    def _set_cursor_y_pos(self, value):
+        self._animated_cursor_y = value
+        self._update_animated_cursor_rect()
+    
+    _cursor_y_pos = Property(float, _get_cursor_y_pos, _set_cursor_y_pos)
+    
+    def _update_animated_cursor_rect(self):
+        """Update cursor rect based on animated position."""
+        if self._target_cursor_rect.isNull():
+            return
+        
+        # Create new rect at animated position
+        animated_rect = QRect(self._target_cursor_rect)
+        animated_rect.moveLeft(int(self._animated_cursor_x))
+        animated_rect.moveTop(int(self._animated_cursor_y))
+        
+        old_rect = QRect(self._cursor_rect)
+        self._cursor_rect = animated_rect
+        self._request_cursor_paint(old_rect)
     
     def load_file(self, file_path: str):
         """Load a file for typing practice."""
@@ -364,9 +408,8 @@ class TypingAreaWidget(QTextEdit):
         self._update_cursor_geometry()
 
     def _update_cursor_geometry(self):
-        """Recalculate cursor rectangle based on style and schedule repaint."""
+        """Recalculate cursor rectangle based on style and animate to new position."""
         rect = QRect(self.cursorRect())
-        old_rect = QRect(self._cursor_rect)
 
         if self.cursor_style == "block":
             min_width = self.fontMetrics().averageCharWidth() or 1
@@ -382,8 +425,29 @@ class TypingAreaWidget(QTextEdit):
             width = max(2, self.logicalDpiX() // 180)
             rect = QRect(rect.left(), rect.top(), width, rect.height())
 
-        self._cursor_rect = rect
-        self._request_cursor_paint(old_rect)
+        # Store target rectangle
+        self._target_cursor_rect = rect
+        
+        # If this is the first position or animation is disabled, jump immediately
+        if self._cursor_rect.isNull() or not self.hasFocus():
+            self._animated_cursor_x = float(rect.left())
+            self._animated_cursor_y = float(rect.top())
+            self._cursor_rect = rect
+            self._request_cursor_paint()
+            return
+        
+        # Stop any running animations
+        self._cursor_animation_x.stop()
+        self._cursor_animation_y.stop()
+        
+        # Animate smoothly to new position (like CSS transition)
+        self._cursor_animation_x.setStartValue(self._animated_cursor_x)
+        self._cursor_animation_x.setEndValue(float(rect.left()))
+        self._cursor_animation_y.setStartValue(self._animated_cursor_y)
+        self._cursor_animation_y.setEndValue(float(rect.top()))
+        
+        self._cursor_animation_x.start()
+        self._cursor_animation_y.start()
 
     def _request_cursor_paint(self, old_rect: Optional[QRect] = None):
         """Schedule viewport update for cursor area."""

@@ -1,7 +1,7 @@
 """Stats display widget showing live typing statistics."""
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGridLayout
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGridLayout, QToolTip
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont, QCursor
 from app import settings
 
 
@@ -198,8 +198,92 @@ class KeystrokeBox(QFrame):
         self.total_count.setStyleSheet(f"color: {total_color};")
 
 
+class InteractiveStatusBox(QFrame):
+    """Interactive status box that can be clicked to pause/unpause."""
+    
+    pause_clicked = Signal()  # Emitted when clicked
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMouseTracking(True)
+        
+        self.is_paused = True
+        self.is_finished = False
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        
+        self.status_label = QLabel("Status")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(9)
+        self.status_label.setFont(font)
+        layout.addWidget(self.status_label)
+        
+        self.paused_label = QLabel("⏸\nPAUSED")
+        self.paused_label.setAlignment(Qt.AlignCenter)
+        pause_font = QFont()
+        pause_font.setPointSize(12)
+        pause_font.setBold(True)
+        self.paused_label.setFont(pause_font)
+        layout.addWidget(self.paused_label)
+        
+        self.active_label = QLabel("▶\nACTIVE")
+        self.active_label.setAlignment(Qt.AlignCenter)
+        self.active_label.setFont(pause_font)
+        self.active_label.hide()
+        layout.addWidget(self.active_label)
+        
+        self.finished_label = QLabel("✓\nFINISHED")
+        self.finished_label.setAlignment(Qt.AlignCenter)
+        self.finished_label.setFont(pause_font)
+        self.finished_label.hide()
+        layout.addWidget(self.finished_label)
+    
+    def update_status(self, is_paused: bool, is_finished: bool):
+        """Update the status display."""
+        self.is_paused = is_paused
+        self.is_finished = is_finished
+        
+        if is_finished:
+            self.finished_label.setVisible(True)
+            self.paused_label.setVisible(False)
+            self.active_label.setVisible(False)
+        else:
+            self.finished_label.setVisible(False)
+            self.paused_label.setVisible(is_paused)
+            self.active_label.setVisible(not is_paused)
+    
+    def mousePressEvent(self, event):
+        """Handle mouse click to toggle pause/unpause."""
+        if event.button() == Qt.LeftButton and not self.is_finished:
+            self.pause_clicked.emit()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+    
+    def enterEvent(self, event):
+        """Show tooltip on hover."""
+        if not self.is_finished:
+            if self.is_paused:
+                QToolTip.showText(QCursor.pos(), "Click or press Ctrl+P to unpause", self)
+            else:
+                QToolTip.showText(QCursor.pos(), "Click or press Ctrl+P to pause", self)
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Hide tooltip when leaving."""
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+
 class StatsDisplayWidget(QWidget):
     """Widget displaying live typing statistics with theme support."""
+    
+    pause_requested = Signal()  # Emitted when user clicks status or presses Ctrl+P
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -224,43 +308,11 @@ class StatsDisplayWidget(QWidget):
         self.keystroke_box = KeystrokeBox()
         layout.addWidget(self.keystroke_box, 1)
         
-        # Status indicator (paused/active)
-        status_container = QFrame()
-        status_container.setFrameShape(QFrame.StyledPanel)
-        status_container.setFrameShadow(QFrame.Raised)
-        status_layout = QVBoxLayout(status_container)
-        status_layout.setContentsMargins(12, 8, 12, 8)
+        # Interactive status indicator
+        self.status_box = InteractiveStatusBox()
+        self.status_box.pause_clicked.connect(self.pause_requested.emit)
+        layout.addWidget(self.status_box, 1)
         
-        self.status_label = QLabel("Status")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        font = QFont()
-        font.setPointSize(9)
-        self.status_label.setFont(font)
-        status_layout.addWidget(self.status_label)
-        
-        self.paused_label = QLabel("⏸\nPAUSED")
-        self.paused_label.setAlignment(Qt.AlignCenter)
-        pause_font = QFont()
-        pause_font.setPointSize(12)
-        pause_font.setBold(True)
-        self.paused_label.setFont(pause_font)
-        status_layout.addWidget(self.paused_label)
-        
-        self.active_label = QLabel("▶\nACTIVE")
-        self.active_label.setAlignment(Qt.AlignCenter)
-        self.active_label.setFont(pause_font)
-        self.active_label.hide()
-        status_layout.addWidget(self.active_label)
-        
-        self.finished_label = QLabel("✓\nFINISHED")
-        self.finished_label.setAlignment(Qt.AlignCenter)
-        self.finished_label.setFont(pause_font)
-        self.finished_label.hide()
-        status_layout.addWidget(self.finished_label)
-        
-        layout.addWidget(status_container, 1)
-        
-        self.status_container = status_container
         self.apply_theme()
     
     def update_stats(self, stats: dict):
@@ -288,15 +340,7 @@ class StatsDisplayWidget(QWidget):
         # Status indicator
         is_finished = stats.get("is_finished", False)
         is_paused = stats.get("is_paused", True)
-        
-        if is_finished:
-            self.finished_label.setVisible(True)
-            self.paused_label.setVisible(False)
-            self.active_label.setVisible(False)
-        else:
-            self.finished_label.setVisible(False)
-            self.paused_label.setVisible(is_paused)
-            self.active_label.setVisible(not is_paused)
+        self.status_box.update_status(is_paused, is_finished)
     
     def apply_theme(self):
         """Apply current theme to all components."""
@@ -320,21 +364,25 @@ class StatsDisplayWidget(QWidget):
             }}
         """)
         
-        self.status_container.setStyleSheet(f"""
+        # Style the interactive status box
+        self.status_box.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
                 border-radius: 6px;
             }}
+            QFrame:hover {{
+                border: 2px solid {active_color};
+            }}
         """)
         
-        self.status_label.setStyleSheet(f"color: {text_color};")
-        self.paused_label.setStyleSheet(f"color: {paused_color};")
-        self.active_label.setStyleSheet(f"color: {active_color};")
+        self.status_box.status_label.setStyleSheet(f"color: {text_color};")
+        self.status_box.paused_label.setStyleSheet(f"color: {paused_color};")
+        self.status_box.active_label.setStyleSheet(f"color: {active_color};")
         
         # Finished color - use green/success color
         finished_color = "#a3be8c" if theme == "dark" else "#a3be8c"
-        self.finished_label.setStyleSheet(f"color: {finished_color};")
+        self.status_box.finished_label.setStyleSheet(f"color: {finished_color};")
         
         # Update all boxes
         self.wpm_box.apply_theme()

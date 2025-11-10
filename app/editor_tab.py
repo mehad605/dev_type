@@ -142,6 +142,7 @@ class EditorTab(QWidget):
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.stats_display = StatsDisplayWidget()
+        self.stats_display.pause_requested.connect(self.toggle_pause)
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
         bottom_layout.addWidget(self.stats_display)
@@ -389,6 +390,22 @@ class EditorTab(QWidget):
         settings.set_setting("sound_enabled", "1" if enabled else "0")
         get_sound_manager().set_enabled(enabled)
     
+    def toggle_pause(self):
+        """Toggle pause/unpause state."""
+        if not self._loaded or not hasattr(self, 'typing_area'):
+            return
+        
+        if self.typing_area.engine:
+            if self.typing_area.engine.state.is_paused:
+                # Unpause (resume)
+                self.typing_area.engine.start()
+            else:
+                # Pause
+                self.typing_area.engine.pause()
+            
+            # Update stats immediately
+            self.on_stats_updated()
+    
     def update_progress_bar_color(self):
         """Update progress bar when color settings change."""
         if self._loaded and hasattr(self, 'progress_bar'):
@@ -398,6 +415,16 @@ class EditorTab(QWidget):
         """Apply current theme to stats display."""
         if self._loaded and hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard shortcuts."""
+        # Ctrl+P for pause/unpause
+        if event.key() == Qt.Key_P and event.modifiers() == Qt.ControlModifier:
+            self.toggle_pause()
+            event.accept()
+            return
+        
+        super().keyPressEvent(event)
     
     def closeEvent(self, event):
         """Handle widget close - save progress."""
