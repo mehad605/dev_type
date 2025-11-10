@@ -454,12 +454,17 @@ class TypingAreaWidget(QTextEdit):
         key = event.key()
         text = event.text()
         modifiers = event.modifiers()
+        
+        # Play keypress sound for valid typing keys
+        from app.sound_manager import get_sound_manager
+        sound_mgr = get_sound_manager()
 
         # Keep display cursor aligned with engine state
         self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
         
         # Handle Backspace
         if key == Qt.Key_Backspace:
+            sound_mgr.play_keypress()  # Sound for backspace
             if modifiers & Qt.ControlModifier:
                 # Ctrl+Backspace
                 old_engine_pos = self.engine.state.cursor_position
@@ -483,6 +488,7 @@ class TypingAreaWidget(QTextEdit):
         
         # Handle Tab
         if key == Qt.Key_Tab:
+            sound_mgr.play_keypress()  # Sound for tab
             # Process 4 spaces for tab
             for _ in range(4):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
@@ -508,6 +514,7 @@ class TypingAreaWidget(QTextEdit):
         
         # Handle printable characters
         if text and len(text) == 1:
+            sound_mgr.play_keypress()  # Sound for character input
             position = self._engine_to_display_position(self.engine.state.cursor_position)
             char = text
             

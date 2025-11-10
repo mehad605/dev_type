@@ -123,6 +123,11 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "0"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("best_wpm_min_accuracy", "0.9"))
     
+    # Sound settings
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_enabled", "1"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_profile", "none"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_volume", "50"))
+    
     conn.commit()
     conn.close()
 

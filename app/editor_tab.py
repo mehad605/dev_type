@@ -7,6 +7,7 @@ from typing import Optional, List
 from app.file_tree import FileTreeWidget
 from app.typing_area import TypingAreaWidget
 from app.stats_display import StatsDisplayWidget
+from app.sound_volume_widget import SoundVolumeWidget
 from app import stats_db
 from app.file_scanner import get_language_for_file
 
@@ -92,9 +93,11 @@ class EditorTab(QWidget):
         
         toolbar.addStretch()
         
-        self.file_label = QLabel("No file selected")
-        self.file_label.setStyleSheet("font-weight: bold; color: #888888;")
-        toolbar.addWidget(self.file_label)
+        # Sound volume widget
+        self.sound_widget = SoundVolumeWidget()
+        self.sound_widget.volume_changed.connect(self.on_sound_volume_changed)
+        self.sound_widget.enabled_changed.connect(self.on_sound_enabled_changed)
+        toolbar.addWidget(self.sound_widget)
         
         right_layout.addLayout(toolbar)
         
@@ -170,7 +173,6 @@ class EditorTab(QWidget):
         
         # Load new file
         self.current_file = file_path
-        self.file_label.setText(file_path.split('\\')[-1] if '\\' in file_path else file_path.split('/')[-1])
         self.typing_area.load_file(file_path)
         self.typing_area.setFocus()
         self.file_tree.refresh_file_stats(file_path)
@@ -335,6 +337,22 @@ class EditorTab(QWidget):
     def save_active_progress(self):
         """Pause the active session and persist progress, if any."""
         self._save_current_progress()
+    
+    def on_sound_volume_changed(self, volume: int):
+        """Handle volume change from sound widget."""
+        from app import settings
+        from app.sound_manager import get_sound_manager
+        
+        settings.set_setting("sound_volume", str(volume))
+        get_sound_manager().set_volume(volume / 100.0)
+    
+    def on_sound_enabled_changed(self, enabled: bool):
+        """Handle sound enabled/disabled from sound widget."""
+        from app import settings
+        from app.sound_manager import get_sound_manager
+        
+        settings.set_setting("sound_enabled", "1" if enabled else "0")
+        get_sound_manager().set_enabled(enabled)
     
     def apply_theme(self):
         """Apply current theme to stats display."""

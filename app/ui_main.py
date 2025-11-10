@@ -508,6 +508,20 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] DB initialization: {time.time() - t:.3f}s")
         
+        # Initialize sound manager
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
+        from app.sound_manager import get_sound_manager
+        sound_mgr = get_sound_manager()
+        sound_enabled = settings.get_setting("sound_enabled", "1") == "1"
+        sound_profile = settings.get_setting("sound_profile", "none")
+        sound_volume = int(settings.get_setting("sound_volume", "50")) / 100.0
+        sound_mgr.set_enabled(sound_enabled)
+        sound_mgr.set_profile(sound_profile)
+        sound_mgr.set_volume(sound_volume)
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [INIT] Sound manager: {time.time() - t:.3f}s")
+        
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.setWindowTitle("Dev Typing App")
@@ -874,6 +888,74 @@ class MainWindow(QMainWindow):
         typing_group.setLayout(typing_layout)
         s_layout.addWidget(typing_group)
         
+        # Sound settings group (simplified)
+        sound_group = QGroupBox("Sound Effects")
+        sound_layout = QVBoxLayout()
+        
+        # Sound enabled/disabled buttons
+        sound_enabled_label = QLabel("Typing Sounds")
+        sound_enabled_label.setStyleSheet("font-weight: bold;")
+        sound_layout.addWidget(sound_enabled_label)
+        
+        sound_description = QLabel(
+            "Play a sound effect when you press keys while typing. Use the volume icon in the typing tab to adjust volume."
+        )
+        sound_description.setWordWrap(True)
+        sound_description.setStyleSheet("color: #888888; font-size: 10pt;")
+        sound_layout.addWidget(sound_description)
+        
+        sound_button_row = QHBoxLayout()
+        sound_button_row.setSpacing(8)
+        
+        self.sound_enabled_btn = QPushButton("Enabled")
+        self.sound_disabled_btn = QPushButton("Disabled")
+        for btn in (self.sound_enabled_btn, self.sound_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+        
+        self.sound_enabled_btn.clicked.connect(lambda: self._handle_sound_enabled_button(True))
+        self.sound_disabled_btn.clicked.connect(lambda: self._handle_sound_enabled_button(False))
+        
+        sound_button_row.addWidget(self.sound_enabled_btn)
+        sound_button_row.addWidget(self.sound_disabled_btn)
+        sound_button_row.addStretch()
+        sound_layout.addLayout(sound_button_row)
+        
+        sound_enabled = settings.get_setting("sound_enabled", "1") == "1"
+        self._update_sound_enabled_buttons(sound_enabled)
+        
+        # Profile selector (No Sound, Brick, and custom profiles)
+        profile_label = QLabel("Sound Profile")
+        profile_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        sound_layout.addWidget(profile_label)
+        
+        profile_layout = QHBoxLayout()
+        self.sound_profile_combo = QComboBox()
+        self.sound_profile_combo.setMinimumHeight(34)
+        
+        # Load all available profiles
+        self._load_sound_profiles()
+        
+        current_profile = settings.get_setting("sound_profile", "none")
+        index = self.sound_profile_combo.findData(current_profile)
+        if index >= 0:
+            self.sound_profile_combo.setCurrentIndex(index)
+        self.sound_profile_combo.currentIndexChanged.connect(self.on_sound_profile_changed)
+        profile_layout.addWidget(self.sound_profile_combo)
+        
+        # Add Manage Profiles button
+        manage_profiles_btn = QPushButton("Manage Profiles...")
+        manage_profiles_btn.setMinimumHeight(34)
+        manage_profiles_btn.clicked.connect(self.on_manage_sound_profiles)
+        profile_layout.addWidget(manage_profiles_btn)
+        
+        profile_layout.addStretch()
+        sound_layout.addLayout(profile_layout)
+        
+        sound_group.setLayout(sound_layout)
+        s_layout.addWidget(sound_group)
+        
         # Import/Export group
         import_export_group = QGroupBox("Backup & Restore")
         import_export_layout = QVBoxLayout()
@@ -1025,6 +1107,169 @@ class MainWindow(QMainWindow):
     def on_pause_delay_changed(self, delay: int):
         settings.set_setting("pause_delay", str(delay))
         self.pause_delay_changed.emit(float(delay))
+    
+    def _load_sound_profiles(self):
+        """Load sound profiles into combo box."""
+        from app.sound_manager import get_sound_manager
+        manager = get_sound_manager()
+        
+        self.sound_profile_combo.clear()
+        self.sound_profile_combo.addItem("No Sound", "none")
+        
+        all_profiles = manager.get_all_profiles()
+        for profile_id, profile_data in all_profiles.items():
+            if profile_id != "none":
+                name = profile_data["name"]
+                self.sound_profile_combo.addItem(name, profile_id)
+    
+    def _update_sound_enabled_buttons(self, enabled: bool):
+        """Update sound enabled/disabled button states."""
+        self.sound_enabled_btn.setChecked(enabled)
+        self.sound_disabled_btn.setChecked(not enabled)
+        
+        if enabled:
+            self.sound_enabled_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: 2px solid #45a049;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            self.sound_disabled_btn.setStyleSheet("")
+        else:
+            self.sound_disabled_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f44336;
+                    color: white;
+                    border: 2px solid #da190b;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #da190b;
+                }
+            """)
+            self.sound_enabled_btn.setStyleSheet("")
+    
+    def _handle_sound_enabled_button(self, enabled: bool):
+        """Handle sound enabled/disabled button clicks."""
+        self._update_sound_enabled_buttons(enabled)
+        settings.set_setting("sound_enabled", "1" if enabled else "0")
+        
+        from app.sound_manager import get_sound_manager
+        get_sound_manager().set_enabled(enabled)
+    
+    def on_sound_profile_changed(self, index):
+        """Handle sound profile selection change."""
+        profile_id = self.sound_profile_combo.itemData(index)
+        if profile_id:
+            settings.set_setting("sound_profile", profile_id)
+            
+            from app.sound_manager import get_sound_manager
+            get_sound_manager().set_profile(profile_id)
+    
+    def on_manage_sound_profiles(self):
+        """Open sound profile manager dialog."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QMessageBox
+        from app.sound_profile_editor import SoundProfileEditor
+        from app.sound_manager import get_sound_manager
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Manage Sound Profiles")
+        dialog.setMinimumSize(500, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Profile list
+        profile_list = QListWidget()
+        manager = get_sound_manager()
+        all_profiles = manager.get_all_profiles()
+        for profile_id, profile_data in all_profiles.items():
+            if profile_id != "none":  # Don't show "No Sound" in manager
+                name = profile_data["name"]
+                builtin = profile_data.get("builtin", False)
+                label = f"{name} {'(Built-in)' if builtin else '(Custom)'}"
+                profile_list.addItem(label)
+                profile_list.item(profile_list.count() - 1).setData(Qt.UserRole, profile_id)
+        layout.addWidget(profile_list)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        
+        new_btn = QPushButton("New Profile...")
+        def create_new():
+            editor = SoundProfileEditor(parent=dialog)
+            if editor.exec() == QDialog.Accepted:
+                # Refresh list and combo
+                profile_list.clear()
+                all_profiles = manager.get_all_profiles()
+                for pid, pdata in all_profiles.items():
+                    if pid != "none":
+                        label = f"{pdata['name']} {'(Built-in)' if pdata.get('builtin', False) else '(Custom)'}"
+                        profile_list.addItem(label)
+                        profile_list.item(profile_list.count() - 1).setData(Qt.UserRole, pid)
+                self._load_sound_profiles()
+        new_btn.clicked.connect(create_new)
+        btn_layout.addWidget(new_btn)
+        
+        edit_btn = QPushButton("Edit...")
+        def edit_selected():
+            current = profile_list.currentItem()
+            if not current:
+                QMessageBox.warning(dialog, "No Selection", "Please select a profile to edit.")
+                return
+            profile_id = current.data(Qt.UserRole)
+            if manager.get_all_profiles()[profile_id].get("builtin", False):
+                QMessageBox.warning(dialog, "Cannot Edit", "Built-in profiles cannot be edited.")
+                return
+            editor = SoundProfileEditor(profile_id, parent=dialog)
+            if editor.exec() == QDialog.Accepted:
+                # Refresh list
+                profile_list.clear()
+                all_profiles = manager.get_all_profiles()
+                for pid, pdata in all_profiles.items():
+                    if pid != "none":
+                        label = f"{pdata['name']} {'(Built-in)' if pdata.get('builtin', False) else '(Custom)'}"
+                        profile_list.addItem(label)
+                        profile_list.item(profile_list.count() - 1).setData(Qt.UserRole, pid)
+                self._load_sound_profiles()
+        edit_btn.clicked.connect(edit_selected)
+        btn_layout.addWidget(edit_btn)
+        
+        delete_btn = QPushButton("Delete")
+        def delete_selected():
+            current = profile_list.currentItem()
+            if not current:
+                QMessageBox.warning(dialog, "No Selection", "Please select a profile to delete.")
+                return
+            profile_id = current.data(Qt.UserRole)
+            if manager.get_all_profiles()[profile_id].get("builtin", False):
+                QMessageBox.warning(dialog, "Cannot Delete", "Built-in profiles cannot be deleted.")
+                return
+            reply = QMessageBox.question(dialog, "Confirm Delete", 
+                                        f"Delete profile '{current.text().split(' (')[0]}'?")
+            if reply == QMessageBox.Yes:
+                if manager.delete_custom_profile(profile_id):
+                    profile_list.takeItem(profile_list.currentRow())
+                    self._load_sound_profiles()
+                    QMessageBox.information(dialog, "Success", "Profile deleted.")
+                else:
+                    QMessageBox.critical(dialog, "Error", "Failed to delete profile.")
+        delete_btn.clicked.connect(delete_selected)
+        btn_layout.addWidget(delete_btn)
+        
+        btn_layout.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        dialog.exec()
 
     def on_best_wpm_accuracy_changed(self, percent: int):
         clamped = max(0, min(100, int(percent)))
