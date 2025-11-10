@@ -519,6 +519,17 @@ class TypingAreaWidget(QTextEdit):
         text = event.text()
         modifiers = event.modifiers()
         
+        # Intercept Ctrl+P for pause/unpause (don't process as typing)
+        if key == Qt.Key_P and modifiers == Qt.ControlModifier:
+            # Toggle pause state
+            if self.engine.state.is_paused:
+                self.engine.start()
+            else:
+                self.engine.pause()
+            self.stats_updated.emit()
+            event.accept()
+            return
+        
         # Play keypress sound for valid typing keys
         from app.sound_manager import get_sound_manager
         sound_mgr = get_sound_manager()

@@ -416,16 +416,6 @@ class EditorTab(QWidget):
         if self._loaded and hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
     
-    def keyPressEvent(self, event):
-        """Handle keyboard shortcuts."""
-        # Ctrl+P for pause/unpause
-        if event.key() == Qt.Key_P and event.modifiers() == Qt.ControlModifier:
-            self.toggle_pause()
-            event.accept()
-            return
-        
-        super().keyPressEvent(event)
-    
     def closeEvent(self, event):
         """Handle widget close - save progress."""
         self._save_current_progress()
