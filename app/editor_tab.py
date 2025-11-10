@@ -1,8 +1,9 @@
 """Editor/Typing tab with file tree, typing area, and stats display."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtGui import QKeyEvent
 from typing import Optional, List
 from app.file_tree import FileTreeWidget
 from app.typing_area import TypingAreaWidget
@@ -27,6 +28,16 @@ class EditorTab(QWidget):
         super().__init__(parent)
         self.current_file: Optional[str] = None
         self._loaded = False  # Lazy loading flag
+        
+        # Ghost replay state
+        self.is_replaying = False
+        self._replay_timer = QTimer(self)
+        self._replay_timer.setSingleShot(True)
+        self._replay_timer.timeout.connect(self._advance_ghost_replay)
+        self._replay_keystrokes: List[dict] = []
+        self._replay_index = 0
+        self._replay_prev_timestamp = 0
+        self._current_ghost_data: Optional[dict] = None
         
         # Main layout with placeholder
         main_layout = QVBoxLayout(self)
@@ -93,6 +104,28 @@ class EditorTab(QWidget):
         toolbar.addWidget(self.instant_death_btn)
         
         toolbar.addStretch()
+        
+        # Ghost replay button
+        self.ghost_btn = QPushButton("👻")
+        self.ghost_btn.setToolTip("Watch Ghost Replay (Best Run)")
+        self.ghost_btn.setFixedSize(40, 34)
+        self.ghost_btn.clicked.connect(self.on_ghost_clicked)
+        self.ghost_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4c566a;
+                border: none;
+                border-radius: 4px;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #5e81ac;
+            }
+            QPushButton:disabled {
+                background-color: #3b4252;
+                color: #666666;
+            }
+        """)
+        toolbar.addWidget(self.ghost_btn)
         
         # Sound volume widget
         self.sound_widget = SoundVolumeWidget()
@@ -202,6 +235,9 @@ class EditorTab(QWidget):
         self.typing_area.load_file(file_path)
         self.typing_area.setFocus()
         self.file_tree.refresh_file_stats(file_path)
+        
+        # Update ghost button state
+        self._update_ghost_button()
         
         # Update stats display
         self.on_stats_updated()
@@ -321,6 +357,9 @@ class EditorTab(QWidget):
             completed=True,
         )
 
+        # Check and save ghost if this is a new best
+        self._check_and_save_ghost(stats)
+
         # Clear session progress and refresh tree highlights/stats
         stats_db.clear_session_progress(self.current_file)
         self.file_tree.refresh_file_stats(self.current_file)
@@ -416,7 +455,269 @@ class EditorTab(QWidget):
         if self._loaded and hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
     
+    def _check_and_save_ghost(self, stats: dict):
+        """Check if this session is a new best and save ghost if so."""
+        from app.ghost_manager import get_ghost_manager
+        from datetime import datetime
+        
+        ghost_mgr = get_ghost_manager()
+        wpm = stats["wpm"]
+        accuracy = stats["accuracy"]
+        
+        # Check if this is better than existing ghost
+        if ghost_mgr.should_save_ghost(self.current_file, wpm):
+            # Get keystroke data from typing area
+            keystrokes = self.typing_area.get_ghost_data()
+            
+            # Get final stats from the engine
+            final_stats = self.typing_area.engine.get_final_stats()
+
+            # Save the ghost
+            success = ghost_mgr.save_ghost(
+                self.current_file,
+                wpm,
+                accuracy,
+                keystrokes,
+                datetime.now().isoformat(),
+                final_stats=final_stats
+            )
+            
+            if success:
+                # Notify user about new best
+                QMessageBox.information(
+                    self,
+                    "New Best! 👻",
+                    f"Congratulations! This is your best run for this file.\n\n"
+                    f"WPM: {wpm:.1f}\n"
+                    f"Accuracy: {accuracy * 100:.1f}%\n\n"
+                    f"Ghost replay saved! Click the 👻 button to watch it."
+                )
+                
+                # Update ghost button state
+                self._update_ghost_button()
+    
+    def _update_ghost_button(self):
+        """Update ghost button enabled state based on availability."""
+        if not self._loaded or not hasattr(self, 'ghost_btn'):
+            return
+        
+        if self.current_file:
+            from app.ghost_manager import get_ghost_manager
+            ghost_mgr = get_ghost_manager()
+            has_ghost = ghost_mgr.has_ghost(self.current_file)
+            self.ghost_btn.setEnabled(has_ghost)
+            
+            if has_ghost:
+                # Show ghost stats in tooltip
+                stats = ghost_mgr.get_ghost_stats(self.current_file)
+                if stats:
+                    self.ghost_btn.setToolTip(
+                        f"Watch Ghost Replay\n\n"
+                        f"Best: {stats['wpm']:.1f} WPM at {stats['accuracy']:.1f}% accuracy\n"
+                        f"Recorded: {stats['date'][:10]}"
+                    )
+            else:
+                self.ghost_btn.setToolTip("Ghost Not Available\n\nComplete this file to create a ghost replay!")
+        else:
+            self.ghost_btn.setEnabled(False)
+    
+    def on_ghost_clicked(self):
+        """Handle ghost button click - show replay."""
+        # If replay is running, treat button as stop control
+        if self.is_replaying:
+            self._finalize_ghost_replay(cancelled=True)
+            return
+        
+        if not self.current_file:
+            QMessageBox.information(
+                self,
+                "No File",
+                "Please select a file to watch its ghost replay."
+            )
+            return
+        
+        from app.ghost_manager import get_ghost_manager
+        ghost_mgr = get_ghost_manager()
+        ghost_data = ghost_mgr.load_ghost(self.current_file)
+        
+        if not ghost_data:
+            QMessageBox.information(
+                self,
+                "Ghost Not Available",
+                "No ghost replay available for this file.\n\n"
+                "Complete the file with a good WPM to create one!"
+            )
+            return
+        
+        # Show ghost stats and confirmation
+        result = QMessageBox.question(
+            self,
+            "Ghost Replay",
+            f"Watch best run for this file?\n\n"
+            f"WPM: {ghost_data['wpm']:.1f}\n"
+            f"Accuracy: {ghost_data['acc']:.1f}%\n"
+            f"Recorded: {ghost_data['date'][:19]}\n"
+            f"Keystrokes: {len(ghost_data['keys'])}\n\n"
+            f"The replay will automatically type through the file.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if result == QMessageBox.Yes:
+            self.start_ghost_replay(ghost_data)
+    
+    def start_ghost_replay(self, ghost_data: dict):
+        """Begin a ghost replay using the provided keystroke data."""
+        keystrokes = ghost_data.get("keys", [])
+        if not keystrokes:
+            QMessageBox.warning(
+                self,
+                "Ghost Replay",
+                "This ghost does not contain any keystrokes to replay."
+            )
+            return
+
+        # If a replay is already active, cancel it first
+        if self.is_replaying:
+            self._finalize_ghost_replay(cancelled=True)
+
+        self.is_replaying = True
+        self._current_ghost_data = ghost_data
+        self._replay_keystrokes = keystrokes
+        self._replay_index = 0
+        self._replay_prev_timestamp = keystrokes[0].get("t", 0)
+
+        # Prepare typing area and UI
+        self.typing_area.stop_ghost_recording()
+        self.typing_area.reset_session()
+        self.typing_area.setEnabled(False)
+        self.typing_area.setFocus()
+
+        self.file_tree.setEnabled(False)
+        self.reset_btn.setEnabled(False)
+        self.reset_btn.setText("⏸ Replay Running")
+
+        self.ghost_btn.setText("⏹ Stop")
+        self.ghost_btn.setToolTip("Stop the ghost replay")
+
+        # Ensure timer is ready
+        if self._replay_timer.isActive():
+            self._replay_timer.stop()
+
+        # Kick off the replay immediately
+        self._replay_timer.start(0)
+
+    def _advance_ghost_replay(self):
+        """Advance the replay by one keystroke."""
+        if not self.is_replaying or self._replay_index >= len(self._replay_keystrokes):
+            # Nothing to play; finish gracefully
+            self._finalize_ghost_replay(cancelled=False)
+            return
+
+        keystroke = self._replay_keystrokes[self._replay_index]
+        key_char = keystroke.get("k", "")
+        timestamp = keystroke.get("t", self._replay_prev_timestamp)
+
+        self._dispatch_ghost_key(key_char)
+
+        self._replay_index += 1
+
+        if self._replay_index >= len(self._replay_keystrokes):
+            self._finalize_ghost_replay(cancelled=False)
+            return
+
+        next_timestamp = self._replay_keystrokes[self._replay_index].get("t", timestamp)
+        delay = max(0, int(next_timestamp - timestamp))
+        self._replay_prev_timestamp = next_timestamp
+        self._replay_timer.start(delay)
+
+    def _dispatch_ghost_key(self, key_char: str):
+        """Send a single keystroke to the typing area."""
+        if not key_char:
+            return
+
+        # Determine key code and text
+        modifiers = Qt.NoModifier
+        if key_char == '\b':
+            key_code = Qt.Key_Backspace
+            text = ""
+        elif key_char == '\n':
+            key_code = Qt.Key_Return
+            text = "\n"
+        elif key_char == '\t':
+            key_code = Qt.Key_Tab
+            text = "\t"
+        elif key_char == '<CTRL-BACKSPACE>':
+            key_code = Qt.Key_Backspace
+            text = ""
+            modifiers = Qt.ControlModifier
+        elif key_char == ' ':
+            key_code = Qt.Key_Space
+            text = " "
+        else:
+            text = key_char
+            key_code = ord(key_char.upper()) if len(key_char) == 1 else Qt.Key_unknown
+        event = QKeyEvent(QEvent.KeyPress, key_code, modifiers, text)
+
+        # Temporarily enable the typing area to receive the event
+        was_enabled = self.typing_area.isEnabled()
+        if not was_enabled:
+            self.typing_area.setEnabled(True)
+
+        QApplication.sendEvent(self.typing_area, event)
+
+        if not was_enabled:
+            self.typing_area.setEnabled(False)
+
+    def _finalize_ghost_replay(self, cancelled: bool):
+        """Clean up replay state and restore the UI."""
+        if self._replay_timer.isActive():
+            self._replay_timer.stop()
+
+        was_replaying = self.is_replaying
+        self.is_replaying = False
+
+        self._replay_keystrokes = []
+        self._replay_index = 0
+        self._replay_prev_timestamp = 0
+
+        ghost_data = self._current_ghost_data
+        self._current_ghost_data = None
+
+        # Restore UI state
+        self.typing_area.setEnabled(True)
+        self.file_tree.setEnabled(True)
+        self.reset_btn.setEnabled(True)
+        self.reset_btn.setText("⟲ Reset to Top")
+
+        self.ghost_btn.setText("👻")
+        self._update_ghost_button()
+
+        if cancelled:
+            self.typing_area.reset_session()
+            self.on_stats_updated()
+        elif was_replaying:
+            # Replay completed successfully - show original final stats if we have them
+            if ghost_data and ghost_data.get("final_stats"):
+                self.stats_display.update_stats(ghost_data["final_stats"])
+                self.progress_bar.set_progress(1, 1)
+                self.progress_label.setText("100%")
+            else:
+                self.on_stats_updated()
+
+            QMessageBox.information(
+                self,
+                "Replay Complete",
+                "Ghost replay finished!\n\nClick Reset to start typing yourself."
+            )
+
+        # Restart recording for the user's next attempt
+        self.typing_area.start_ghost_recording()
+
+        self.typing_area.setFocus()
+
     def closeEvent(self, event):
         """Handle widget close - save progress."""
-        self._save_current_progress()
+        if self.is_replaying:
+            self._finalize_ghost_replay(cancelled=True)
+        self.save_active_progress()
         super().closeEvent(event)

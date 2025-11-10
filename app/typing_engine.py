@@ -190,6 +190,19 @@ class TypingEngine:
         self.state.is_finished = False
         self.mistake_at = None
     
+    def get_final_stats(self) -> dict:
+        """Get final stats at the end of a session."""
+        return {
+            "wpm": self.state.wpm(),
+            "accuracy": self.state.accuracy(),
+            "time": self.state.elapsed_time,
+            "total": self.state.total_keystrokes(),
+            "correct": self.state.correct_keystrokes,
+            "incorrect": self.state.incorrect_keystrokes,
+            "status_text": "Finished",
+            "status_color": "#a3be8c"  # Green for finished
+        }
+    
     def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float):
         """Load saved progress into the engine."""
         self.state.cursor_position = cursor_pos

@@ -137,6 +137,11 @@ class TypingAreaWidget(QTextEdit):
         
         # Cursor position tracking
         self.current_typing_position = 0
+        
+        # Ghost recording
+        self.is_recording_ghost = False
+        self.ghost_keystrokes = []
+        self.ghost_start_time = None
     
     # Property for smooth cursor animation
     def _get_cursor_x_pos(self):
@@ -197,6 +202,9 @@ class TypingAreaWidget(QTextEdit):
         self.current_typing_position = 0
         self._update_cursor_position()
         
+        # Start ghost recording for this session
+        self.start_ghost_recording()
+        
         # Try to load saved progress
         from app import stats_db
         progress = stats_db.get_session_progress(file_path)
@@ -216,6 +224,38 @@ class TypingAreaWidget(QTextEdit):
                 self.highlighter.clear_all()
 
         self.stats_updated.emit()
+    
+    def start_ghost_recording(self):
+        """Start recording keystrokes for potential ghost session."""
+        import time
+        self.is_recording_ghost = True
+        self.ghost_keystrokes = []
+        self.ghost_start_time = time.time()
+        print("[GhostRecorder] Started recording")
+    
+    def stop_ghost_recording(self):
+        """Stop recording keystrokes."""
+        self.is_recording_ghost = False
+        print(f"[GhostRecorder] Stopped recording ({len(self.ghost_keystrokes)} keystrokes)")
+    
+    def _record_keystroke(self, key_char: str, is_correct: bool):
+        """Record a keystroke for ghost replay."""
+        if not self.is_recording_ghost or self.ghost_start_time is None:
+            return
+        
+        import time
+        timestamp_ms = int((time.time() - self.ghost_start_time) * 1000)
+        
+        # Compact format: t=timestamp, k=key, c=correct (1/0)
+        self.ghost_keystrokes.append({
+            "t": timestamp_ms,
+            "k": key_char,
+            "c": 1 if is_correct else 0
+        })
+    
+    def get_ghost_data(self) -> list:
+        """Get recorded ghost keystrokes."""
+        return self.ghost_keystrokes
     
     def _prepare_display_content(self, content: str) -> str:
         """Convert content for display with special characters."""
@@ -542,6 +582,7 @@ class TypingAreaWidget(QTextEdit):
             sound_mgr.play_keypress()  # Sound for backspace
             if modifiers & Qt.ControlModifier:
                 # Ctrl+Backspace
+                self._record_keystroke("<CTRL-BACKSPACE>", True)
                 old_engine_pos = self.engine.state.cursor_position
                 self.engine.process_ctrl_backspace()
                 new_engine_pos = self.engine.state.cursor_position
@@ -552,6 +593,7 @@ class TypingAreaWidget(QTextEdit):
                 self._update_cursor_position()
             else:
                 # Regular backspace
+                self._record_keystroke("\b", True)
                 if self.engine.state.cursor_position > 0 or self.engine.mistake_at is not None:
                     self.engine.process_backspace()
                     target_index = self.engine.state.cursor_position
@@ -564,6 +606,8 @@ class TypingAreaWidget(QTextEdit):
         # Handle Tab
         if key == Qt.Key_Tab:
             sound_mgr.play_keypress()  # Sound for tab
+            all_correct = True
+            spaces_processed = 0
             # Process 4 spaces for tab
             for _ in range(4):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
@@ -572,7 +616,11 @@ class TypingAreaWidget(QTextEdit):
                 expected_char = self.engine.state.content[self.engine.state.cursor_position]
                 expected_display = self._display_char_for(expected_char)
                 is_correct, expected_from_engine = self.engine.process_keystroke(' ')
+                if not is_correct:
+                    all_correct = False
                 if expected_from_engine == "" and not is_correct:
+                    # Record failed tab attempt before exiting
+                    self._record_keystroke('\t', False)
                     self.stats_updated.emit()
                     return
                 self.highlighter.set_typed_char(
@@ -582,6 +630,9 @@ class TypingAreaWidget(QTextEdit):
                     is_correct
                 )
                 self._apply_display_for_position(position)
+                spaces_processed += 1
+            if spaces_processed:
+                self._record_keystroke('\t', all_correct)
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             self._update_cursor_position()
             self.stats_updated.emit()
@@ -602,6 +653,9 @@ class TypingAreaWidget(QTextEdit):
             
             # Process keystroke
             is_correct, expected = self.engine.process_keystroke(char)
+            
+            # Record keystroke for ghost
+            self._record_keystroke(char, is_correct)
             
             # Check for instant death mode BEFORE displaying the mistake
             if not is_correct:
