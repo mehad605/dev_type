@@ -8,6 +8,7 @@ from app.file_tree import FileTreeWidget
 from app.typing_area import TypingAreaWidget
 from app.stats_display import StatsDisplayWidget
 from app.sound_volume_widget import SoundVolumeWidget
+from app.progress_bar_widget import ProgressBarWidget
 from app import stats_db
 from app.file_scanner import get_language_for_file
 
@@ -115,16 +116,40 @@ class EditorTab(QWidget):
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
         v_splitter.addWidget(self.typing_area)
         
-        # Stats display (smaller)
+        # Container for progress bar and stats
+        bottom_container = QWidget()
+        bottom_layout = QVBoxLayout(bottom_container)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(5)
+        
+        # Progress bar section (full width)
+        progress_widget = QWidget()
+        progress_layout = QHBoxLayout(progress_widget)
+        progress_layout.setContentsMargins(5, 3, 5, 3)
+        
+        self.progress_bar = ProgressBarWidget()
+        progress_layout.addWidget(self.progress_bar, stretch=1)  # Full width
+        
+        self.progress_label = QLabel("0%")
+        self.progress_label.setMinimumWidth(45)
+        self.progress_label.setAlignment(Qt.AlignCenter)
+        self.progress_label.setStyleSheet("color: #888888; font-weight: bold;")
+        progress_layout.addWidget(self.progress_label, stretch=0)
+        
+        bottom_layout.addWidget(progress_widget)
+        
+        # Stats display
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.stats_display = StatsDisplayWidget()
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
-        v_splitter.addWidget(self.stats_display)
+        bottom_layout.addWidget(self.stats_display)
         
-        # Set initial sizes (70% typing, 30% stats)
-        v_splitter.setSizes([700, 300])
+        v_splitter.addWidget(bottom_container)
+        
+        # Set initial sizes (75% typing, 25% bottom section with progress+stats)
+        v_splitter.setSizes([750, 250])
         
         right_layout.addWidget(v_splitter)
         h_splitter.addWidget(right_widget)
@@ -186,6 +211,13 @@ class EditorTab(QWidget):
             return
         stats = self.typing_area.get_stats()
         self.stats_display.update_stats(stats)
+        
+        # Update progress bar
+        if self.typing_area.engine:
+            cursor_pos = self.typing_area.engine.state.cursor_position
+            total_chars = len(self.typing_area.engine.state.content)
+            self.progress_bar.set_progress(cursor_pos, total_chars)
+            self.progress_label.setText(self.progress_bar.get_progress_text())
     
     def update_display(self):
         """Periodic update of stats display."""
@@ -204,6 +236,9 @@ class EditorTab(QWidget):
         # Clear saved progress
         stats_db.clear_session_progress(self.current_file)
         self.file_tree.refresh_file_stats(self.current_file)
+        # Reset progress bar
+        self.progress_bar.reset()
+        self.progress_label.setText("0%")
     
     def on_instant_death_toggled(self, enabled: bool):
         """Handle instant death mode toggle."""
@@ -353,6 +388,11 @@ class EditorTab(QWidget):
         
         settings.set_setting("sound_enabled", "1" if enabled else "0")
         get_sound_manager().set_enabled(enabled)
+    
+    def update_progress_bar_color(self):
+        """Update progress bar when color settings change."""
+        if self._loaded and hasattr(self, 'progress_bar'):
+            self.progress_bar.update()
     
     def apply_theme(self):
         """Apply current theme to stats display."""

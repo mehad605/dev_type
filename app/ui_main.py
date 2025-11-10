@@ -772,6 +772,7 @@ class MainWindow(QMainWindow):
         self.color_incorrect_btn = create_color_button("color_incorrect", "#ff0000", "Incorrect text")
         self.color_paused_btn = create_color_button("color_paused_highlight", "#ffaa00", "Paused files")
         self.color_cursor_btn = create_color_button("color_cursor", "#ffffff", "Cursor")
+        self.color_progress_bar_btn = create_color_button("progress_bar_color", "#4CAF50", "Progress bar")
         
         colors_group.setLayout(colors_layout)
         s_layout.addWidget(colors_group)
@@ -1608,6 +1609,9 @@ class MainWindow(QMainWindow):
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
             self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
             self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed_characters)
+        
+        # Connect progress bar color updates
+        self.colors_changed.connect(self.editor_tab.update_progress_bar_color)
     
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""

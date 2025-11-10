@@ -128,6 +128,9 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_profile", "none"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_volume", "50"))
     
+    # Progress bar color
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("progress_bar_color", "#4CAF50"))
+    
     conn.commit()
     conn.close()
 
