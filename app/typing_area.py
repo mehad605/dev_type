@@ -79,6 +79,7 @@ class TypingAreaWidget(QTextEdit):
     
     stats_updated = Signal()  # Emitted when stats change
     session_completed = Signal()  # Emitted when file is fully typed
+    mistake_occurred = Signal()  # Emitted when user makes a typing mistake
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -519,6 +520,18 @@ class TypingAreaWidget(QTextEdit):
             
             # Process keystroke
             is_correct, expected = self.engine.process_keystroke(char)
+            
+            # Check for instant death mode BEFORE displaying the mistake
+            if not is_correct:
+                from app import settings
+                instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+                if instant_death_enabled:
+                    # Emit signal and immediately reset without displaying the mistake
+                    self.mistake_occurred.emit()
+                    return  # Don't process the rest - the reset will be called
+                else:
+                    # Normal mode - just emit the signal for tracking
+                    self.mistake_occurred.emit()
             
             # If there's a mistake lock and this character was blocked, don't display anything
             if expected == "" and not is_correct:

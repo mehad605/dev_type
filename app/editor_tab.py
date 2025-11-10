@@ -78,6 +78,18 @@ class EditorTab(QWidget):
         self.reset_btn.setToolTip("Reset cursor to beginning of file")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
         toolbar.addWidget(self.reset_btn)
+        
+        # Instant Death mode toggle
+        from app import settings
+        instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+        self.instant_death_btn = QPushButton("💀 Instant Death: Enabled" if instant_death_enabled else "💀 Instant Death: Disabled")
+        self.instant_death_btn.setCheckable(True)
+        self.instant_death_btn.setChecked(instant_death_enabled)
+        self.instant_death_btn.setToolTip("Reset to top on any mistake")
+        self.instant_death_btn.clicked.connect(self.on_instant_death_toggled)
+        self._update_instant_death_style()
+        toolbar.addWidget(self.instant_death_btn)
+        
         toolbar.addStretch()
         
         self.file_label = QLabel("No file selected")
@@ -97,6 +109,7 @@ class EditorTab(QWidget):
             print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
+        self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
         v_splitter.addWidget(self.typing_area)
         
         # Stats display (smaller)
@@ -189,6 +202,56 @@ class EditorTab(QWidget):
         # Clear saved progress
         stats_db.clear_session_progress(self.current_file)
         self.file_tree.refresh_file_stats(self.current_file)
+    
+    def on_instant_death_toggled(self, enabled: bool):
+        """Handle instant death mode toggle."""
+        from app import settings
+        settings.set_setting("instant_death_mode", "1" if enabled else "0")
+        self.instant_death_btn.setText("💀 Instant Death: Enabled" if enabled else "💀 Instant Death: Disabled")
+        self._update_instant_death_style()
+        
+        # Update the typing area's instant death mode
+        if hasattr(self, 'typing_area') and self.typing_area.engine:
+            self.typing_area.engine.instant_death_mode = enabled
+    
+    def _update_instant_death_style(self):
+        """Update instant death button styling based on state."""
+        if self.instant_death_btn.isChecked():
+            # Enabled - green/success color
+            self.instant_death_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #a3be8c;
+                    color: #2e3440;
+                    border: none;
+                    padding: 8px 12px;
+                    font-weight: bold;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #b4d0a0;
+                }
+            """)
+        else:
+            # Disabled - same as reset button (neutral)
+            self.instant_death_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4c566a;
+                    color: #eceff4;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #5e81ac;
+                }
+            """)
+    
+    def on_mistake_occurred(self):
+        """Handle mistake in typing area - reset if instant death mode is enabled."""
+        from app import settings
+        instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+        if instant_death_enabled:
+            self.on_reset_clicked()
     
     def on_session_completed(self):
         """Handle completed typing session."""
