@@ -772,7 +772,15 @@ class MainWindow(QMainWindow):
         self.color_incorrect_btn = create_color_button("color_incorrect", "#ff0000", "Incorrect text")
         self.color_paused_btn = create_color_button("color_paused_highlight", "#ffaa00", "Paused files")
         self.color_cursor_btn = create_color_button("color_cursor", "#ffffff", "Cursor")
-        self.color_progress_bar_btn = create_color_button("progress_bar_color", "#4CAF50", "Progress bar")
+        self.color_user_progress_btn = create_color_button(
+            "user_progress_bar_color", "#4CAF50", "Your progress bar"
+        )
+        self.color_ghost_progress_btn = create_color_button(
+            "ghost_progress_bar_color", "#9C27B0", "Ghost progress bar"
+        )
+        self.color_ghost_text_btn = create_color_button(
+            "ghost_text_color", "#8AB4F8", "Ghost text"
+        )
         
         colors_group.setLayout(colors_layout)
         s_layout.addWidget(colors_group)

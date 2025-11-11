@@ -12,6 +12,8 @@ from app.sound_volume_widget import SoundVolumeWidget
 from app.progress_bar_widget import ProgressBarWidget
 from app import stats_db
 from app.file_scanner import get_language_for_file
+from app.typing_engine import TypingEngine
+import time
 
 # Debug timing flag - should match ui_main.DEBUG_STARTUP_TIMING
 DEBUG_STARTUP_TIMING = True
@@ -29,17 +31,25 @@ class EditorTab(QWidget):
         self.current_file: Optional[str] = None
         self._loaded = False  # Lazy loading flag
         
-        # Ghost replay state
-        self.is_replaying = False
-        self._replay_timer = QTimer(self)
-        self._replay_timer.setSingleShot(True)
-        self._replay_timer.timeout.connect(self._advance_ghost_replay)
-        self._replay_keystrokes: List[dict] = []
-        self._replay_index = 0
-        self._replay_prev_timestamp = 0
+        # Ghost race state
+        self.is_racing = False
+        self._race_pending_start = False
         self._current_ghost_data: Optional[dict] = None
-        self._instant_death_pre_replay: Optional[bool] = None
-        self._instant_death_tooltip_pre_replay: Optional[str] = None
+        self._ghost_engine: Optional[TypingEngine] = None
+        self._ghost_keystrokes: List[dict] = []
+        self._ghost_index = 0
+        self._ghost_prev_timestamp = 0
+        self._ghost_cursor_position = 0
+        self._display_ghost_progress = False
+        self._race_start_perf: Optional[float] = None
+        self._user_finish_elapsed: Optional[float] = None
+        self._ghost_finish_elapsed: Optional[float] = None
+        self._instant_death_pre_race: Optional[bool] = None
+        self._instant_death_tooltip_pre_race: Optional[str] = None
+        
+        self._ghost_timer = QTimer(self)
+        self._ghost_timer.setSingleShot(True)
+        self._ghost_timer.timeout.connect(self._advance_ghost_race)
         
         # Main layout with placeholder
         main_layout = QVBoxLayout(self)
@@ -150,6 +160,7 @@ class EditorTab(QWidget):
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
+        self.typing_area.first_key_pressed.connect(self._on_first_race_key)
         v_splitter.addWidget(self.typing_area)
         # Ensure engine matches current instant death state
         self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
@@ -160,21 +171,49 @@ class EditorTab(QWidget):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(5)
         
-        # Progress bar section (full width)
-        progress_widget = QWidget()
-        progress_layout = QHBoxLayout(progress_widget)
-        progress_layout.setContentsMargins(5, 3, 5, 3)
+        # User progress bar section
+        user_progress_widget = QWidget()
+        user_progress_layout = QHBoxLayout(user_progress_widget)
+        user_progress_layout.setContentsMargins(5, 3, 5, 3)
         
-        self.progress_bar = ProgressBarWidget()
-        progress_layout.addWidget(self.progress_bar, stretch=1)  # Full width
+        user_label = QLabel("You:")
+        user_label.setStyleSheet("color: #888888; font-weight: bold;")
+        user_label.setMinimumWidth(35)
+        user_progress_layout.addWidget(user_label, stretch=0)
         
-        self.progress_label = QLabel("0%")
-        self.progress_label.setMinimumWidth(45)
-        self.progress_label.setAlignment(Qt.AlignCenter)
-        self.progress_label.setStyleSheet("color: #888888; font-weight: bold;")
-        progress_layout.addWidget(self.progress_label, stretch=0)
+        self.user_progress_bar = ProgressBarWidget(bar_type="user")
+        user_progress_layout.addWidget(self.user_progress_bar, stretch=1)
         
-        bottom_layout.addWidget(progress_widget)
+        self.user_progress_label = QLabel("0%")
+        self.user_progress_label.setMinimumWidth(45)
+        self.user_progress_label.setAlignment(Qt.AlignCenter)
+        self.user_progress_label.setStyleSheet("color: #888888; font-weight: bold;")
+        user_progress_layout.addWidget(self.user_progress_label, stretch=0)
+        
+        bottom_layout.addWidget(user_progress_widget)
+        
+        # Ghost progress bar section (initially hidden)
+        ghost_progress_widget = QWidget()
+        ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
+        ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
+        
+        ghost_label = QLabel("Ghost:")
+        ghost_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
+        ghost_label.setMinimumWidth(35)
+        ghost_progress_layout.addWidget(ghost_label, stretch=0)
+        
+        self.ghost_progress_bar = ProgressBarWidget(bar_type="ghost")
+        ghost_progress_layout.addWidget(self.ghost_progress_bar, stretch=1)
+        
+        self.ghost_progress_label = QLabel("0%")
+        self.ghost_progress_label.setMinimumWidth(45)
+        self.ghost_progress_label.setAlignment(Qt.AlignCenter)
+        self.ghost_progress_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
+        ghost_progress_layout.addWidget(self.ghost_progress_label, stretch=0)
+        
+        self.ghost_progress_widget = ghost_progress_widget
+        self.ghost_progress_widget.setVisible(False)
+        bottom_layout.addWidget(ghost_progress_widget)
         
         # Stats display
         if DEBUG_STARTUP_TIMING:
@@ -231,6 +270,10 @@ class EditorTab(QWidget):
     def on_file_selected(self, file_path: str):
         """Handle file selection from tree."""
         self.ensure_loaded()
+        
+        if self.is_racing or self._race_pending_start:
+            self._finalize_ghost_race(cancelled=True)
+        
         # Save progress of current file if any
         if self.current_file and self.typing_area.engine:
             self._save_current_progress()
@@ -240,6 +283,12 @@ class EditorTab(QWidget):
         self.typing_area.load_file(file_path)
         self.typing_area.setFocus()
         self.file_tree.refresh_file_stats(file_path)
+        self.file_tree.refresh_incomplete_sessions()
+        
+        self._display_ghost_progress = False
+        self._ghost_cursor_position = 0
+        self.ghost_progress_widget.setVisible(False)
+        self.typing_area.clear_ghost_progress()
         
         # Update ghost button state
         self._update_ghost_button()
@@ -253,13 +302,27 @@ class EditorTab(QWidget):
             return
         stats = self.typing_area.get_stats()
         self.stats_display.update_stats(stats)
+        self._update_progress_indicator()
+    
+    def _update_progress_indicator(self):
+        """Refresh the progress bars."""
+        if not self._loaded or not self.typing_area.engine:
+            return
         
-        # Update progress bar
-        if self.typing_area.engine:
-            cursor_pos = self.typing_area.engine.state.cursor_position
-            total_chars = len(self.typing_area.engine.state.content)
-            self.progress_bar.set_progress(cursor_pos, total_chars)
-            self.progress_label.setText(self.progress_bar.get_progress_text())
+        total_chars = len(self.typing_area.engine.state.content)
+        user_pos = self.typing_area.engine.state.cursor_position
+        
+        # Update user progress bar
+        self.user_progress_bar.set_progress(user_pos, total_chars)
+        user_pct = (user_pos / total_chars * 100) if total_chars > 0 else 0
+        self.user_progress_label.setText(f"{user_pct:.0f}%")
+        
+        # Update ghost progress bar if racing
+        if self._display_ghost_progress and hasattr(self, 'ghost_progress_bar'):
+            ghost_pos = self._ghost_cursor_position
+            self.ghost_progress_bar.set_progress(ghost_pos, total_chars)
+            ghost_pct = (ghost_pos / total_chars * 100) if total_chars > 0 else 0
+            self.ghost_progress_label.setText(f"{ghost_pct:.0f}%")
     
     def update_display(self):
         """Periodic update of stats display."""
@@ -271,16 +334,30 @@ class EditorTab(QWidget):
     
     def on_reset_clicked(self):
         """Handle reset button click."""
+        self._perform_reset(cancel_race=True)
+    
+    def _perform_reset(self, cancel_race: bool = True):
+        """Reset typing session and optionally cancel an active race."""
         self.ensure_loaded()
         if not self.current_file:
             return
+        
+        if cancel_race and (self.is_racing or self._race_pending_start):
+            self._finalize_ghost_race(cancelled=True)
+        
         self.typing_area.reset_session()
-        # Clear saved progress
         stats_db.clear_session_progress(self.current_file)
         self.file_tree.refresh_file_stats(self.current_file)
-        # Reset progress bar
-        self.progress_bar.reset()
-        self.progress_label.setText("0%")
+        self.file_tree.refresh_incomplete_sessions()
+        
+        self._display_ghost_progress = False
+        self._ghost_cursor_position = 0
+        self.typing_area.clear_ghost_progress()
+        self.ghost_progress_widget.setVisible(False)
+        self.user_progress_bar.reset()
+        self.ghost_progress_bar.reset()
+        self.user_progress_label.setText("0%")
+        self.ghost_progress_label.setText("0%")
     
     def _set_instant_death_mode(self, enabled: bool, persist: bool):
         """Apply instant death mode to settings, button, and engine."""
@@ -336,7 +413,31 @@ class EditorTab(QWidget):
         from app import settings
         instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
         if instant_death_enabled:
-            self.on_reset_clicked()
+            if self.is_racing or self._race_pending_start:
+                # During a race, reset cursor to beginning but keep stats running
+                # The ghost should continue unaffected - don't stop the ghost timer!
+                # Save ghost state before reset
+                ghost_cursor = self._ghost_cursor_position
+                
+                # Reset user's cursor only - stats keep accumulating!
+                self.typing_area.reset_cursor_only()
+                
+                # Restore ghost progress after reset
+                self.typing_area.set_ghost_progress_limit(ghost_cursor)
+                
+                # Reset the first key flag so user has to press first key again
+                self.typing_area._has_emitted_first_key = False
+                
+                # Keep the race running! Don't set to pending.
+                # The ghost timer keeps advancing, user can just start typing again
+                if self.is_racing:
+                    # Race is still active, ghost keeps going
+                    self.reset_btn.setText("⟲ Reset to Top")
+                
+                self.typing_area.setFocus()
+                self._update_progress_indicator()
+            else:
+                self.on_reset_clicked()
     
     def on_session_completed(self):
         """Handle completed typing session."""
@@ -348,6 +449,13 @@ class EditorTab(QWidget):
         # Get final stats
         stats = self.typing_area.get_stats()
         
+        # Check if this is a race completion - handle separately
+        race_handled = self._handle_user_finished_race(stats)
+        if race_handled:
+            # Race flow handles all stats saving and display
+            return
+        
+        # Normal (non-race) session completion
         # Save to database
         stats_db.update_file_stats(
             self.current_file,
@@ -369,7 +477,7 @@ class EditorTab(QWidget):
         )
 
         # Check and save ghost if this is a new best
-        self._check_and_save_ghost(stats)
+        is_new_best = self._check_and_save_ghost(stats)
 
         # Clear session progress and refresh tree highlights/stats
         stats_db.clear_session_progress(self.current_file)
@@ -381,15 +489,18 @@ class EditorTab(QWidget):
         if hasattr(parent_window, "refresh_history_tab"):
             parent_window.refresh_history_tab()
         
-        # Show completion message
-        QMessageBox.information(
-            self,
-            "Session Complete!",
-            f"Congratulations! You completed the file.\n\n"
-            f"WPM: {stats['wpm']:.1f}\n"
-            f"Accuracy: {stats['accuracy']*100:.1f}%\n"
-            f"Time: {stats['time']:.1f}s"
-        )
+        # Show completion message with new best notification if applicable
+        title = "Session Complete! 🎉"
+        message = f"Congratulations! You completed the file.\n\n"
+        message += f"WPM: {stats['wpm']:.1f}\n"
+        message += f"Accuracy: {stats['accuracy']*100:.1f}%\n"
+        message += f"Time: {stats['time']:.1f}s"
+        
+        if is_new_best:
+            message += f"\n\n🏆 New Personal Best! 👻\n"
+            message += f"Ghost saved! Challenge it with the 👻 button."
+        
+        QMessageBox.information(self, title, message)
     
     def _save_current_progress(self):
         """Save progress of current file."""
@@ -457,17 +568,20 @@ class EditorTab(QWidget):
             self.on_stats_updated()
     
     def update_progress_bar_color(self):
-        """Update progress bar when color settings change."""
-        if self._loaded and hasattr(self, 'progress_bar'):
-            self.progress_bar.update()
+        """Update progress bars when color settings change."""
+        if self._loaded:
+            if hasattr(self, 'user_progress_bar'):
+                self.user_progress_bar.update()
+            if hasattr(self, 'ghost_progress_bar'):
+                self.ghost_progress_bar.update()
     
     def apply_theme(self):
         """Apply current theme to stats display."""
         if self._loaded and hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
     
-    def _check_and_save_ghost(self, stats: dict):
-        """Check if this session is a new best and save ghost if so."""
+    def _check_and_save_ghost(self, stats: dict) -> bool:
+        """Check if this session is a new best and save ghost if so. Returns True if new best."""
         from app.ghost_manager import get_ghost_manager
         from datetime import datetime
         
@@ -496,18 +610,11 @@ class EditorTab(QWidget):
             )
             
             if success:
-                # Notify user about new best
-                QMessageBox.information(
-                    self,
-                    "New Best! 👻",
-                    f"Congratulations! This is your best run for this file.\n\n"
-                    f"WPM: {wpm:.1f}\n"
-                    f"Accuracy: {accuracy * 100:.1f}%\n\n"
-                    f"Ghost replay saved! Click the 👻 button to watch it."
-                )
-                
                 # Update ghost button state
                 self._update_ghost_button()
+                return True
+        
+        return False
     
     def _update_ghost_button(self):
         """Update ghost button enabled state based on availability."""
@@ -528,28 +635,26 @@ class EditorTab(QWidget):
                     if stats.get("instant_death") is not None:
                         instant_line = "\nInstant Death: " + ("On" if stats["instant_death"] else "Off")
                     self.ghost_btn.setToolTip(
-                        f"Watch Ghost Replay\n\n"
+                        "Race Your Ghost\n\n"
                         f"Best: {stats['wpm']:.1f} WPM at {stats['accuracy']:.1f}% accuracy\n"
-                        f"Recorded: {stats['date'][:10]}" + instant_line
+                        f"Recorded: {stats['date'][:10]}{instant_line}"
                     )
+                else:
+                    self.ghost_btn.setToolTip("Race Your Ghost\n\nBest run data not available.")
             else:
-                self.ghost_btn.setToolTip("Ghost Not Available\n\nComplete this file to create a ghost replay!")
+                self.ghost_btn.setToolTip("Ghost Not Available\n\nComplete this file to unlock a ghost race!")
         else:
             self.ghost_btn.setEnabled(False)
+            self.ghost_btn.setToolTip("Select a file to race your ghost.")
     
     def on_ghost_clicked(self):
-        """Handle ghost button click - show replay."""
-        # If replay is running, treat button as stop control
-        if self.is_replaying:
-            self._finalize_ghost_replay(cancelled=True)
+        """Handle ghost button click - start or cancel a race."""
+        if self.is_racing or self._race_pending_start:
+            self._finalize_ghost_race(cancelled=True)
             return
         
         if not self.current_file:
-            QMessageBox.information(
-                self,
-                "No File",
-                "Please select a file to watch its ghost replay."
-            )
+            QMessageBox.information(self, "No File", "Please select a file to race against its ghost.")
             return
         
         from app.ghost_manager import get_ghost_manager
@@ -560,199 +665,402 @@ class EditorTab(QWidget):
             QMessageBox.information(
                 self,
                 "Ghost Not Available",
-                "No ghost replay available for this file.\n\n"
-                "Complete the file with a good WPM to create one!"
+                "No ghost data available for this file.\n\nComplete the file with a strong run to create one!",
             )
             return
         
-        # Show ghost stats and confirmation
-        result = QMessageBox.question(
-            self,
-            "Ghost Replay",
-            f"Watch best run for this file?\n\n"
-            f"WPM: {ghost_data['wpm']:.1f}\n"
-            f"Accuracy: {ghost_data['acc']:.1f}%\n"
-            f"Recorded: {ghost_data['date'][:19]}\n"
-            f"Keystrokes: {len(ghost_data['keys'])}\n\n"
-            f"The replay will automatically type through the file.",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if result == QMessageBox.Yes:
-            self.start_ghost_replay(ghost_data)
+        # Start the race immediately - skip confirmation popup
+        self.start_ghost_race(ghost_data)
     
-    def start_ghost_replay(self, ghost_data: dict):
-        """Begin a ghost replay using the provided keystroke data."""
+    def start_ghost_race(self, ghost_data: dict):
+        """Prepare the UI and engines for a ghost race."""
         keystrokes = ghost_data.get("keys", [])
         if not keystrokes:
-            QMessageBox.warning(
-                self,
-                "Ghost Replay",
-                "This ghost does not contain any keystrokes to replay."
-            )
+            QMessageBox.warning(self, "Ghost Race", "This ghost does not contain any keystrokes to replay.")
             return
-
-        # If a replay is already active, cancel it first
-        if self.is_replaying:
-            self._finalize_ghost_replay(cancelled=True)
-
-        self.is_replaying = True
+        
         self._current_ghost_data = ghost_data
-        self._replay_keystrokes = keystrokes
-        self._replay_index = 0
-        self._replay_prev_timestamp = keystrokes[0].get("t", 0)
-
-        # Sync instant death mode for replay and lock the control
-        recorded_instant_death = ghost_data.get("instant_death_mode")
-        self._instant_death_pre_replay = self.instant_death_btn.isChecked()
-        self._instant_death_tooltip_pre_replay = self.instant_death_btn.toolTip()
-        if recorded_instant_death is not None:
-            self._set_instant_death_mode(bool(recorded_instant_death), persist=False)
-        self.instant_death_btn.setEnabled(False)
-        self.instant_death_btn.setToolTip("Instant Death is locked during replay")
-
-        # Prepare typing area and UI
-        self.typing_area.stop_ghost_recording()
+        self._ghost_keystrokes = keystrokes
+        self._ghost_index = 0
+        self._ghost_prev_timestamp = 0
+        self._ghost_cursor_position = 0
+        self._ghost_finish_elapsed = ghost_data.get("final_stats", {}).get("time")
+        self._user_finish_elapsed = None
+        self._race_start_perf = None
+        self._display_ghost_progress = True
+        
+        if self._ghost_timer.isActive():
+            self._ghost_timer.stop()
+        
+        user_engine = self.typing_area.engine
+        pause_delay = getattr(user_engine, "pause_delay", 7.0) if user_engine else 7.0
+        # Ghost should always allow continuing through mistakes - it's just replaying a recording
+        self._ghost_engine = TypingEngine(
+            self.typing_area.original_content,
+            pause_delay=pause_delay,
+            allow_continue_mistakes=True,  # Ghost must always continue to replay correctly
+        )
+        
         self.typing_area.reset_session()
-        self.typing_area.setEnabled(False)
-        self.typing_area.setFocus()
-
+        stats_db.clear_session_progress(self.current_file)
+        self.file_tree.refresh_file_stats(self.current_file)
+        self.file_tree.refresh_incomplete_sessions()
+        
+        self.typing_area.clear_ghost_progress()
+        self.typing_area.update_colors()  # Ensure ghost text color is applied
+        self.typing_area.start_ghost_recording()
+        self.ghost_progress_widget.setVisible(True)
+        self._update_progress_indicator()
+        
         self.file_tree.setEnabled(False)
         self.reset_btn.setEnabled(False)
-        self.reset_btn.setText("⏸ Replay Running")
-
-        self.ghost_btn.setText("🛑 Stop")
-        self.ghost_btn.setToolTip("Stop the ghost replay")
-
-        # Ensure timer is ready
-        if self._replay_timer.isActive():
-            self._replay_timer.stop()
-
-        # Kick off the replay immediately
-        self._replay_timer.start(0)
-
-    def _advance_ghost_replay(self):
-        """Advance the replay by one keystroke."""
-        if not self.is_replaying or self._replay_index >= len(self._replay_keystrokes):
-            # Nothing to play; finish gracefully
-            self._finalize_ghost_replay(cancelled=False)
+        self.reset_btn.setText("⏳ Waiting for Start")
+        self.ghost_btn.setText("🛑 Cancel")
+        self.ghost_btn.setToolTip("Cancel the current ghost race")
+        
+        recorded_instant_death = ghost_data.get("instant_death_mode")
+        self._instant_death_pre_race = self.instant_death_btn.isChecked()
+        self._instant_death_tooltip_pre_race = self.instant_death_btn.toolTip()
+        if recorded_instant_death is not None:
+            # Temporarily update settings so instant death works during race
+            self._set_instant_death_mode(bool(recorded_instant_death), persist=True)
+        self.instant_death_btn.setEnabled(False)
+        self.instant_death_btn.setToolTip("Instant Death is locked during the race")
+        
+        self._race_pending_start = True
+        self.is_racing = False
+        self.typing_area.setFocus()
+    
+    def _on_first_race_key(self):
+        """Start the ghost playback on the user's first key press."""
+        if not self._race_pending_start or not self._ghost_keystrokes:
             return
-
-        keystroke = self._replay_keystrokes[self._replay_index]
+        
+        self._race_pending_start = False
+        self.is_racing = True
+        self.reset_btn.setText("⟲ Reset to Top")
+        self.reset_btn.setEnabled(False)
+        self._race_start_perf = time.perf_counter()
+        
+        # Start ghost immediately - don't wait for first timestamp
+        self._ghost_prev_timestamp = 0
+        self._ghost_timer.start(0)  # Start immediately!
+    
+    def _advance_ghost_race(self):
+        """Advance the ghost playback timeline."""
+        if not self.is_racing or self._ghost_index >= len(self._ghost_keystrokes):
+            self._handle_ghost_finish()
+            return
+        
+        keystroke = self._ghost_keystrokes[self._ghost_index]
         key_char = keystroke.get("k", "")
-        timestamp = keystroke.get("t", self._replay_prev_timestamp)
-
-        self._dispatch_ghost_key(key_char)
-
-        self._replay_index += 1
-
-        if self._replay_index >= len(self._replay_keystrokes):
-            self._finalize_ghost_replay(cancelled=False)
+        timestamp = keystroke.get("t", self._ghost_prev_timestamp)
+        
+        self._apply_ghost_keystroke(key_char)
+        self._ghost_index += 1
+        self._ghost_prev_timestamp = timestamp
+        
+        if self._ghost_index >= len(self._ghost_keystrokes):
+            self._handle_ghost_finish()
             return
-
-        next_timestamp = self._replay_keystrokes[self._replay_index].get("t", timestamp)
+        
+        next_timestamp = self._ghost_keystrokes[self._ghost_index].get("t", timestamp)
         delay = max(0, int(next_timestamp - timestamp))
-        self._replay_prev_timestamp = next_timestamp
-        self._replay_timer.start(delay)
-
-    def _dispatch_ghost_key(self, key_char: str):
-        """Send a single keystroke to the typing area."""
-        if not key_char:
+        self._ghost_timer.start(delay)
+    
+    def _apply_ghost_keystroke(self, key_char: str):
+        """Advance the ghost engine using a recorded keystroke."""
+        if not self._ghost_engine:
             return
-
-        # Determine key code and text
-        modifiers = Qt.NoModifier
-        if key_char == '\b':
-            key_code = Qt.Key_Backspace
-            text = ""
-        elif key_char == '\n':
-            key_code = Qt.Key_Return
-            text = "\n"
-        elif key_char == '\t':
-            key_code = Qt.Key_Tab
-            text = "\t"
-        elif key_char == '<CTRL-BACKSPACE>':
-            key_code = Qt.Key_Backspace
-            text = ""
-            modifiers = Qt.ControlModifier
-        elif key_char == ' ':
-            key_code = Qt.Key_Space
-            text = " "
+        
+        if key_char == "<CTRL-BACKSPACE>":
+            self._ghost_engine.process_ctrl_backspace()
+        elif key_char == "\b":
+            self._ghost_engine.process_backspace()
+        elif key_char == "\t":
+            for _ in range(4):
+                self._ghost_engine.process_keystroke(" ")
+        elif key_char == "\n":
+            self._ghost_engine.process_keystroke("\n")
+        elif key_char == " ":
+            self._ghost_engine.process_keystroke(" ")
+        elif key_char:
+            self._ghost_engine.process_keystroke(key_char)
+        
+        self._ghost_cursor_position = self._ghost_engine.state.cursor_position
+        self.typing_area.set_ghost_progress_limit(self._ghost_cursor_position)
+        self._update_progress_indicator()
+    
+    def _handle_ghost_finish(self):
+        """Handle the ghost finishing its recorded run."""
+        if self._ghost_timer.isActive():
+            self._ghost_timer.stop()
+        
+        if self._ghost_engine:
+            self._ghost_cursor_position = self._ghost_engine.state.cursor_position
         else:
-            text = key_char
-            key_code = ord(key_char.upper()) if len(key_char) == 1 else Qt.Key_unknown
-        event = QKeyEvent(QEvent.KeyPress, key_code, modifiers, text)
+            self._ghost_cursor_position = len(self.typing_area.original_content)
+        
+        self.typing_area.set_ghost_progress_limit(self._ghost_cursor_position)
+        self._display_ghost_progress = True
+        self.ghost_progress_widget.setVisible(True)
+        self._update_progress_indicator()
+        
+        if self._ghost_finish_elapsed is None:
+            if self._current_ghost_data and self._current_ghost_data.get("final_stats"):
+                self._ghost_finish_elapsed = self._current_ghost_data["final_stats"].get("time")
+            if self._ghost_finish_elapsed is None and self._ghost_keystrokes:
+                self._ghost_finish_elapsed = self._ghost_keystrokes[-1].get("t", 0) / 1000.0
+        
+        # Ghost finished, but user continues - don't end race yet
+        # Race will end when user finishes in _handle_user_finished_race
+    
+    def _handle_user_finished_race(self, stats: dict) -> bool:
+        """Finalize race flow when the user finishes their run."""
+        if not (self.is_racing or self._race_pending_start):
+            return False
+        
+        if self._race_start_perf is not None:
+            self._user_finish_elapsed = time.perf_counter() - self._race_start_perf
+        else:
+            self._user_finish_elapsed = stats.get("time")
+        
+        if self._ghost_timer.isActive():
+            self._ghost_timer.stop()
+        
+        if self._ghost_finish_elapsed is None:
+            if self._current_ghost_data and self._current_ghost_data.get("final_stats"):
+                self._ghost_finish_elapsed = self._current_ghost_data["final_stats"].get("time")
+            if self._ghost_finish_elapsed is None and self._ghost_keystrokes:
+                self._ghost_finish_elapsed = self._ghost_keystrokes[-1].get("t", 0) / 1000.0
+        
+        if self._ghost_engine:
+            self._ghost_cursor_position = self._ghost_engine.state.cursor_position
+        self._display_ghost_progress = True
+        self.ghost_progress_widget.setVisible(True)
+        self._update_progress_indicator()
+        
+        # Determine winner based on finish times
+        user_time = self._user_finish_elapsed
+        ghost_time = self._ghost_finish_elapsed or float("inf")
+        winner = "user" if user_time <= ghost_time else "ghost"
+        
+        # Save race results to database with corrected stats
+        # Calculate accurate stats based on actual race time
+        if user_time and user_time > 0:
+            user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
+            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+            minutes = user_time / 60.0
+            race_wpm = (user_completed_chars / 5.0) / minutes if minutes > 0 else 0.0
+        else:
+            race_wpm = stats.get("wpm", 0.0)
+            user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
+            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+        
+        # Calculate accuracy from engine state
+        if self.typing_area.engine:
+            total_keystrokes = self.typing_area.engine.state.total_keystrokes()
+            if total_keystrokes > 0:
+                race_accuracy = self.typing_area.engine.state.correct_keystrokes / total_keystrokes
+            else:
+                race_accuracy = 1.0
+            race_correct = self.typing_area.engine.state.correct_keystrokes
+            race_incorrect = self.typing_area.engine.state.incorrect_keystrokes
+        else:
+            race_accuracy = stats.get("accuracy", 1.0)
+            race_correct = stats.get("correct", 0)
+            race_incorrect = stats.get("incorrect", 0)
+        
+        # Only save if user completed the file
+        if user_completed_chars >= user_total_chars:
+            # Save to database with race stats
+            stats_db.update_file_stats(
+                self.current_file,
+                wpm=race_wpm,
+                accuracy=race_accuracy,
+                completed=True
+            )
 
-        # Temporarily enable the typing area to receive the event
-        was_enabled = self.typing_area.isEnabled()
-        if not was_enabled:
-            self.typing_area.setEnabled(True)
+            stats_db.record_session_history(
+                file_path=self.current_file,
+                language=get_language_for_file(self.current_file),
+                wpm=race_wpm,
+                accuracy=race_accuracy,
+                total_keystrokes=race_correct + race_incorrect,
+                correct_keystrokes=race_correct,
+                incorrect_keystrokes=race_incorrect,
+                duration=user_time,
+                completed=True,
+            )
 
-        QApplication.sendEvent(self.typing_area, event)
+            # Check and save new ghost if this beat the old one
+            race_stats = {
+                "wpm": race_wpm,
+                "accuracy": race_accuracy,
+                "time": user_time,
+                "correct": race_correct,
+                "incorrect": race_incorrect,
+                "total": race_correct + race_incorrect,
+            }
+            is_new_best = self._check_and_save_ghost(race_stats)
 
-        if not was_enabled:
-            self.typing_area.setEnabled(False)
+            # Clear session progress and refresh tree highlights/stats
+            stats_db.clear_session_progress(self.current_file)
+            self.file_tree.refresh_file_stats(self.current_file)
 
-    def _finalize_ghost_replay(self, cancelled: bool):
-        """Clean up replay state and restore the UI."""
-        if self._replay_timer.isActive():
-            self._replay_timer.stop()
-
-        was_replaying = self.is_replaying
-        self.is_replaying = False
-
-        self._replay_keystrokes = []
-        self._replay_index = 0
-        self._replay_prev_timestamp = 0
-
-        ghost_data = self._current_ghost_data
-        self._current_ghost_data = None
-
-        # Restore UI state
-        self.typing_area.setEnabled(True)
+            parent_window = self.window()
+            if hasattr(parent_window, "refresh_languages_tab"):
+                parent_window.refresh_languages_tab()
+            if hasattr(parent_window, "refresh_history_tab"):
+                parent_window.refresh_history_tab()
+        else:
+            is_new_best = False
+        
+        self._finalize_ghost_race(cancelled=False, winner=winner, is_new_best=is_new_best)
+        return True
+    
+    def _finalize_ghost_race(self, cancelled: bool, winner: Optional[str] = None, reason: Optional[str] = None, is_new_best: bool = False):
+        """Clean up race state, restore UI, and optionally show results."""
+        if self._ghost_timer.isActive():
+            self._ghost_timer.stop()
+        
+        race_was_active = self.is_racing or self._race_pending_start
+        self.is_racing = False
+        self._race_pending_start = False
+        
         self.file_tree.setEnabled(True)
         self.reset_btn.setEnabled(True)
         self.reset_btn.setText("⟲ Reset to Top")
-
+        
         self.ghost_btn.setText("👻")
         self._update_ghost_button()
-
+        
         self.instant_death_btn.setEnabled(True)
-        if self._instant_death_pre_replay is not None:
-            self._set_instant_death_mode(self._instant_death_pre_replay, persist=False)
-        if self._instant_death_tooltip_pre_replay is not None:
-            self.instant_death_btn.setToolTip(self._instant_death_tooltip_pre_replay)
+        if self._instant_death_pre_race is not None:
+            self._set_instant_death_mode(self._instant_death_pre_race, persist=True)
+        if self._instant_death_tooltip_pre_race is not None:
+            self.instant_death_btn.setToolTip(self._instant_death_tooltip_pre_race)
         else:
             self.instant_death_btn.setToolTip("Reset to top on any mistake")
-        self._instant_death_pre_replay = None
-        self._instant_death_tooltip_pre_replay = None
-
+        self._instant_death_pre_race = None
+        self._instant_death_tooltip_pre_race = None
+        
+        ghost_data = self._current_ghost_data
+        user_stats = self.typing_area.get_stats()
+        self._current_ghost_data = None
+        self._ghost_engine = None
+        self._ghost_keystrokes = []
+        self._ghost_index = 0
+        self._ghost_prev_timestamp = 0
+        self._race_start_perf = None
+        
         if cancelled:
-            self.typing_area.reset_session()
-            self.on_stats_updated()
-        elif was_replaying:
-            # Replay completed successfully - show original final stats if we have them
-            if ghost_data and ghost_data.get("final_stats"):
-                self.stats_display.update_stats(ghost_data["final_stats"])
-                self.progress_bar.set_progress(1, 1)
-                self.progress_label.setText("100%")
-            else:
-                self.on_stats_updated()
-
-            QMessageBox.information(
-                self,
-                "Replay Complete",
-                "Ghost replay finished!\n\nClick Reset to start typing yourself."
-            )
-
-        # Restart recording for the user's next attempt
-        self.typing_area.start_ghost_recording()
-
+            self._display_ghost_progress = False
+            self._ghost_cursor_position = 0
+            self.typing_area.clear_ghost_progress()
+            self.ghost_progress_widget.setVisible(False)
+        else:
+            self._display_ghost_progress = True
+            self.ghost_progress_widget.setVisible(True)
+        
+        self._update_progress_indicator()
         self.typing_area.setFocus()
+        
+        if not race_was_active:
+            self._user_finish_elapsed = None
+            self._ghost_finish_elapsed = None
+            return
+        
+        if cancelled:
+            self._user_finish_elapsed = None
+            self._ghost_finish_elapsed = None
+            return
+        
+        # Calculate accurate stats based on actual race time
+        user_time = self._user_finish_elapsed if self._user_finish_elapsed is not None else user_stats.get("time")
+        
+        # Recalculate WPM based on actual race time (not engine's elapsed time)
+        if user_time and user_time > 0:
+            user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
+            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+            minutes = user_time / 60.0
+            user_wpm = (user_completed_chars / 5.0) / minutes if minutes > 0 else 0.0
+        else:
+            user_wpm = user_stats.get("wpm", 0.0)
+            user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
+            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+        
+        # Calculate accuracy from engine state
+        if self.typing_area.engine:
+            total_keystrokes = self.typing_area.engine.state.total_keystrokes()
+            if total_keystrokes > 0:
+                user_acc = (self.typing_area.engine.state.correct_keystrokes / total_keystrokes) * 100
+            else:
+                user_acc = 100.0
+        else:
+            user_acc = user_stats.get("accuracy", 0.0) * 100
+        
+        user_completion = (user_completed_chars / user_total_chars * 100) if user_total_chars > 0 else 0
+        
+        ghost_time = self._ghost_finish_elapsed
+        if ghost_time is None and ghost_data and ghost_data.get("final_stats"):
+            ghost_time = ghost_data["final_stats"].get("time")
+        ghost_wpm = ghost_data.get("wpm") if ghost_data else None
+        ghost_acc = ghost_data.get("acc") if ghost_data else None
+        
+        if winner == "user":
+            title = "You Win! 🎉"
+            body = "You finished before your ghost!\n\n"
+        elif winner == "ghost":
+            title = "Ghost Wins 👻"
+            if reason == "instant_death":
+                body = "Instant death triggered, so the ghost wins this round.\n\n"
+            else:
+                body = "Your ghost crossed the finish line first, but you kept going!\n\n"
+        else:
+            title = "Race Complete"
+            body = ""
+        
+        # User stats - always show completion percentage
+        body += f"📊 Your Performance:\n"
+        body += f"  Completion: {user_completion:.1f}%\n"
+        if user_time is not None:
+            body += f"  Time: {user_time:.2f}s\n"
+        body += f"  WPM: {user_wpm:.1f}\n"
+        body += f"  Accuracy: {user_acc:.1f}%\n\n"
+        
+        # Ghost stats
+        if ghost_time is not None or ghost_wpm is not None:
+            body += f"👻 Ghost Performance:\n"
+            if ghost_time is not None:
+                body += f"  Time: {ghost_time:.2f}s\n"
+            if ghost_wpm is not None:
+                body += f"  WPM: {ghost_wpm:.1f}\n"
+            if ghost_acc is not None:
+                body += f"  Accuracy: {ghost_acc:.1f}%\n"
+        
+        # Time comparison
+        if user_time is not None and ghost_time is not None:
+            delta = user_time - ghost_time
+            body += f"\n"
+            if winner == "user":
+                body += f"⏱️ You were {abs(delta):.2f}s faster!"
+            elif winner == "ghost":
+                body += f"⏱️ Ghost was {abs(delta):.2f}s faster."
+        
+        # Add new best notification if applicable
+        if is_new_best:
+            body += f"\n\n🏆 New Personal Best! 👻\n"
+            body += f"Ghost saved! Challenge it again with the 👻 button."
+        
+        QMessageBox.information(self, title, body.strip())
+        
+        self._user_finish_elapsed = None
+        self._ghost_finish_elapsed = None
 
     def closeEvent(self, event):
         """Handle widget close - save progress."""
-        if self.is_replaying:
-            self._finalize_ghost_replay(cancelled=True)
+        if self.is_racing or self._race_pending_start:
+            self._finalize_ghost_race(cancelled=True)
         self.save_active_progress()
         super().closeEvent(event)

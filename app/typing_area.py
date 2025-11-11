@@ -29,8 +29,13 @@ class TypingHighlighter(QSyntaxHighlighter):
         self.incorrect_format = QTextCharFormat()
         incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
         self.incorrect_format.setForeground(QColor(incorrect_color))
+
+        self.ghost_format = QTextCharFormat()
+        ghost_color = settings.get_setting("ghost_text_color", "#8AB4F8")
+        self.ghost_format.setForeground(QColor(ghost_color))
         
         self.typed_chars = {}  # position -> {typed, expected, is_correct}
+        self.ghost_display_limit = 0
     
     def set_typed_char(self, position: int, typed_char: str, expected_char: str, is_correct: bool):
         """Record a typed character at a position."""
@@ -69,9 +74,29 @@ class TypingHighlighter(QSyntaxHighlighter):
             elif pos < self.engine.state.cursor_position:
                 # Already typed correctly (moved past it)
                 self.setFormat(i, 1, self.correct_format)
+            elif pos < self.ghost_display_limit:
+                self.setFormat(i, 1, self.ghost_format)
             else:
                 # Not yet typed
                 self.setFormat(i, 1, self.untyped_format)
+
+    def set_ghost_display_limit(self, limit: int):
+        """Update the highest display index the ghost has reached."""
+        new_limit = max(0, limit)
+        if new_limit != self.ghost_display_limit:
+            self.ghost_display_limit = new_limit
+            self.rehighlight()
+
+    def clear_ghost_progress(self):
+        """Clear any ghost overlay progress."""
+        if self.ghost_display_limit != 0:
+            self.ghost_display_limit = 0
+            self.rehighlight()
+
+    def set_ghost_color(self, color_hex: str):
+        """Update the ghost text color."""
+        self.ghost_format.setForeground(QColor(color_hex))
+        self.rehighlight()
 
 
 class TypingAreaWidget(QTextEdit):
@@ -80,6 +105,7 @@ class TypingAreaWidget(QTextEdit):
     stats_updated = Signal()  # Emitted when stats change
     session_completed = Signal()  # Emitted when file is fully typed
     mistake_occurred = Signal()  # Emitted when user makes a typing mistake
+    first_key_pressed = Signal()  # Emitted when user presses the first race key
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -142,6 +168,10 @@ class TypingAreaWidget(QTextEdit):
         self.is_recording_ghost = False
         self.ghost_keystrokes = []
         self.ghost_start_time = None
+        self._has_emitted_first_key = False
+
+        # Ghost overlay state (race mode)
+        self._ghost_display_limit = 0
     
     # Property for smooth cursor animation
     def _get_cursor_x_pos(self):
@@ -197,6 +227,8 @@ class TypingAreaWidget(QTextEdit):
         
         # Setup highlighter
         self.highlighter = TypingHighlighter(self.document(), self.engine)
+        self._ghost_display_limit = 0
+        self.highlighter.clear_ghost_progress()
         
         # Reset cursor
         self.current_typing_position = 0
@@ -231,6 +263,10 @@ class TypingAreaWidget(QTextEdit):
         self.is_recording_ghost = True
         self.ghost_keystrokes = []
         self.ghost_start_time = time.time()
+        self._has_emitted_first_key = False
+        self._ghost_display_limit = 0
+        if self.highlighter:
+            self.highlighter.clear_ghost_progress()
         print("[GhostRecorder] Started recording")
     
     def stop_ghost_recording(self):
@@ -256,6 +292,19 @@ class TypingAreaWidget(QTextEdit):
     def get_ghost_data(self) -> list:
         """Get recorded ghost keystrokes."""
         return self.ghost_keystrokes
+
+    def set_ghost_progress_limit(self, engine_cursor: int):
+        """Update the ghost overlay based on ghost engine progress."""
+        display_pos = self._engine_to_display_position(engine_cursor)
+        self._ghost_display_limit = display_pos
+        if self.highlighter:
+            self.highlighter.set_ghost_display_limit(display_pos)
+
+    def clear_ghost_progress(self):
+        """Remove any ghost overlay from the editor."""
+        self._ghost_display_limit = 0
+        if self.highlighter:
+            self.highlighter.clear_ghost_progress()
     
     def _prepare_display_content(self, content: str) -> str:
         """Convert content for display with special characters."""
@@ -550,6 +599,34 @@ class TypingAreaWidget(QTextEdit):
         super().resizeEvent(event)
         self._update_cursor_geometry()
     
+    def _should_emit_first_key(self, event: QKeyEvent) -> bool:
+        """Check whether the key event should trigger the first-key signal."""
+        key = event.key()
+        text = event.text()
+        modifiers = event.modifiers()
+
+        if modifiers == Qt.ControlModifier and key == Qt.Key_P:
+            return False
+
+        if modifiers & Qt.ControlModifier and key == Qt.Key_Backspace:
+            return True
+
+        if key in (Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Return, Qt.Key_Enter):
+            return True
+
+        if key == Qt.Key_Space:
+            return True
+
+        if text and text.strip():
+            return True
+
+        return False
+
+    def _maybe_emit_first_key(self, event: QKeyEvent):
+        if not self._has_emitted_first_key and self._should_emit_first_key(event):
+            self._has_emitted_first_key = True
+            self.first_key_pressed.emit()
+
     def keyPressEvent(self, event: QKeyEvent):
         """Handle keyboard input for typing."""
         if not self.engine:
@@ -569,6 +646,8 @@ class TypingAreaWidget(QTextEdit):
             self.stats_updated.emit()
             event.accept()
             return
+        
+        self._maybe_emit_first_key(event)
         
         # Play keypress sound for valid typing keys
         from app.sound_manager import get_sound_manager
@@ -729,6 +808,20 @@ class TypingAreaWidget(QTextEdit):
             self.current_typing_position = 0
             self._update_cursor_position()
             self.stats_updated.emit()
+        self._has_emitted_first_key = False
+        self.clear_ghost_progress()
+    
+    def reset_cursor_only(self):
+        """Reset cursor to beginning but keep stats running (for race mode instant death)."""
+        if self.engine:
+            self.engine.reset_cursor_only()
+            self.highlighter.clear_all()
+            self.setPlainText(self.display_content)
+            self.current_typing_position = 0
+            self._update_cursor_position()
+            self.stats_updated.emit()
+        self._has_emitted_first_key = False
+        # Don't clear ghost progress - that's handled by the caller
     
     def _calculate_current_accuracy(self) -> float:
         """Calculate accuracy based on current text correctness rather than keystroke history."""
@@ -798,6 +891,9 @@ class TypingAreaWidget(QTextEdit):
             
             incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
             self.highlighter.incorrect_format.setForeground(QColor(incorrect_color))
+
+            ghost_color = settings.get_setting("ghost_text_color", "#8AB4F8")
+            self.highlighter.set_ghost_color(ghost_color)
             
             # Trigger rehighlight to apply changes
             self.highlighter.rehighlight()

@@ -190,6 +190,12 @@ class TypingEngine:
         self.state.is_finished = False
         self.mistake_at = None
     
+    def reset_cursor_only(self):
+        """Reset cursor to beginning but keep stats running (for race mode instant death)."""
+        self.state.cursor_position = 0
+        self.mistake_at = None
+        # Keep time running, keep keystroke counts, keep paused state
+    
     def get_final_stats(self) -> dict:
         """Get final stats at the end of a session."""
         return {

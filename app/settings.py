@@ -130,6 +130,36 @@ def init_db(path: Optional[str] = None):
     
     # Progress bar color
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("progress_bar_color", "#4CAF50"))
+
+    # Race color settings (preserve any customized progress color)
+    cur.execute("SELECT value FROM settings WHERE key=?", ("progress_bar_color",))
+    row = cur.fetchone()
+    existing_progress_color = row[0] if row and row[0] else "#4CAF50"
+
+    cur.execute(
+        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
+        ("user_progress_bar_color", existing_progress_color),
+    )
+    cur.execute(
+        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
+        ("ghost_progress_bar_color", "#9C27B0"),
+    )
+    cur.execute(
+        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
+        ("ghost_text_color", "#8AB4F8"),
+    )
+
+    # Upgrade legacy customizations if user color matches default placeholder
+    cur.execute(
+        "SELECT value FROM settings WHERE key=?",
+        ("user_progress_bar_color",),
+    )
+    migrated_row = cur.fetchone()
+    if migrated_row and migrated_row[0] == "#4CAF50" and existing_progress_color != "#4CAF50":
+        cur.execute(
+            "UPDATE settings SET value=? WHERE key=?",
+            (existing_progress_color, "user_progress_bar_color"),
+        )
     
     conn.commit()
     conn.close()
