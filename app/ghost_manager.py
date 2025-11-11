@@ -7,12 +7,28 @@ from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
 
+# Import portable data manager for exe/AppImage builds
+try:
+    from app.portable_data import get_ghosts_dir, is_portable
+    _PORTABLE_MODE_AVAILABLE = True
+except ImportError:
+    _PORTABLE_MODE_AVAILABLE = False
+    def get_ghosts_dir():
+        return Path("ghosts")
+    def is_portable():
+        return False
+
 
 class GhostManager:
     """Manages ghost replay data - stores only the best session per file."""
     
     def __init__(self):
-        self.ghosts_dir = Path("ghosts")
+        # Use portable ghosts directory if running as exe/AppImage
+        if _PORTABLE_MODE_AVAILABLE and is_portable():
+            self.ghosts_dir = get_ghosts_dir()
+        else:
+            self.ghosts_dir = Path("ghosts")
+        
         self.ghosts_dir.mkdir(exist_ok=True)
     
     def _get_file_hash(self, file_path: str) -> str:

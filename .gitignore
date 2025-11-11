@@ -16,6 +16,13 @@ typing_stats.db      # User's typing session history and settings
 # Generated icon files (can be regenerated from icon.svg)
 app/icon_*.png
 app/icon.png
+app/icon.ico
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+AppDir/
 
 # IDE/Editor files
 .vscode/

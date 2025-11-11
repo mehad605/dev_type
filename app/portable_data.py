@@ -1,0 +1,168 @@
+"""
+Portable Data Directory Manager
+
+This module handles the creation and management of a portable data directory
+that sits alongside the executable/AppImage. This enables:
+1. True portable distribution (no installation needed)
+2. Easy updates (replace exe, keep data folder)
+3. User data persistence across versions
+
+Directory Structure:
+    dev_type.exe or dev_type.AppImage
+    data/
+        typing_stats.db      (SQLite database)
+        ghosts/              (Ghost replay files)
+        settings/            (Future: custom settings exports)
+        logs/                (Future: application logs)
+
+The data folder is created automatically on first run if it doesn't exist.
+"""
+import sys
+from pathlib import Path
+from typing import Optional
+
+
+class PortableDataManager:
+    """Manages portable data directory for the application."""
+    
+    _instance: Optional['PortableDataManager'] = None
+    _initialized: bool = False
+    
+    def __new__(cls):
+        """Singleton pattern to ensure one instance."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        """Initialize the portable data manager."""
+        if self._initialized:
+            return
+            
+        self._base_dir: Optional[Path] = None
+        self._data_dir: Optional[Path] = None
+        self._is_portable: bool = False
+        
+        self._detect_and_setup()
+        self._initialized = True
+    
+    def _detect_and_setup(self):
+        """Detect if running as portable app and setup data directory."""
+        # Determine the base directory (where the exe/AppImage is)
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable (PyInstaller)
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller creates a temp folder and stores path in _MEIPASS
+                # The actual executable is in sys.executable
+                self._base_dir = Path(sys.executable).parent
+                self._is_portable = True
+            else:
+                self._base_dir = Path(sys.executable).parent
+                self._is_portable = True
+        else:
+            # Running as Python script (development mode)
+            # Use the project root directory
+            self._base_dir = Path(__file__).parent.parent
+            self._is_portable = False
+        
+        # Data directory is always named 'data' next to the executable
+        self._data_dir = self._base_dir / "data"
+        
+        # Create data directory and subdirectories if they don't exist
+        self._ensure_directories()
+    
+    def _ensure_directories(self):
+        """Create data directory structure if it doesn't exist."""
+        if not self._data_dir.exists():
+            print(f"Creating portable data directory: {self._data_dir}")
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create subdirectories
+        subdirs = ['ghosts', 'settings', 'logs']
+        for subdir in subdirs:
+            subdir_path = self._data_dir / subdir
+            if not subdir_path.exists():
+                subdir_path.mkdir(parents=True, exist_ok=True)
+    
+    @property
+    def is_portable(self) -> bool:
+        """Check if running as portable executable."""
+        return self._is_portable
+    
+    @property
+    def base_dir(self) -> Path:
+        """Get the base directory (where exe/AppImage is located)."""
+        return self._base_dir
+    
+    @property
+    def data_dir(self) -> Path:
+        """Get the data directory path."""
+        return self._data_dir
+    
+    def get_database_path(self) -> Path:
+        """Get path to the SQLite database file."""
+        return self._data_dir / "typing_stats.db"
+    
+    def get_ghosts_dir(self) -> Path:
+        """Get path to the ghosts directory."""
+        return self._data_dir / "ghosts"
+    
+    def get_settings_dir(self) -> Path:
+        """Get path to the settings directory."""
+        return self._data_dir / "settings"
+    
+    def get_logs_dir(self) -> Path:
+        """Get path to the logs directory."""
+        return self._data_dir / "logs"
+    
+    def get_info(self) -> dict:
+        """Get information about the portable setup."""
+        return {
+            'is_portable': self._is_portable,
+            'base_dir': str(self._base_dir),
+            'data_dir': str(self._data_dir),
+            'database_path': str(self.get_database_path()),
+            'ghosts_dir': str(self.get_ghosts_dir()),
+            'data_dir_exists': self._data_dir.exists(),
+            'database_exists': self.get_database_path().exists(),
+        }
+
+
+# Global instance
+_portable_data_manager = PortableDataManager()
+
+
+# Convenience functions for easy access
+def get_data_manager() -> PortableDataManager:
+    """Get the global PortableDataManager instance."""
+    return _portable_data_manager
+
+
+def get_database_path() -> Path:
+    """Get path to the database file."""
+    return _portable_data_manager.get_database_path()
+
+
+def get_ghosts_dir() -> Path:
+    """Get path to the ghosts directory."""
+    return _portable_data_manager.get_ghosts_dir()
+
+
+def is_portable() -> bool:
+    """Check if running as portable executable."""
+    return _portable_data_manager.is_portable
+
+
+def get_data_dir() -> Path:
+    """Get the data directory path."""
+    return _portable_data_manager.data_dir
+
+
+if __name__ == "__main__":
+    # Test/debug output
+    manager = get_data_manager()
+    info = manager.get_info()
+    
+    print("=== Portable Data Manager Info ===")
+    for key, value in info.items():
+        print(f"{key:20s}: {value}")

@@ -13,6 +13,17 @@ import os
 from pathlib import Path
 from typing import Optional, List, Dict
 
+# Import portable data manager for exe/AppImage builds
+try:
+    from app.portable_data import get_database_path, is_portable
+    _PORTABLE_MODE_AVAILABLE = True
+except ImportError:
+    _PORTABLE_MODE_AVAILABLE = False
+    def get_database_path():
+        return None
+    def is_portable():
+        return False
+
 # Module-level variable to store the current DB path
 _current_db_path: Optional[Path] = None
 _db_initialized: bool = False
@@ -46,6 +57,17 @@ def _ensure_settings_cache_loaded():
 
 
 def get_data_dir() -> Path:
+    """Get the data directory for the application.
+    
+    In portable mode (exe/AppImage): uses data/ folder next to executable
+    In development mode: uses OS-specific app data directory
+    """
+    # Check if running in portable mode
+    if _PORTABLE_MODE_AVAILABLE and is_portable():
+        from app.portable_data import get_data_dir as get_portable_data_dir
+        return get_portable_data_dir()
+    
+    # Standard development/installed mode
     if os.name == "nt":
         base = os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming"
     else:
@@ -64,6 +86,13 @@ def _db_file(path: Optional[str] = None) -> Path:
         return p
     if _current_db_path:
         return _current_db_path
+    
+    # Use portable database path if available
+    if _PORTABLE_MODE_AVAILABLE and is_portable():
+        portable_db = get_database_path()
+        if portable_db:
+            return portable_db
+    
     return get_data_dir() / "data.db"
 
 
