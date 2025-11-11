@@ -110,7 +110,8 @@ class EditorTab(QWidget):
         # Ghost replay button
         self.ghost_btn = QPushButton("👻")
         self.ghost_btn.setToolTip("Watch Ghost Replay (Best Run)")
-        self.ghost_btn.setFixedSize(40, 34)
+        self.ghost_btn.setFixedHeight(34)
+        self.ghost_btn.setMinimumWidth(70)
         self.ghost_btn.clicked.connect(self.on_ghost_clicked)
         self.ghost_btn.setStyleSheet("""
             QPushButton {
@@ -620,7 +621,7 @@ class EditorTab(QWidget):
         self.reset_btn.setEnabled(False)
         self.reset_btn.setText("⏸ Replay Running")
 
-        self.ghost_btn.setText("⏹ Stop")
+        self.ghost_btn.setText("🛑 Stop")
         self.ghost_btn.setToolTip("Stop the ghost replay")
 
         # Ensure timer is ready
