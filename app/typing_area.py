@@ -909,9 +909,20 @@ class TypingAreaWidget(QTextEdit):
 
         # Hide Qt's default cursor so we can draw our own
         self.setCursorWidth(0)
+        
+        # Update cursor geometry and timer
         self._update_cursor_geometry()
         self._update_blink_timer()
+        
+        # Force cursor to be visible and trigger immediate redraw
+        self.cursor_visible = True
         self.viewport().update()
+        self.update()  # Force full widget update
+        
+        # If cursor is blinking, restart the blink cycle
+        if self.cursor_blink_mode == "blinking" and self.blink_timer:
+            self.blink_timer.stop()
+            self.blink_timer.start(530)  # Standard blink rate
     
     def update_space_char(self, space_char: str):
         """Update space character display dynamically."""

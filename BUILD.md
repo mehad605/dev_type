@@ -28,21 +28,21 @@ python build.py --linux --clean
 - **dev_type.exe** - Single-file portable executable
 - No installation needed
 - Runs from any location
-- Creates `data/` folder automatically
+- Creates `Dev_Type_Data/` folder automatically
 
 ### Linux
 - **dev_type** - Executable binary
 - Can be packaged into AppImage
 - Portable and self-contained
-- Creates `data/` folder automatically
+- Creates `Dev_Type_Data/` folder automatically
 
 ## Portable Data Directory
 
-When you run the executable, it automatically creates a `data/` folder in the same directory:
+When you run the executable, it automatically creates a `Dev_Type_Data/` folder in the same directory:
 
 ```
 dev_type.exe          (or dev_type.AppImage)
-data/
+Dev_Type_Data/
   ├── typing_stats.db   (your statistics and settings)
   ├── ghosts/           (your best session replays)
   ├── settings/         (future: custom exports)
@@ -51,10 +51,10 @@ data/
 
 ### Why This Matters
 
-1. **Easy Updates**: Just replace the `.exe` or `.AppImage`, keep the `data/` folder
+1. **Easy Updates**: Just replace the `.exe` or `.AppImage`, keep the `Dev_Type_Data/` folder
 2. **Portable**: Copy the folder to USB drive, cloud storage, etc.
 3. **No Data Loss**: Your progress is always preserved
-4. **Multi-Version**: Run different versions side-by-side with separate data folders
+4. **Multi-Version**: Run different versions side-by-side with separate Dev_Type_Data folders
 
 ## Build Requirements
 
@@ -125,7 +125,7 @@ After building the Linux executable, follow these steps:
 - `LICENSE` - License information
 
 **Do NOT include:**
-- `data/` folder (contains user-specific data)
+- `Dev_Type_Data/` folder (contains user-specific data)
 - Build artifacts (`build/`, `dist/`)
 
 ### Update Distribution
@@ -134,7 +134,7 @@ When you release an update:
 
 1. Build new executable: `python build.py --clean`
 2. Users download new `.exe` or `.AppImage`
-3. Users replace old executable, keeping `data/` folder
+3. Users replace old executable, keeping `Dev_Type_Data/` folder
 4. Launch new version - all data preserved! ✨
 
 ## Testing the Build
@@ -155,10 +155,10 @@ Before distributing:
    ```
 
 3. **Run from test location**
-   - Verify `data/` folder is created
+   - Verify `Dev_Type_Data/` folder is created
    - Complete a typing session
-   - Check that `data/typing_stats.db` exists
-   - Save a ghost, check `data/ghosts/` folder
+   - Check that `Dev_Type_Data/typing_stats.db` exists
+   - Save a ghost, check `Dev_Type_Data/ghosts/` folder
    - Close and reopen - verify data persists
 
 4. **Test update scenario**
@@ -184,7 +184,7 @@ python -m app.create_ico     # Create Windows ICO
 ### Build fails with import errors
 Check `build.py` and ensure all app modules are in `--hidden-import` list.
 
-### Data folder not created
+### Dev_Type_Data folder not created
 - Check `app/portable_data.py` 
 - Verify the executable has write permissions
 - Run from a location where you have write access

@@ -834,12 +834,6 @@ class MainWindow(QMainWindow):
         self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
         font_layout.addRow("Size:", self.font_size_spin)
         
-        self.font_ligatures_cb = QCheckBox("Enable font ligatures")
-        ligatures = settings.get_setting("font_ligatures", "0")
-        self.font_ligatures_cb.setChecked(ligatures == "1")
-        self.font_ligatures_cb.stateChanged.connect(self.on_font_ligatures_changed)
-        font_layout.addRow("", self.font_ligatures_cb)
-        
         font_group.setLayout(font_layout)
         s_layout.addWidget(font_group)
         
@@ -1018,29 +1012,6 @@ class MainWindow(QMainWindow):
         data_dir_group.setLayout(data_dir_layout)
         s_layout.addWidget(data_dir_group)
         
-        # Import/Export group
-        import_export_group = QGroupBox("Backup & Restore")
-        import_export_layout = QVBoxLayout()
-        
-        export_settings_btn = QPushButton("Export Settings as JSON")
-        export_settings_btn.clicked.connect(self.on_export_settings)
-        import_export_layout.addWidget(export_settings_btn)
-        
-        import_settings_btn = QPushButton("Import Settings from JSON")
-        import_settings_btn.clicked.connect(self.on_import_settings)
-        import_export_layout.addWidget(import_settings_btn)
-        
-        export_data_btn = QPushButton("Export Data (Stats & Progress)")
-        export_data_btn.clicked.connect(self.on_export_data)
-        import_export_layout.addWidget(export_data_btn)
-        
-        import_data_btn = QPushButton("Import Data")
-        import_data_btn.clicked.connect(self.on_import_data)
-        import_export_layout.addWidget(import_data_btn)
-        
-        import_export_group.setLayout(import_export_layout)
-        s_layout.addWidget(import_export_group)
-        
         s_layout.addStretch()
         
         scroll.setWidget(settings_widget)
@@ -1137,16 +1108,11 @@ class MainWindow(QMainWindow):
         settings.set_setting("font_size", str(font_size))
         self._emit_font_changed()
     
-    def on_font_ligatures_changed(self, state: int):
-        settings.set_setting("font_ligatures", "1" if state == Qt.Checked else "0")
-        self._emit_font_changed()
-    
     def _emit_font_changed(self):
         """Helper to emit font_changed signal with current font settings."""
         family = settings.get_setting("font_family", "Consolas")
         size = int(settings.get_setting("font_size", "12"))
-        ligatures = settings.get_setting("font_ligatures", "0") == "1"
-        self.font_changed.emit(family, size, ligatures)
+        self.font_changed.emit(family, size, False)  # Ligatures removed, always False
     
     def on_space_char_changed(self, char_option: str):
         """Handle space character dropdown change."""
@@ -1338,179 +1304,6 @@ class MainWindow(QMainWindow):
         ratio = clamped / 100.0
         settings.set_setting("best_wpm_min_accuracy", f"{ratio:.4f}")
     
-    def on_export_settings(self):
-        """Export settings to JSON file."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        import json
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Settings", "settings.json", "JSON Files (*.json)"
-        )
-        
-        if file_path:
-            try:
-                # Get all settings
-                conn = settings._connect()
-                cur = conn.cursor()
-                cur.execute("SELECT key, value FROM settings")
-                settings_dict = {row[0]: row[1] for row in cur.fetchall()}
-                conn.close()
-                
-                with open(file_path, 'w') as f:
-                    json.dump(settings_dict, f, indent=2)
-                
-                QMessageBox.information(self, "Success", "Settings exported successfully!")
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to export settings: {e}")
-    
-    def on_import_settings(self):
-        """Import settings from JSON file."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        import json
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import Settings", "", "JSON Files (*.json)"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r') as f:
-                    settings_dict = json.load(f)
-                
-                # Import each setting
-                for key, value in settings_dict.items():
-                    settings.set_setting(key, value)
-                
-                # Apply settings dynamically
-                self._refresh_all_settings_ui()
-                self.apply_current_theme()
-                self._emit_all_settings_signals()
-                
-                QMessageBox.information(
-                    self, "Success", 
-                    "Settings imported and applied successfully!"
-                )
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to import settings: {e}")
-    
-    def on_export_data(self):
-        """Export statistics and progress data to JSON."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        import json
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Data", "typing_data.json", "JSON Files (*.json)"
-        )
-        
-        if file_path:
-            try:
-                conn = settings._connect()
-                cur = conn.cursor()
-                
-                # Export file stats
-                cur.execute("SELECT * FROM file_stats")
-                file_stats = []
-                for row in cur.fetchall():
-                    file_stats.append({
-                        "file_path": row[0],
-                        "best_wpm": row[1],
-                        "last_wpm": row[2],
-                        "best_accuracy": row[3],
-                        "last_accuracy": row[4],
-                        "times_practiced": row[5],
-                        "last_practiced": row[6],
-                        "completed": row[7]
-                    })
-                
-                # Export session progress
-                cur.execute("SELECT * FROM session_progress")
-                sessions = []
-                for row in cur.fetchall():
-                    sessions.append({
-                        "file_path": row[0],
-                        "cursor_position": row[1],
-                        "total_characters": row[2],
-                        "correct_keystrokes": row[3],
-                        "incorrect_keystrokes": row[4],
-                        "session_time": row[5],
-                        "is_paused": row[6],
-                        "last_updated": row[7]
-                    })
-                
-                conn.close()
-                
-                data = {
-                    "file_stats": file_stats,
-                    "session_progress": sessions
-                }
-                
-                with open(file_path, 'w') as f:
-                    json.dump(data, f, indent=2)
-                
-                QMessageBox.information(self, "Success", "Data exported successfully!")
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to export data: {e}")
-    
-    def on_import_data(self):
-        """Import statistics and progress data from JSON."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        import json
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import Data", "", "JSON Files (*.json)"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                
-                conn = settings._connect()
-                cur = conn.cursor()
-                
-                # Import file stats
-                for stat in data.get("file_stats", []):
-                    cur.execute("""
-                        INSERT OR REPLACE INTO file_stats
-                        (file_path, best_wpm, last_wpm, best_accuracy, last_accuracy,
-                         times_practiced, last_practiced, completed)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        stat["file_path"], stat["best_wpm"], stat["last_wpm"],
-                        stat["best_accuracy"], stat["last_accuracy"],
-                        stat["times_practiced"], stat.get("last_practiced"),
-                        stat["completed"]
-                    ))
-                
-                # Import session progress
-                for session in data.get("session_progress", []):
-                    cur.execute("""
-                        INSERT OR REPLACE INTO session_progress
-                        (file_path, cursor_position, total_characters,
-                         correct_keystrokes, incorrect_keystrokes, session_time,
-                         is_paused, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        session["file_path"], session["cursor_position"],
-                        session["total_characters"], session["correct_keystrokes"],
-                        session["incorrect_keystrokes"], session["session_time"],
-                        session["is_paused"], session.get("last_updated")
-                    ))
-                
-                conn.commit()
-                conn.close()
-                
-                # Refresh UI to show imported data
-                if hasattr(self.editor_tab, 'file_tree'):
-                    self.editor_tab.file_tree.refresh_tree()
-                    self.editor_tab.file_tree.refresh_incomplete_sessions()
-                
-                self.refresh_languages_tab()
-                
-                QMessageBox.information(self, "Success", "Data imported and UI refreshed successfully!")
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to import data: {e}")
-    
     def on_change_data_directory(self):
         """Allow user to select a new data directory location."""
         from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -1695,9 +1488,6 @@ class MainWindow(QMainWindow):
         font_size = int(settings.get_setting("font_size", "12"))
         self.font_size_spin.setValue(font_size)
         
-        ligatures = settings.get_setting("font_ligatures", "0")
-        self.font_ligatures_cb.setChecked(ligatures == "1")
-        
         # Typing settings
         space_char = settings.get_setting("space_char", "␣")
         if space_char in ["␣", "·", " "]:
@@ -1763,8 +1553,7 @@ class MainWindow(QMainWindow):
         # Font settings
         family = settings.get_setting("font_family", "Consolas")
         size = int(settings.get_setting("font_size", "12"))
-        ligatures = settings.get_setting("font_ligatures", "0") == "1"
-        self.font_changed.emit(family, size, ligatures)
+        self.font_changed.emit(family, size, False)  # Ligatures removed, always False
         
         # Color settings
         self.colors_changed.emit()

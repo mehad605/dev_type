@@ -10,13 +10,14 @@ that sits alongside the executable/AppImage. This enables:
 
 Directory Structure:
     dev_type.exe or dev_type.AppImage
-    data/
+    Dev_Type_Data/
         typing_stats.db   (SQLite database)
         ghosts/           (Ghost replay files)
+        custom_sounds/    (User's custom sound profiles)
         settings/         (Future: custom settings exports)
         logs/             (Future: application logs)
 
-The data folder is created automatically on first run if it doesn't exist.
+The Dev_Type_Data folder is created automatically on first run if it doesn't exist.
 User can change the data directory location via settings.
 """
 import sys
@@ -75,7 +76,7 @@ class PortableDataManager:
         if self._custom_data_dir and self._custom_data_dir.exists():
             self._data_dir = self._custom_data_dir
         else:
-            self._data_dir = self._base_dir / "data"
+            self._data_dir = self._base_dir / "Dev_Type_Data"  # Descriptive name
         
         # Create data directory and subdirectories if they don't exist
         self._ensure_directories()
@@ -156,7 +157,7 @@ class PortableDataManager:
         """Reset data directory to default location (next to executable)."""
         try:
             self._custom_data_dir = None
-            self._data_dir = self._base_dir / "data"
+            self._data_dir = self._base_dir / "Dev_Type_Data"  # Descriptive name
             self._ensure_directories()
             self._save_custom_data_dir()
             return True
@@ -202,7 +203,7 @@ class PortableDataManager:
             'base_dir': str(self._base_dir),
             'data_dir': str(self._data_dir),
             'is_custom_location': self._custom_data_dir is not None,
-            'default_data_dir': str(self._base_dir / "data"),
+            'default_data_dir': str(self._base_dir / "Dev_Type_Data"),
             'database_path': str(self.get_database_path()),
             'ghosts_dir': str(self.get_ghosts_dir()),
             'data_dir_exists': self._data_dir.exists(),
