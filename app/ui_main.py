@@ -525,6 +525,12 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.setWindowTitle("Dev Typing App")
+        
+        # Set application icon
+        icon_path = Path(__file__).parent / "icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+        
         self.resize(900, 600)
         self.tabs = QTabWidget()
         if DEBUG_STARTUP_TIMING:
