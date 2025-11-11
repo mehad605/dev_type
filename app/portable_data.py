@@ -6,16 +6,18 @@ that sits alongside the executable/AppImage. This enables:
 1. True portable distribution (no installation needed)
 2. Easy updates (replace exe, keep data folder)
 3. User data persistence across versions
+4. Custom data directory location (configurable by user)
 
 Directory Structure:
     dev_type.exe or dev_type.AppImage
     data/
-        typing_stats.db      (SQLite database)
-        ghosts/              (Ghost replay files)
-        settings/            (Future: custom settings exports)
-        logs/                (Future: application logs)
+        typing_stats.db   (SQLite database)
+        ghosts/           (Ghost replay files)
+        settings/         (Future: custom settings exports)
+        logs/             (Future: application logs)
 
 The data folder is created automatically on first run if it doesn't exist.
+User can change the data directory location via settings.
 """
 import sys
 from pathlib import Path
@@ -41,6 +43,7 @@ class PortableDataManager:
             
         self._base_dir: Optional[Path] = None
         self._data_dir: Optional[Path] = None
+        self._custom_data_dir: Optional[Path] = None  # User-specified location
         self._is_portable: bool = False
         
         self._detect_and_setup()
@@ -65,11 +68,41 @@ class PortableDataManager:
             self._base_dir = Path(__file__).parent.parent
             self._is_portable = False
         
-        # Data directory is always named 'data' next to the executable
-        self._data_dir = self._base_dir / "data"
+        # Try to load custom data directory from a config file
+        self._load_custom_data_dir()
+        
+        # Data directory is the custom one if set, otherwise default
+        if self._custom_data_dir and self._custom_data_dir.exists():
+            self._data_dir = self._custom_data_dir
+        else:
+            self._data_dir = self._base_dir / "data"
         
         # Create data directory and subdirectories if they don't exist
         self._ensure_directories()
+    
+    def _load_custom_data_dir(self):
+        """Load custom data directory path from config file."""
+        config_file = self._base_dir / "data_location.txt"
+        if config_file.exists():
+            try:
+                path_str = config_file.read_text().strip()
+                if path_str:
+                    custom_path = Path(path_str)
+                    if custom_path.exists() and custom_path.is_dir():
+                        self._custom_data_dir = custom_path
+            except Exception as e:
+                print(f"Error loading custom data directory: {e}")
+    
+    def _save_custom_data_dir(self):
+        """Save custom data directory path to config file."""
+        config_file = self._base_dir / "data_location.txt"
+        try:
+            if self._custom_data_dir:
+                config_file.write_text(str(self._custom_data_dir))
+            elif config_file.exists():
+                config_file.unlink()  # Remove if no custom dir
+        except Exception as e:
+            print(f"Error saving custom data directory: {e}")
     
     def _ensure_directories(self):
         """Create data directory structure if it doesn't exist."""
@@ -83,6 +116,53 @@ class PortableDataManager:
             subdir_path = self._data_dir / subdir
             if not subdir_path.exists():
                 subdir_path.mkdir(parents=True, exist_ok=True)
+    
+    def set_data_directory(self, new_path: Path) -> bool:
+        """Set a custom data directory location.
+        
+        Args:
+            new_path: Path to the new data directory
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            new_path = Path(new_path)
+            
+            # Create if doesn't exist
+            if not new_path.exists():
+                new_path.mkdir(parents=True, exist_ok=True)
+            
+            # Validate it's a directory
+            if not new_path.is_dir():
+                return False
+            
+            # Update paths
+            self._custom_data_dir = new_path
+            self._data_dir = new_path
+            
+            # Ensure structure exists
+            self._ensure_directories()
+            
+            # Save to config
+            self._save_custom_data_dir()
+            
+            return True
+        except Exception as e:
+            print(f"Error setting data directory: {e}")
+            return False
+    
+    def reset_to_default_directory(self) -> bool:
+        """Reset data directory to default location (next to executable)."""
+        try:
+            self._custom_data_dir = None
+            self._data_dir = self._base_dir / "data"
+            self._ensure_directories()
+            self._save_custom_data_dir()
+            return True
+        except Exception as e:
+            print(f"Error resetting data directory: {e}")
+            return False
     
     @property
     def is_portable(self) -> bool:
@@ -121,6 +201,8 @@ class PortableDataManager:
             'is_portable': self._is_portable,
             'base_dir': str(self._base_dir),
             'data_dir': str(self._data_dir),
+            'is_custom_location': self._custom_data_dir is not None,
+            'default_data_dir': str(self._base_dir / "data"),
             'database_path': str(self.get_database_path()),
             'ghosts_dir': str(self.get_ghosts_dir()),
             'data_dir_exists': self._data_dir.exists(),

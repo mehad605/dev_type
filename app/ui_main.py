@@ -971,6 +971,53 @@ class MainWindow(QMainWindow):
         sound_group.setLayout(sound_layout)
         s_layout.addWidget(sound_group)
         
+        # Data Directory settings group
+        data_dir_group = QGroupBox("Data Directory")
+        data_dir_layout = QVBoxLayout()
+        
+        data_dir_desc = QLabel(
+            "Choose where to store your typing statistics, ghosts, and custom sounds. "
+            "The directory must have the required internal structure (created automatically)."
+        )
+        data_dir_desc.setWordWrap(True)
+        data_dir_desc.setStyleSheet("color: #888888; font-size: 9pt;")
+        data_dir_layout.addWidget(data_dir_desc)
+        
+        # Current data directory display
+        data_dir_path_layout = QHBoxLayout()
+        data_dir_path_label = QLabel("Current Location:")
+        data_dir_path_label.setStyleSheet("font-weight: bold;")
+        data_dir_path_layout.addWidget(data_dir_path_label)
+        
+        try:
+            from app.portable_data import get_data_dir
+            current_data_dir = str(get_data_dir())
+        except:
+            current_data_dir = str(settings.get_data_dir())
+        
+        self.data_dir_display = QLabel(current_data_dir)
+        self.data_dir_display.setWordWrap(True)
+        self.data_dir_display.setStyleSheet("color: #666; font-family: monospace; font-size: 9pt;")
+        data_dir_path_layout.addWidget(self.data_dir_display, stretch=1)
+        data_dir_layout.addLayout(data_dir_path_layout)
+        
+        # Buttons to change or reset data directory
+        data_dir_buttons = QHBoxLayout()
+        
+        change_data_dir_btn = QPushButton("Change Location...")
+        change_data_dir_btn.clicked.connect(self.on_change_data_directory)
+        data_dir_buttons.addWidget(change_data_dir_btn)
+        
+        reset_data_dir_btn = QPushButton("Reset to Default")
+        reset_data_dir_btn.clicked.connect(self.on_reset_data_directory)
+        data_dir_buttons.addWidget(reset_data_dir_btn)
+        
+        data_dir_buttons.addStretch()
+        data_dir_layout.addLayout(data_dir_buttons)
+        
+        data_dir_group.setLayout(data_dir_layout)
+        s_layout.addWidget(data_dir_group)
+        
         # Import/Export group
         import_export_group = QGroupBox("Backup & Restore")
         import_export_layout = QVBoxLayout()
@@ -1463,6 +1510,90 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Success", "Data imported and UI refreshed successfully!")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to import data: {e}")
+    
+    def on_change_data_directory(self):
+        """Allow user to select a new data directory location."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        
+        # Get current directory
+        try:
+            from app.portable_data import get_data_dir, get_data_manager
+            current_dir = str(get_data_dir())
+        except:
+            current_dir = str(settings.get_data_dir())
+        
+        # Open directory picker
+        new_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Data Directory",
+            current_dir,
+            QFileDialog.ShowDirsOnly
+        )
+        
+        if new_dir:
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Change Data Directory",
+                f"Change data directory to:\n\n{new_dir}\n\n"
+                "The new directory will be created with the required structure. "
+                "You may need to restart the application for all changes to take effect.\n\n"
+                "Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    from app.portable_data import get_data_manager
+                    manager = get_data_manager()
+                    
+                    if manager.set_data_directory(Path(new_dir)):
+                        self.data_dir_display.setText(new_dir)
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            "Data directory changed successfully!\n\n"
+                            "Please restart the application for all changes to take effect."
+                        )
+                    else:
+                        QMessageBox.warning(
+                            self,
+                            "Error",
+                            "Failed to set data directory. Please ensure the path is valid."
+                        )
+                except Exception as e:
+                    QMessageBox.warning(self, "Error", f"Failed to change data directory: {e}")
+    
+    def on_reset_data_directory(self):
+        """Reset data directory to default location."""
+        from PySide6.QtWidgets import QMessageBox
+        
+        reply = QMessageBox.question(
+            self,
+            "Reset Data Directory",
+            "Reset data directory to default location (next to executable)?\n\n"
+            "You may need to restart the application for all changes to take effect.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                from app.portable_data import get_data_manager
+                manager = get_data_manager()
+                
+                if manager.reset_to_default_directory():
+                    new_dir = str(manager.data_dir)
+                    self.data_dir_display.setText(new_dir)
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        f"Data directory reset to:\n{new_dir}\n\n"
+                        "Please restart the application for all changes to take effect."
+                    )
+                else:
+                    QMessageBox.warning(self, "Error", "Failed to reset data directory.")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to reset data directory: {e}")
     
     def apply_current_theme(self):
         """Apply the current theme settings to the entire application."""

@@ -106,6 +106,7 @@ if __name__ == "__main__":
             # Add data files
             "--add-data=app/icon.svg;app",
             "--add-data=app/icon.png;app",
+            "--add-data=assents/sounds;assents/sounds",  # Include sounds directory
             
             # Hidden imports that PyInstaller might miss
             "--hidden-import=PySide6.QtSvg",
@@ -168,6 +169,7 @@ if __name__ == "__main__":
             # Add data files
             "--add-data=app/icon.svg:app",
             "--add-data=app/icon.png:app",
+            "--add-data=assents/sounds:assents/sounds",  # Include sounds directory
             
             # Hidden imports
             "--hidden-import=PySide6.QtSvg",

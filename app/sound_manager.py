@@ -4,6 +4,7 @@ from PySide6.QtCore import QUrl, QObject, Signal
 from pathlib import Path
 from typing import Dict, Optional
 import json
+import app.settings as settings
 
 
 class SoundManager(QObject):
@@ -21,14 +22,12 @@ class SoundManager(QObject):
         # Base sounds directory
         self.sounds_dir = Path(__file__).parent.parent / "assents" / "sounds"
         
-        # Custom profiles directory
-        self.custom_profiles_dir = self.sounds_dir / "custom"
-        self.custom_profiles_dir.mkdir(parents=True, exist_ok=True)
+        # Custom profiles are now stored in database
         
         # Discover built-in profiles from existing files
         self.builtin_profiles = self._discover_builtin_profiles()
         
-        # Load custom profiles from disk
+        # Load custom profiles from database
         self.custom_profiles = self._load_custom_profiles()
         
         self._load_profile("none")
@@ -62,24 +61,25 @@ class SoundManager(QObject):
         return profiles
     
     def _load_custom_profiles(self) -> Dict:
-        """Load custom sound profiles from JSON file."""
-        profiles_file = self.custom_profiles_dir / "profiles.json"
-        if profiles_file.exists():
-            try:
-                with open(profiles_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"Error loading custom profiles: {e}")
-        return {}
+        """Load custom sound profiles from database."""
+        profiles = {}
+        
+        # Get custom profiles from settings database
+        profile_data = settings.get_setting("custom_sound_profiles", "{}")
+        try:
+            profiles = json.loads(profile_data)
+        except Exception as e:
+            print(f"Error loading custom profiles from database: {e}")
+        
+        return profiles
     
     def _save_custom_profiles(self):
-        """Save custom profiles to JSON file."""
-        profiles_file = self.custom_profiles_dir / "profiles.json"
+        """Save custom profiles to database."""
         try:
-            with open(profiles_file, 'w') as f:
-                json.dump(self.custom_profiles, f, indent=2)
+            profile_data = json.dumps(self.custom_profiles)
+            settings.set_setting("custom_sound_profiles", profile_data)
         except Exception as e:
-            print(f"Error saving custom profiles: {e}")
+            print(f"Error saving custom profiles to database: {e}")
     
     def get_all_profiles(self) -> Dict:
         """Get both built-in and custom profiles."""
@@ -100,19 +100,29 @@ class SoundManager(QObject):
         if not Path(sound_file).exists():
             return False
         
+        # Get custom sounds directory from portable data manager
+        try:
+            from app.portable_data import get_data_dir
+            custom_sounds_dir = get_data_dir() / "custom_sounds"
+        except:
+            # Fallback to old location
+            custom_sounds_dir = self.sounds_dir / "custom"
+        
+        custom_sounds_dir.mkdir(parents=True, exist_ok=True)
+        
         # Copy sound file to custom directory
-        profile_dir = self.custom_profiles_dir / profile_id
+        profile_dir = custom_sounds_dir / profile_id
         profile_dir.mkdir(exist_ok=True)
         
         dest = profile_dir / f"keypress{Path(sound_file).suffix}"
         import shutil
         shutil.copy2(sound_file, dest)
         
-        # Save profile metadata
+        # Save profile metadata with absolute path
         self.custom_profiles[profile_id] = {
             "name": name,
             "builtin": False,
-            "file": dest.name
+            "file_path": str(dest)  # Store absolute path
         }
         
         self._save_custom_profiles()
@@ -129,16 +139,25 @@ class SoundManager(QObject):
         
         # Update sound file if provided
         if sound_file and Path(sound_file).exists():
+            # Get custom sounds directory
+            try:
+                from app.portable_data import get_data_dir
+                custom_sounds_dir = get_data_dir() / "custom_sounds"
+            except:
+                custom_sounds_dir = self.sounds_dir / "custom"
+            
+            custom_sounds_dir.mkdir(parents=True, exist_ok=True)
+            
             # Copy file to profile directory
-            profile_dir = self.custom_profiles_dir / profile_id
+            profile_dir = custom_sounds_dir / profile_id
             profile_dir.mkdir(exist_ok=True)
             
             dest = profile_dir / f"keypress{Path(sound_file).suffix}"
             import shutil
             shutil.copy2(sound_file, dest)
             
-            # Update metadata
-            self.custom_profiles[profile_id]["file"] = dest.name
+            # Update metadata with absolute path
+            self.custom_profiles[profile_id]["file_path"] = str(dest)
         
         self._save_custom_profiles()
         
@@ -153,11 +172,17 @@ class SoundManager(QObject):
         if profile_id not in self.custom_profiles:
             return False
         
-        # Delete directory
-        profile_dir = self.custom_profiles_dir / profile_id
-        if profile_dir.exists():
-            import shutil
-            shutil.rmtree(profile_dir)
+        # Delete the sound file if it exists
+        file_path = self.custom_profiles[profile_id].get("file_path")
+        if file_path:
+            file_path = Path(file_path)
+            if file_path.exists():
+                file_path.unlink()
+            # Try to remove parent directory if empty
+            try:
+                file_path.parent.rmdir()
+            except:
+                pass
         
         # Remove from metadata
         del self.custom_profiles[profile_id]
@@ -190,14 +215,29 @@ class SoundManager(QObject):
         # Get profile data (built-in or custom)
         all_profiles = self.get_all_profiles()
         profile_data = all_profiles.get(profile)
-        if not profile_data or not profile_data.get("file"):
+        if not profile_data:
             return
         
         # Determine file path
         if profile_data.get("builtin"):
+            # Built-in profile
+            if not profile_data.get("file"):
+                return
             sound_path = self.sounds_dir / profile_data["file"]
         else:
-            sound_path = self.custom_profiles_dir / profile / profile_data["file"]
+            # Custom profile - use file_path if available, fallback to old structure
+            if "file_path" in profile_data:
+                sound_path = Path(profile_data["file_path"])
+            elif "file" in profile_data:
+                # Legacy support
+                try:
+                    from app.portable_data import get_data_dir
+                    custom_sounds_dir = get_data_dir() / "custom_sounds"
+                except:
+                    custom_sounds_dir = self.sounds_dir / "custom"
+                sound_path = custom_sounds_dir / profile / profile_data["file"]
+            else:
+                return
         
         # Load sound file
         if sound_path.exists():
