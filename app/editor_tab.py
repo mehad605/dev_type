@@ -10,6 +10,7 @@ from app.typing_area import TypingAreaWidget
 from app.stats_display import StatsDisplayWidget
 from app.sound_volume_widget import SoundVolumeWidget
 from app.progress_bar_widget import ProgressBarWidget
+from app.session_result_dialog import SessionResultDialog
 from app import stats_db
 from app.file_scanner import get_language_for_file
 from app.typing_engine import TypingEngine
@@ -17,7 +18,6 @@ import time
 
 # Debug timing flag - should match ui_main.DEBUG_STARTUP_TIMING
 DEBUG_STARTUP_TIMING = True
-
 
 class EditorTab(QWidget):
     """Complete editor/typing tab with tree, typing area, and stats."""
@@ -489,18 +489,16 @@ class EditorTab(QWidget):
         if hasattr(parent_window, "refresh_history_tab"):
             parent_window.refresh_history_tab()
         
-        # Show completion message with new best notification if applicable
-        title = "Session Complete! 🎉"
-        message = f"Congratulations! You completed the file.\n\n"
-        message += f"WPM: {stats['wpm']:.1f}\n"
-        message += f"Accuracy: {stats['accuracy']*100:.1f}%\n"
-        message += f"Time: {stats['time']:.1f}s"
-        
-        if is_new_best:
-            message += f"\n\n🏆 New Personal Best! 👻\n"
-            message += f"Ghost saved! Challenge it with the 👻 button."
-        
-        QMessageBox.information(self, title, message)
+        # Show modern completion dialog
+        theme_colors = self._get_theme_colors()
+        dialog = SessionResultDialog(
+            parent=self,
+            stats=stats,
+            is_new_best=is_new_best,
+            is_race=False,
+            theme_colors=theme_colors
+        )
+        dialog.exec()
     
     def _save_current_progress(self):
         """Save progress of current file."""
@@ -995,10 +993,19 @@ class EditorTab(QWidget):
             total_keystrokes = self.typing_area.engine.state.total_keystrokes()
             if total_keystrokes > 0:
                 user_acc = (self.typing_area.engine.state.correct_keystrokes / total_keystrokes) * 100
+                user_accuracy_decimal = self.typing_area.engine.state.correct_keystrokes / total_keystrokes
             else:
                 user_acc = 100.0
+                user_accuracy_decimal = 1.0
+            user_correct = self.typing_area.engine.state.correct_keystrokes
+            user_incorrect = self.typing_area.engine.state.incorrect_keystrokes
+            user_total = total_keystrokes
         else:
             user_acc = user_stats.get("accuracy", 0.0) * 100
+            user_accuracy_decimal = user_stats.get("accuracy", 1.0)
+            user_correct = user_stats.get("correct", 0)
+            user_incorrect = user_stats.get("incorrect", 0)
+            user_total = user_stats.get("total", 0)
         
         user_completion = (user_completed_chars / user_total_chars * 100) if user_total_chars > 0 else 0
         
@@ -1008,55 +1015,77 @@ class EditorTab(QWidget):
         ghost_wpm = ghost_data.get("wpm") if ghost_data else None
         ghost_acc = ghost_data.get("acc") if ghost_data else None
         
-        if winner == "user":
-            title = "You Win! 🎉"
-            body = "You finished before your ghost!\n\n"
-        elif winner == "ghost":
-            title = "Ghost Wins 👻"
-            if reason == "instant_death":
-                body = "Instant death triggered, so the ghost wins this round.\n\n"
-            else:
-                body = "Your ghost crossed the finish line first, but you kept going!\n\n"
-        else:
-            title = "Race Complete"
-            body = ""
+        # Prepare stats for dialog
+        race_stats = {
+            'wpm': user_wpm,
+            'accuracy': user_accuracy_decimal,
+            'time': user_time,
+            'correct': user_correct,
+            'incorrect': user_incorrect,
+            'total': user_total,
+        }
         
-        # User stats - always show completion percentage
-        body += f"📊 Your Performance:\n"
-        body += f"  Completion: {user_completion:.1f}%\n"
-        if user_time is not None:
-            body += f"  Time: {user_time:.2f}s\n"
-        body += f"  WPM: {user_wpm:.1f}\n"
-        body += f"  Accuracy: {user_acc:.1f}%\n\n"
+        race_info = {
+            'winner': winner,
+            'reason': reason,
+            'ghost_wpm': ghost_wpm or 0,
+            'ghost_time': ghost_time or 0,
+            'ghost_acc': ghost_acc or 100,
+            'time_delta': (user_time - ghost_time) if (user_time and ghost_time) else 0,
+        }
         
-        # Ghost stats
-        if ghost_time is not None or ghost_wpm is not None:
-            body += f"👻 Ghost Performance:\n"
-            if ghost_time is not None:
-                body += f"  Time: {ghost_time:.2f}s\n"
-            if ghost_wpm is not None:
-                body += f"  WPM: {ghost_wpm:.1f}\n"
-            if ghost_acc is not None:
-                body += f"  Accuracy: {ghost_acc:.1f}%\n"
-        
-        # Time comparison
-        if user_time is not None and ghost_time is not None:
-            delta = user_time - ghost_time
-            body += f"\n"
-            if winner == "user":
-                body += f"⏱️ You were {abs(delta):.2f}s faster!"
-            elif winner == "ghost":
-                body += f"⏱️ Ghost was {abs(delta):.2f}s faster."
-        
-        # Add new best notification if applicable
-        if is_new_best:
-            body += f"\n\n🏆 New Personal Best! 👻\n"
-            body += f"Ghost saved! Challenge it again with the 👻 button."
-        
-        QMessageBox.information(self, title, body.strip())
+        # Show modern race completion dialog
+        theme_colors = self._get_theme_colors()
+        dialog = SessionResultDialog(
+            parent=self,
+            stats=race_stats,
+            is_new_best=is_new_best,
+            is_race=True,
+            race_info=race_info,
+            theme_colors=theme_colors
+        )
+        dialog.exec()
         
         self._user_finish_elapsed = None
         self._ghost_finish_elapsed = None
+    
+    def _get_theme_colors(self):
+        """Get current theme colors for dialogs."""
+        from app import settings
+        
+        # Get colors from settings
+        bg_color = settings.get_setting("color_background", "#1e2738")
+        text_color = settings.get_setting("color_untyped", "#e0e6ed")
+        correct_color = settings.get_setting("color_correct", "#7ed957")
+        incorrect_color = settings.get_setting("color_incorrect", "#ff6b6b")
+        
+        return {
+            'bg': bg_color,
+            'card_bg': self._lighten_color(bg_color, 1.2),
+            'text': text_color,
+            'accent': '#5cb3ff',
+            'success': correct_color,
+            'warning': '#ffd93d',
+            'error': incorrect_color,
+        }
+    
+    def _lighten_color(self, hex_color, factor):
+        """Lighten a hex color by a factor."""
+        # Remove # if present
+        hex_color = hex_color.lstrip('#')
+        
+        # Convert to RGB
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        
+        # Lighten
+        r = min(255, int(r * factor))
+        g = min(255, int(g * factor))
+        b = min(255, int(b * factor))
+        
+        # Convert back to hex
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def closeEvent(self, event):
         """Handle widget close - save progress."""

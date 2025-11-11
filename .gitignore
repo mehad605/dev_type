@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# User-specific data
+ghosts/              # Ghost replay recordings
+typing_stats.db      # User's typing session history and settings
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
