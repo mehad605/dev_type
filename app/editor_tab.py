@@ -38,6 +38,8 @@ class EditorTab(QWidget):
         self._replay_index = 0
         self._replay_prev_timestamp = 0
         self._current_ghost_data: Optional[dict] = None
+        self._instant_death_pre_replay: Optional[bool] = None
+        self._instant_death_tooltip_pre_replay: Optional[str] = None
         
         # Main layout with placeholder
         main_layout = QVBoxLayout(self)
@@ -148,6 +150,8 @@ class EditorTab(QWidget):
         self.typing_area.session_completed.connect(self.on_session_completed)
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
         v_splitter.addWidget(self.typing_area)
+        # Ensure engine matches current instant death state
+        self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
         
         # Container for progress bar and stats
         bottom_container = QWidget()
@@ -277,16 +281,22 @@ class EditorTab(QWidget):
         self.progress_bar.reset()
         self.progress_label.setText("0%")
     
-    def on_instant_death_toggled(self, enabled: bool):
-        """Handle instant death mode toggle."""
-        from app import settings
-        settings.set_setting("instant_death_mode", "1" if enabled else "0")
+    def _set_instant_death_mode(self, enabled: bool, persist: bool):
+        """Apply instant death mode to settings, button, and engine."""
+        if persist:
+            from app import settings
+            settings.set_setting("instant_death_mode", "1" if enabled else "0")
+        self.instant_death_btn.blockSignals(True)
+        self.instant_death_btn.setChecked(enabled)
+        self.instant_death_btn.blockSignals(False)
         self.instant_death_btn.setText("💀 Instant Death: Enabled" if enabled else "💀 Instant Death: Disabled")
         self._update_instant_death_style()
-        
-        # Update the typing area's instant death mode
         if hasattr(self, 'typing_area') and self.typing_area.engine:
             self.typing_area.engine.instant_death_mode = enabled
+
+    def on_instant_death_toggled(self, enabled: bool):
+        """Handle instant death mode toggle."""
+        self._set_instant_death_mode(enabled, persist=True)
     
     def _update_instant_death_style(self):
         """Update instant death button styling based on state."""
@@ -463,6 +473,7 @@ class EditorTab(QWidget):
         ghost_mgr = get_ghost_manager()
         wpm = stats["wpm"]
         accuracy = stats["accuracy"]
+        instant_death_enabled = self.instant_death_btn.isChecked()
         
         # Check if this is better than existing ghost
         if ghost_mgr.should_save_ghost(self.current_file, wpm):
@@ -479,7 +490,8 @@ class EditorTab(QWidget):
                 accuracy,
                 keystrokes,
                 datetime.now().isoformat(),
-                final_stats=final_stats
+                final_stats=final_stats,
+                instant_death=instant_death_enabled
             )
             
             if success:
@@ -511,10 +523,13 @@ class EditorTab(QWidget):
                 # Show ghost stats in tooltip
                 stats = ghost_mgr.get_ghost_stats(self.current_file)
                 if stats:
+                    instant_line = ""
+                    if stats.get("instant_death") is not None:
+                        instant_line = "\nInstant Death: " + ("On" if stats["instant_death"] else "Off")
                     self.ghost_btn.setToolTip(
                         f"Watch Ghost Replay\n\n"
                         f"Best: {stats['wpm']:.1f} WPM at {stats['accuracy']:.1f}% accuracy\n"
-                        f"Recorded: {stats['date'][:10]}"
+                        f"Recorded: {stats['date'][:10]}" + instant_line
                     )
             else:
                 self.ghost_btn.setToolTip("Ghost Not Available\n\nComplete this file to create a ghost replay!")
@@ -585,6 +600,15 @@ class EditorTab(QWidget):
         self._replay_keystrokes = keystrokes
         self._replay_index = 0
         self._replay_prev_timestamp = keystrokes[0].get("t", 0)
+
+        # Sync instant death mode for replay and lock the control
+        recorded_instant_death = ghost_data.get("instant_death_mode")
+        self._instant_death_pre_replay = self.instant_death_btn.isChecked()
+        self._instant_death_tooltip_pre_replay = self.instant_death_btn.toolTip()
+        if recorded_instant_death is not None:
+            self._set_instant_death_mode(bool(recorded_instant_death), persist=False)
+        self.instant_death_btn.setEnabled(False)
+        self.instant_death_btn.setToolTip("Instant Death is locked during replay")
 
         # Prepare typing area and UI
         self.typing_area.stop_ghost_recording()
@@ -691,6 +715,16 @@ class EditorTab(QWidget):
 
         self.ghost_btn.setText("👻")
         self._update_ghost_button()
+
+        self.instant_death_btn.setEnabled(True)
+        if self._instant_death_pre_replay is not None:
+            self._set_instant_death_mode(self._instant_death_pre_replay, persist=False)
+        if self._instant_death_tooltip_pre_replay is not None:
+            self.instant_death_btn.setToolTip(self._instant_death_tooltip_pre_replay)
+        else:
+            self.instant_death_btn.setToolTip("Reset to top on any mistake")
+        self._instant_death_pre_replay = None
+        self._instant_death_tooltip_pre_replay = None
 
         if cancelled:
             self.typing_area.reset_session()

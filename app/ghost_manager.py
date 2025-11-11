@@ -47,7 +47,8 @@ class GhostManager:
             return True  # Save if we can't read existing
     
     def save_ghost(self, file_path: str, wpm: float, accuracy: float, 
-                   keystrokes: List[Dict], session_date: str = None, final_stats: dict = None):
+                   keystrokes: List[Dict], session_date: str = None, 
+                   final_stats: dict = None, instant_death: Optional[bool] = None):
         """Save ghost session (only if it's the best)."""
         ghost_file = self._get_ghost_path(file_path)
         
@@ -63,6 +64,8 @@ class GhostManager:
             "keys": keystrokes,  # Already in compact format: {t, k, c}
             "final_stats": final_stats
         }
+        if instant_death is not None:
+            ghost_data["instant_death_mode"] = bool(instant_death)
         
         try:
             # Compress and save
@@ -121,7 +124,8 @@ class GhostManager:
                 "wpm": ghost_data.get("wpm"),
                 "accuracy": ghost_data.get("acc"),
                 "date": ghost_data.get("date"),
-                "keystroke_count": len(ghost_data.get("keys", []))
+                "keystroke_count": len(ghost_data.get("keys", [])),
+                "instant_death": ghost_data.get("instant_death_mode")
             }
         return None
 
