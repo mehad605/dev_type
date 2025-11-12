@@ -743,7 +743,7 @@ class MainWindow(QMainWindow):
         
         self.scheme_combo = QComboBox()
         self.scheme_combo.addItems(["nord", "catppuccin", "dracula"])
-        cur_scheme = settings.get_setting("dark_scheme", "nord")
+        cur_scheme = settings.get_setting("dark_scheme", "dracula")
         self.scheme_combo.setCurrentText(cur_scheme)
         self.scheme_combo.currentTextChanged.connect(self.on_scheme_changed)
         theme_layout.addRow("Dark scheme:", self.scheme_combo)
@@ -797,14 +797,14 @@ class MainWindow(QMainWindow):
         
         self.cursor_type_combo = QComboBox()
         self.cursor_type_combo.addItems(["blinking", "static"])
-        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_type = settings.get_setting("cursor_type", "static")
         self.cursor_type_combo.setCurrentText(cursor_type)
         self.cursor_type_combo.currentTextChanged.connect(self.on_cursor_type_changed)
         cursor_layout.addRow("Type:", self.cursor_type_combo)
         
         self.cursor_style_combo = QComboBox()
         self.cursor_style_combo.addItems(["block", "underscore", "ibeam"])
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_style_combo.setCurrentText(cursor_style)
         self.cursor_style_combo.currentTextChanged.connect(self.on_cursor_style_changed)
         cursor_layout.addRow("Style:", self.cursor_style_combo)
@@ -822,7 +822,7 @@ class MainWindow(QMainWindow):
             "DejaVu Sans Mono", "Liberation Mono", "Fira Code",
             "JetBrains Mono", "Source Code Pro"
         ])
-        font_family = settings.get_setting("font_family", "Consolas")
+        font_family = settings.get_setting("font_family", "JetBrains Mono")
         self.font_family_combo.setCurrentText(font_family)
         self.font_family_combo.currentTextChanged.connect(self.on_font_family_changed)
         font_layout.addRow("Family:", self.font_family_combo)
@@ -1092,12 +1092,12 @@ class MainWindow(QMainWindow):
     
     def on_cursor_type_changed(self, cursor_type: str):
         settings.set_setting("cursor_type", cursor_type)
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_changed.emit(cursor_type, cursor_style)
     
     def on_cursor_style_changed(self, cursor_style: str):
         settings.set_setting("cursor_style", cursor_style)
-        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_type = settings.get_setting("cursor_type", "static")
         self.cursor_changed.emit(cursor_type, cursor_style)
     
     def on_font_family_changed(self, font_family: str):
@@ -1110,7 +1110,7 @@ class MainWindow(QMainWindow):
     
     def _emit_font_changed(self):
         """Helper to emit font_changed signal with current font settings."""
-        family = settings.get_setting("font_family", "Consolas")
+        family = settings.get_setting("font_family", "JetBrains Mono")
         size = int(settings.get_setting("font_size", "12"))
         self.font_changed.emit(family, size, False)  # Ligatures removed, always False
     
@@ -1398,7 +1398,7 @@ class MainWindow(QMainWindow):
         
         # Get current theme settings
         theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "nord")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
         
         # Get the color scheme
         scheme = get_color_scheme(theme, scheme_name)
@@ -1446,7 +1446,7 @@ class MainWindow(QMainWindow):
         
         # Get current theme
         theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "nord")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
         scheme = get_color_scheme(theme, scheme_name)
         
         # Update color buttons if they exist
@@ -1486,18 +1486,18 @@ class MainWindow(QMainWindow):
         theme = settings.get_setting("theme", "dark")
         self.theme_combo.setCurrentText(theme)
         
-        scheme = settings.get_setting("dark_scheme", "nord")
+        scheme = settings.get_setting("dark_scheme", "dracula")
         self.scheme_combo.setCurrentText(scheme)
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "blinking")
+        cursor_type = settings.get_setting("cursor_type", "static")
         self.cursor_type_combo.setCurrentText(cursor_type)
         
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_style_combo.setCurrentText(cursor_style)
         
         # Font settings
-        font_family = settings.get_setting("font_family", "Consolas")
+        font_family = settings.get_setting("font_family", "JetBrains Mono")
         self.font_family_combo.setCurrentText(font_family)
         
         font_size = int(settings.get_setting("font_size", "12"))
@@ -1529,8 +1529,8 @@ class MainWindow(QMainWindow):
         self.colors_changed.emit()
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "blinking")
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_type = settings.get_setting("cursor_type", "static")
+        cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_changed.emit(cursor_type, cursor_style)
         
         # Space character
@@ -1566,7 +1566,7 @@ class MainWindow(QMainWindow):
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""
         # Font settings
-        family = settings.get_setting("font_family", "Consolas")
+        family = settings.get_setting("font_family", "JetBrains Mono")
         size = int(settings.get_setting("font_size", "12"))
         self.font_changed.emit(family, size, False)  # Ligatures removed, always False
         
@@ -1574,8 +1574,8 @@ class MainWindow(QMainWindow):
         self.colors_changed.emit()
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "blinking")
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_type = settings.get_setting("cursor_type", "static")
+        cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_changed.emit(cursor_type, cursor_style)
         
         # Space character

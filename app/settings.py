@@ -122,23 +122,23 @@ def init_db(path: Optional[str] = None):
     )
     # defaults
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("theme", "dark"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("dark_scheme", "nord"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("dark_scheme", "dracula"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("delete_confirm", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("pause_delay", "7"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("pause_delay", "4"))
     
-    # Color settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_untyped", "#555555"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_correct", "#00ff00"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_incorrect", "#ff0000"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_paused_highlight", "#ffaa00"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_cursor", "#ffffff"))
+    # Color settings - Dracula theme colors
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_untyped", "#6272a4"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_correct", "#50fa7b"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_incorrect", "#ff5555"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_paused_highlight", "#f1fa8c"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_cursor", "#8be9fd"))
     
     # Cursor settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_type", "blinking"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_style", "block"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_type", "static"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_style", "underscore"))
     
     # Font settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_family", "Consolas"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_family", "JetBrains Mono"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_size", "12"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_ligatures", "0"))
     
@@ -146,47 +146,20 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("space_char", "␣"))
     
     # Typing behavior setting
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "0"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "0"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("best_wpm_min_accuracy", "0.9"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "1"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "1"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("best_wpm_min_accuracy", "0.93"))
     
     # Sound settings
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_enabled", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_profile", "none"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_profile", "brick"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_volume", "50"))
     
-    # Progress bar color
+    # Progress bar colors
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("progress_bar_color", "#4CAF50"))
-
-    # Race color settings (preserve any customized progress color)
-    cur.execute("SELECT value FROM settings WHERE key=?", ("progress_bar_color",))
-    row = cur.fetchone()
-    existing_progress_color = row[0] if row and row[0] else "#4CAF50"
-
-    cur.execute(
-        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
-        ("user_progress_bar_color", existing_progress_color),
-    )
-    cur.execute(
-        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
-        ("ghost_progress_bar_color", "#9C27B0"),
-    )
-    cur.execute(
-        "INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)",
-        ("ghost_text_color", "#8AB4F8"),
-    )
-
-    # Upgrade legacy customizations if user color matches default placeholder
-    cur.execute(
-        "SELECT value FROM settings WHERE key=?",
-        ("user_progress_bar_color",),
-    )
-    migrated_row = cur.fetchone()
-    if migrated_row and migrated_row[0] == "#4CAF50" and existing_progress_color != "#4CAF50":
-        cur.execute(
-            "UPDATE settings SET value=? WHERE key=?",
-            (existing_progress_color, "user_progress_bar_color"),
-        )
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("user_progress_bar_color", "#4CAF50"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_progress_bar_color", "#ff557f"))
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_text_color", "#ffaaff"))
     
     conn.commit()
     conn.close()
