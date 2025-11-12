@@ -9,11 +9,15 @@ wheels/
 # Virtual environments
 .venv
 
-# User-specific data
-ghosts/              # Ghost replay recordings (legacy)
-typing_stats.db      # Database (legacy)
-data/                # Old data folder
-Dev_Type_Data/       # Portable data directory (new name)
+# User-specific data (legacy locations - now all in Dev_Type_Data/)
+ghosts/              # Legacy ghost replay recordings
+typing_stats.db      # Legacy database
+data.db              # Legacy database
+data/                # Legacy data folder
+
+# Portable data directory - contains ALL user data (DO NOT COMMIT)
+Dev_Type_Data/
+data_location.txt    # Custom data directory configuration
 
 # Generated icon files (can be regenerated from icon.svg)
 app/icon_*.png

@@ -920,9 +920,9 @@ class TypingAreaWidget(QTextEdit):
         self.update()  # Force full widget update
         
         # If cursor is blinking, restart the blink cycle
-        if self.cursor_blink_mode == "blinking" and self.blink_timer:
-            self.blink_timer.stop()
-            self.blink_timer.start(530)  # Standard blink rate
+        if self.cursor_blink_mode == "blinking" and hasattr(self, '_cursor_timer'):
+            self._cursor_timer.stop()
+            self._cursor_timer.start(530)  # Standard blink rate
     
     def update_space_char(self, space_char: str):
         """Update space character display dynamically."""

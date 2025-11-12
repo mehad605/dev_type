@@ -112,7 +112,7 @@ class PortableDataManager:
             self._data_dir.mkdir(parents=True, exist_ok=True)
         
         # Create subdirectories
-        subdirs = ['ghosts', 'settings', 'logs']
+        subdirs = ['ghosts', 'custom_sounds', 'settings', 'logs']
         for subdir in subdirs:
             subdir_path = self._data_dir / subdir
             if not subdir_path.exists():
@@ -188,6 +188,10 @@ class PortableDataManager:
         """Get path to the ghosts directory."""
         return self._data_dir / "ghosts"
     
+    def get_custom_sounds_dir(self) -> Path:
+        """Get path to the custom sounds directory."""
+        return self._data_dir / "custom_sounds"
+    
     def get_settings_dir(self) -> Path:
         """Get path to the settings directory."""
         return self._data_dir / "settings"
@@ -206,6 +210,7 @@ class PortableDataManager:
             'default_data_dir': str(self._base_dir / "Dev_Type_Data"),
             'database_path': str(self.get_database_path()),
             'ghosts_dir': str(self.get_ghosts_dir()),
+            'custom_sounds_dir': str(self.get_custom_sounds_dir()),
             'data_dir_exists': self._data_dir.exists(),
             'database_exists': self.get_database_path().exists(),
         }
@@ -229,6 +234,11 @@ def get_database_path() -> Path:
 def get_ghosts_dir() -> Path:
     """Get path to the ghosts directory."""
     return _portable_data_manager.get_ghosts_dir()
+
+
+def get_custom_sounds_dir() -> Path:
+    """Get path to the custom sounds directory."""
+    return _portable_data_manager.get_custom_sounds_dir()
 
 
 def is_portable() -> bool:

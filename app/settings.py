@@ -59,20 +59,17 @@ def _ensure_settings_cache_loaded():
 def get_data_dir() -> Path:
     """Get the data directory for the application.
     
-    In portable mode (exe/AppImage): uses data/ folder next to executable
-    In development mode: uses OS-specific app data directory
+    Always uses portable data directory for consistency:
+    - In portable mode (exe/AppImage): Dev_Type_Data/ folder next to executable
+    - In development mode: Dev_Type_Data/ folder in project root
     """
-    # Check if running in portable mode
-    if _PORTABLE_MODE_AVAILABLE and is_portable():
+    # Always use portable data directory for consistency
+    if _PORTABLE_MODE_AVAILABLE:
         from app.portable_data import get_data_dir as get_portable_data_dir
         return get_portable_data_dir()
     
-    # Standard development/installed mode
-    if os.name == "nt":
-        base = os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming"
-    else:
-        base = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    d = Path(base) / "dev_typing_app"
+    # Fallback if portable_data module not available (should never happen)
+    d = Path(__file__).parent.parent / "Dev_Type_Data"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -87,13 +84,14 @@ def _db_file(path: Optional[str] = None) -> Path:
     if _current_db_path:
         return _current_db_path
     
-    # Use portable database path if available
-    if _PORTABLE_MODE_AVAILABLE and is_portable():
+    # Always use portable database path
+    if _PORTABLE_MODE_AVAILABLE:
         portable_db = get_database_path()
         if portable_db:
             return portable_db
     
-    return get_data_dir() / "data.db"
+    # Fallback
+    return get_data_dir() / "typing_stats.db"
 
 
 def init_db(path: Optional[str] = None):
