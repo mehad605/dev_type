@@ -3,8 +3,11 @@
 This module provides theme definitions and application logic for the typing app.
 Themes include complete color schemes for UI elements, text editor, and all widgets.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
+
+# Cache for generated stylesheets to avoid regeneration
+_stylesheet_cache: Dict[str, str] = {}
 
 
 @dataclass
@@ -205,13 +208,23 @@ def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
 def generate_app_stylesheet(scheme: ColorScheme) -> str:
     """Generate complete Qt stylesheet for the application.
     
+    Uses caching to avoid regenerating the same stylesheet multiple times.
+    
     Args:
         scheme: ColorScheme to use
         
     Returns:
         Complete Qt stylesheet string
     """
-    return f"""
+    # Create cache key from scheme colors
+    cache_key = f"{scheme.bg_primary}_{scheme.text_primary}_{scheme.accent_color}"
+    
+    # Return cached stylesheet if available
+    if cache_key in _stylesheet_cache:
+        return _stylesheet_cache[cache_key]
+    
+    # Generate new stylesheet
+    stylesheet = f"""
     /* Main Application */
     QMainWindow, QWidget {{
         background-color: {scheme.bg_primary};
@@ -467,6 +480,11 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         color: {scheme.text_secondary};
     }}
     """
+    
+    # Cache the generated stylesheet
+    _stylesheet_cache[cache_key] = stylesheet
+    
+    return stylesheet
 
 
 def apply_theme_to_app(app, scheme: ColorScheme):

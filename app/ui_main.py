@@ -1390,6 +1390,10 @@ class MainWindow(QMainWindow):
     
     def apply_current_theme(self):
         """Apply the current theme settings to the entire application."""
+        if DEBUG_STARTUP_TIMING:
+            import time
+            t_total = time.time()
+        
         from app.themes import get_color_scheme, apply_theme_to_app
         
         # Get current theme settings
@@ -1400,16 +1404,27 @@ class MainWindow(QMainWindow):
         scheme = get_color_scheme(theme, scheme_name)
         
         # Apply to application
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         app = QApplication.instance()
         if app:
             apply_theme_to_app(app, scheme)
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [THEME] apply_theme_to_app: {time.time() - t:.3f}s")
         
         # Update typing area colors if editor tab is initialized
+        if DEBUG_STARTUP_TIMING:
+            t = time.time()
         if hasattr(self, 'editor_tab') and hasattr(self.editor_tab, 'typing_area'):
             self.update_typing_colors(scheme)
             # Update stats display theme
             if hasattr(self.editor_tab, 'stats_display'):
                 self.editor_tab.stats_display.apply_theme()
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [THEME] update_typing_colors: {time.time() - t:.3f}s")
+        
+        if DEBUG_STARTUP_TIMING:
+            print(f"  [THEME] TOTAL apply_current_theme: {time.time() - t_total:.3f}s")
     
     def update_typing_colors(self, scheme):
         """Update typing area highlighter colors from scheme."""
@@ -1705,66 +1720,81 @@ def create_splash_screen(app):
 
 
 def run_app():
+    """
+    Optimized application startup with proper splash screen timing.
+    
+    Flow:
+    1. Show splash screen immediately
+    2. Load and initialize everything while splash is visible
+    3. Apply theme and warm up UI
+    4. Only THEN show main window and close splash
+    """
     if DEBUG_STARTUP_TIMING:
         import time
         start = time.time()
         print("[STARTUP] Starting app initialization...")
     
+    # STEP 1: Create QApplication
     if DEBUG_STARTUP_TIMING:
         t1 = time.time()
     app = QApplication(sys.argv)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
-    # Show splash screen immediately
+    # STEP 2: Show splash screen immediately
     if DEBUG_STARTUP_TIMING:
         t_splash = time.time()
     splash, status_label = create_splash_screen(app)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Splash screen shown: {time.time() - t_splash:.3f}s")
     
-    # Pre-warm Qt's stylesheet engine with a dummy widget
-    if DEBUG_STARTUP_TIMING:
-        t_warm = time.time()
-    status_label.setText("Loading UI engine...")
-    app.processEvents()
-    
-    dummy = QLabel("warming up")
-    dummy.setStyleSheet("QLabel { background: #2e3440; color: #eceff4; border-radius: 4px; padding: 4px; }")
-    dummy.show()
-    dummy.hide()
-    dummy.deleteLater()
-    if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Style engine pre-warmed: {time.time() - t_warm:.3f}s")
-    
-    # Load main window
+    # STEP 3: Load main window (hidden)
     if DEBUG_STARTUP_TIMING:
         t2 = time.time()
-    status_label.setText("Loading main window...")
+    status_label.setText("Loading application...")
     app.processEvents()
     
     win = MainWindow()
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] MainWindow created: {time.time() - t2:.3f}s")
     
-    # Show window and close splash
+    # STEP 4: Apply theme BEFORE showing window
     if DEBUG_STARTUP_TIMING:
-        t3 = time.time()
+        t_theme = time.time()
+    status_label.setText("Applying theme...")
+    app.processEvents()
+    
+    win.apply_current_theme()
+    # Don't call processEvents here - it's expensive!
+    
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Theme applied: {time.time() - t_theme:.3f}s")
+    
+    # STEP 5: Everything is ready - show window and close splash
+    if DEBUG_STARTUP_TIMING:
+        t_final = time.time()
     status_label.setText("Ready!")
     app.processEvents()
     
+    # Ensure minimum splash display time (makes loading feel intentional, not glitchy)
+    elapsed = time.time() - start if DEBUG_STARTUP_TIMING else 0
+    minimum_splash_time = 1.2  # 1.2 seconds minimum for smooth UX
+    
+    if elapsed < minimum_splash_time:
+        import time as time_module
+        remaining = minimum_splash_time - elapsed
+        time_module.sleep(remaining)
+        if DEBUG_STARTUP_TIMING:
+            print(f"[STARTUP] Waited {remaining:.3f}s for minimum splash time")
+    
+    # Now show the window and close splash simultaneously
     win.show()
-    splash.close()  # Close splash when main window is ready
+    win.raise_()
+    win.activateWindow()
+    splash.close()
     
     if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Window shown & splash closed: {time.time() - t3:.3f}s")
-    
-    # Apply theme after window is visible (deferred to avoid blocking startup)
-    if DEBUG_STARTUP_TIMING:
-        t4 = time.time()
-    QTimer.singleShot(0, win.apply_current_theme)
-    if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Theme deferred: {time.time() - t4:.3f}s")
+        print(f"[STARTUP] Window shown & splash closed: {time.time() - t_final:.3f}s")
         print(f"[STARTUP] TOTAL TIME: {time.time() - start:.3f}s")
     
     sys.exit(app.exec())
