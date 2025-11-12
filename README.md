@@ -166,4 +166,6 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## 📄 License
 
-This project is open source. Please check the repository for license information.
+This project is licensed under the Source First License 1.1 - see the [LICENSE](LICENSE) file for details.
+
+**In short:** This software is free for personal, non-commercial use. You can use, modify, and share it for personal projects, learning, and hobby purposes. Commercial use requires separate permission.
