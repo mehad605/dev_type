@@ -132,12 +132,22 @@ class TypingAreaWidget(QTextEdit):
         self._target_cursor_rect = QRect()
         self._animated_cursor_x = 0.0
         self._animated_cursor_y = 0.0
+        
+        # --- MODIFIED FOR ULTRA-SMOOTH GLIDE (200ms duration) ---
+        
         self._cursor_animation_x = QPropertyAnimation(self, b"_cursor_x_pos")
-        self._cursor_animation_x.setDuration(80)  # 0.08 seconds like the example
-        self._cursor_animation_x.setEasingCurve(QEasingCurve.OutCubic)  # Smooth ease-out
+        self._cursor_animation_x.setDuration(200)  # Increased duration for ultra-smooth glide (0.2 seconds)
+        self._cursor_animation_x.setEasingCurve(QEasingCurve.OutQuint)  # Uses a softer deceleration curve for a fluid stop
+        
         self._cursor_animation_y = QPropertyAnimation(self, b"_cursor_y_pos")
-        self._cursor_animation_y.setDuration(80)
-        self._cursor_animation_y.setEasingCurve(QEasingCurve.OutCubic)
+        self._cursor_animation_y.setDuration(200)  # Synchronize Y duration for consistent feel
+        self._cursor_animation_y.setEasingCurve(QEasingCurve.OutQuint)  # Consistent smooth easing
+        
+        # --- ORIGINAL CONFIGURATION RESUMES ---
+        
+        # Connect animation finished to resume blinking (or other cleanup)
+        self._cursor_animation_x.finished.connect(self._on_cursor_animation_finished)
+        self._is_cursor_animating = False  # Track if cursor is sliding
         
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
@@ -529,7 +539,13 @@ class TypingAreaWidget(QTextEdit):
         self._cursor_animation_x.stop()
         self._cursor_animation_y.stop()
         
-        # Animate smoothly to new position (like CSS transition)
+        # Start sliding - pause blinking and keep cursor visible
+        self._is_cursor_animating = True
+        self._cursor_visible = True  # Keep cursor visible during slide
+        if hasattr(self, '_cursor_timer'):
+            self._cursor_timer.stop()  # Pause blinking while sliding
+        
+        # Animate smoothly to new position (sliding effect)
         self._cursor_animation_x.setStartValue(self._animated_cursor_x)
         self._cursor_animation_x.setEndValue(float(rect.left()))
         self._cursor_animation_y.setStartValue(self._animated_cursor_y)
@@ -537,6 +553,13 @@ class TypingAreaWidget(QTextEdit):
         
         self._cursor_animation_x.start()
         self._cursor_animation_y.start()
+    
+    def _on_cursor_animation_finished(self):
+        """Called when cursor slide animation completes - resume blinking."""
+        self._is_cursor_animating = False
+        # Resume blinking if in blinking mode
+        if self.cursor_blink_mode == "blinking" and self.hasFocus():
+            self._update_blink_timer()
 
     def _request_cursor_paint(self, old_rect: Optional[QRect] = None):
         """Schedule viewport update for cursor area."""
@@ -553,6 +576,10 @@ class TypingAreaWidget(QTextEdit):
 
     def _update_blink_timer(self):
         """Start or stop blink timer based on settings and focus."""
+        # Don't start blinking if cursor is currently sliding
+        if self._is_cursor_animating:
+            return
+            
         self._cursor_visible = True
         if self.cursor_blink_mode == "blinking" and self.hasFocus():
             flash_time = QApplication.instance().cursorFlashTime() if QApplication.instance() else 1000
