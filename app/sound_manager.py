@@ -20,7 +20,7 @@ class SoundManager(QObject):
         self.volume = 0.5
         
         # Base sounds directory
-        self.sounds_dir = Path(__file__).parent.parent / "assents" / "sounds"
+        self.sounds_dir = Path(__file__).parent.parent / "assets" / "sounds"
         
         # Custom profiles are now stored in database
         

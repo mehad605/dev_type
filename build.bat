@@ -28,6 +28,27 @@ if %errorlevel% equ 0 (
 
 echo.
 echo ========================================
+echo   Clearing Windows Icon Cache
+echo ========================================
+echo.
+echo This ensures the latest icon is displayed...
+echo (Developer-only step - end users don't need this)
+echo.
+
+REM Kill Explorer to release icon cache
+taskkill /IM explorer.exe /F >nul 2>&1
+
+REM Delete icon cache files
+DEL /Q "%localappdata%\IconCache.db" >nul 2>&1
+DEL /Q "%localappdata%\Microsoft\Windows\Explorer\iconcache*" >nul 2>&1
+
+REM Restart Explorer
+start explorer.exe
+
+echo Icon cache cleared successfully!
+
+echo.
+echo ========================================
 echo   Build Complete!
 echo ========================================
 echo.

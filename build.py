@@ -70,21 +70,22 @@ class Builder:
     def get_icon_path(self) -> str:
         """Get the appropriate icon file for the platform."""
         if self.is_windows:
-            # Windows needs .ico file - we'll create it if needed
-            ico_path = self.root / "app" / "icon.ico"
+            # Windows needs .ico file
+            ico_path = self.root / "assets" / "icon.ico"
             if not ico_path.exists():
                 print("⚠️  Windows .ico file not found, will use .png")
-                return str(self.root / "app" / "icon.png")
+                return str(self.root / "assets" / "icon.png")
             return str(ico_path)
         else:
             # Linux/Mac can use PNG
-            return str(self.root / "app" / "icon.png")
+            return str(self.root / "assets" / "icon.png")
     
     def build_windows(self):
         """Build Windows executable."""
         print("🏗️  Building Windows executable...\n")
         
         icon_path = self.get_icon_path()
+        version_file = self.root / "version_info.txt"
         
         # Create a temporary entry point script
         entry_script = self.root / "run_app.py"
@@ -102,11 +103,19 @@ if __name__ == "__main__":
             "--onefile",  # Single executable file
             "--windowed",  # No console window
             f"--icon={icon_path}",
-            
+        ]
+        
+        # Add version info for Windows
+        if version_file.exists():
+            cmd.append(f"--version-file={version_file}")
+        
+        # Add data files and other options
+        cmd.extend([
             # Add data files
-            "--add-data=app/icon.svg;app",
-            "--add-data=app/icon.png;app",
-            "--add-data=assents/sounds;assents/sounds",  # Include sounds directory
+            "--add-data=assets/icon.svg;assets",
+            "--add-data=assets/icon.png;assets",
+            "--add-data=assets/icon.ico;assets",
+            "--add-data=assets/sounds;assets/sounds",  # Include sounds directory
             
             # Hidden imports that PyInstaller might miss
             "--hidden-import=PySide6.QtSvg",
@@ -120,8 +129,8 @@ if __name__ == "__main__":
             "--clean",
             
             # Entry point
-            str(entry_script)
-        ]
+            str(entry_script),
+        ])
         
         print(f"Command: {' '.join(cmd)}\n")
         
@@ -167,9 +176,9 @@ if __name__ == "__main__":
             f"--icon={icon_path}",
             
             # Add data files
-            "--add-data=app/icon.svg:app",
-            "--add-data=app/icon.png:app",
-            "--add-data=assents/sounds:assents/sounds",  # Include sounds directory
+            "--add-data=assets/icon.svg:assets",
+            "--add-data=assets/icon.png:assets",
+            "--add-data=assets/sounds:assets/sounds",  # Include sounds directory
             
             # Hidden imports
             "--hidden-import=PySide6.QtSvg",
@@ -197,7 +206,7 @@ if __name__ == "__main__":
             print("   2. Create AppDir structure:")
             print("      mkdir -p AppDir/usr/bin")
             print("      cp dist/dev_type AppDir/usr/bin/")
-            print("      cp app/icon.png AppDir/dev_type.png")
+            print("      cp assets/icon.png AppDir/dev_type.png")
             print("   3. Create dev_type.desktop file in AppDir/")
             print("   4. Run: appimagetool AppDir dev_type.AppImage")
             

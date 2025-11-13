@@ -1,15 +1,29 @@
 """
-Convert icon.png to .ico format for Windows builds.
+DEPRECATED: Use generate_icon.py instead.
+
+This script has been replaced by generate_icon.py which:
+- Converts SVG to PNG and ICO formats
+- Saves icons to the assets/ folder
+- Generates multiple sizes automatically
+
+Run: python app/generate_icon.py
 """
 from pathlib import Path
 from PIL import Image
 
 
 def create_ico():
-    """Create multi-resolution ICO file from PNG."""
-    app_dir = Path(__file__).parent
-    png_path = app_dir / "icon.png"
-    ico_path = app_dir / "icon.ico"
+    """Create multi-resolution ICO file from PNG.
+    
+    DEPRECATED: Use generate_icon.py instead.
+    """
+    print("⚠️  This script is deprecated!")
+    print("   Use: python app/generate_icon.py")
+    print()
+    
+    assets_dir = Path(__file__).parent.parent / "assets"
+    png_path = assets_dir / "icon.png"
+    ico_path = assets_dir / "icon.ico"
     
     if not png_path.exists():
         print(f"❌ {png_path} not found!")

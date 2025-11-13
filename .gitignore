@@ -20,9 +20,9 @@ Dev_Type_Data/
 data_location.txt    # Custom data directory configuration
 
 # Generated icon files (can be regenerated from icon.svg)
-app/icon_*.png
-app/icon.png
-app/icon.ico
+assets/icon_*.png
+assets/icon.png
+assets/icon.ico
 
 # PyInstaller build artifacts
 build/

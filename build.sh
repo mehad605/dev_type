@@ -40,7 +40,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Create AppDir structure
     mkdir -p AppDir/usr/bin
     cp dist/dev_type AppDir/usr/bin/
-    cp app/icon.png AppDir/dev_type.png
+    cp assets/icon.png AppDir/dev_type.png
     
     # Create .desktop file
     cat > AppDir/dev_type.desktop << 'EOF'

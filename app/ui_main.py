@@ -527,7 +527,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Dev Typing App")
         
         # Set application icon
-        icon_path = Path(__file__).parent / "icon.png"
+        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         
