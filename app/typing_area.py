@@ -527,32 +527,48 @@ class TypingAreaWidget(QTextEdit):
         # Store target rectangle
         self._target_cursor_rect = rect
         
-        # If this is the first position or animation is disabled, jump immediately
-        if self._cursor_rect.isNull() or not self.hasFocus():
-            self._animated_cursor_x = float(rect.left())
-            self._animated_cursor_y = float(rect.top())
-            self._cursor_rect = rect
-            self._request_cursor_paint()
-            return
+        # ===== ANIMATION DISABLED - INSTANT CURSOR MOVEMENT =====
+        # Update cursor position immediately without animation
+        self._animated_cursor_x = float(rect.left())
+        self._animated_cursor_y = float(rect.top())
+        self._cursor_rect = rect
+        self._request_cursor_paint()
         
-        # Stop any running animations
-        self._cursor_animation_x.stop()
-        self._cursor_animation_y.stop()
+        # If cursor was animating, mark it as finished
+        if self._is_cursor_animating:
+            self._is_cursor_animating = False
+            # Resume blinking if in blinking mode
+            if self.cursor_blink_mode == "blinking" and self.hasFocus():
+                self._update_blink_timer()
+        return
         
-        # Start sliding - pause blinking and keep cursor visible
-        self._is_cursor_animating = True
-        self._cursor_visible = True  # Keep cursor visible during slide
-        if hasattr(self, '_cursor_timer'):
-            self._cursor_timer.stop()  # Pause blinking while sliding
-        
-        # Animate smoothly to new position (sliding effect)
-        self._cursor_animation_x.setStartValue(self._animated_cursor_x)
-        self._cursor_animation_x.setEndValue(float(rect.left()))
-        self._cursor_animation_y.setStartValue(self._animated_cursor_y)
-        self._cursor_animation_y.setEndValue(float(rect.top()))
-        
-        self._cursor_animation_x.start()
-        self._cursor_animation_y.start()
+        # ===== ORIGINAL ANIMATION CODE (COMMENTED OUT) =====
+        # # If this is the first position or animation is disabled, jump immediately
+        # if self._cursor_rect.isNull() or not self.hasFocus():
+        #     self._animated_cursor_x = float(rect.left())
+        #     self._animated_cursor_y = float(rect.top())
+        #     self._cursor_rect = rect
+        #     self._request_cursor_paint()
+        #     return
+        # 
+        # # Stop any running animations
+        # self._cursor_animation_x.stop()
+        # self._cursor_animation_y.stop()
+        # 
+        # # Start sliding - pause blinking and keep cursor visible
+        # self._is_cursor_animating = True
+        # self._cursor_visible = True  # Keep cursor visible during slide
+        # if hasattr(self, '_cursor_timer'):
+        #     self._cursor_timer.stop()  # Pause blinking while sliding
+        # 
+        # # Animate smoothly to new position (sliding effect)
+        # self._cursor_animation_x.setStartValue(self._animated_cursor_x)
+        # self._cursor_animation_x.setEndValue(float(rect.left()))
+        # self._cursor_animation_y.setStartValue(self._animated_cursor_y)
+        # self._cursor_animation_y.setEndValue(float(rect.top()))
+        # 
+        # self._cursor_animation_x.start()
+        # self._cursor_animation_y.start()
     
     def _on_cursor_animation_finished(self):
         """Called when cursor slide animation completes - resume blinking."""
