@@ -19,8 +19,14 @@ Directory Structure:
 
 The Dev_Type_Data folder is created automatically on first run if it doesn't exist.
 User can change the data directory location via settings.
+
+Configuration File Locations:
+    Windows: %APPDATA%\\DevType\\config.ini
+    Linux:   ~/.config/devtype/config.conf
 """
 import sys
+import platform
+import configparser
 from pathlib import Path
 from typing import Optional
 
@@ -69,7 +75,7 @@ class PortableDataManager:
             self._base_dir = Path(__file__).parent.parent
             self._is_portable = False
         
-        # Try to load custom data directory from a config file
+        # Try to load custom data directory from config file
         self._load_custom_data_dir()
         
         # Data directory is the custom one if set, otherwise default
@@ -81,29 +87,97 @@ class PortableDataManager:
         # Create data directory and subdirectories if they don't exist
         self._ensure_directories()
     
+    def _get_config_file_path(self) -> Path:
+        """Get platform-specific config file path.
+        
+        Returns:
+            Windows: %APPDATA%\\DevType\\config.ini
+            Linux:   ~/.config/devtype/config.conf
+        """
+        system = platform.system()
+        
+        if system == "Windows":
+            # Windows: Use APPDATA
+            appdata = Path.home() / "AppData" / "Roaming"
+            config_dir = appdata / "DevType"
+            config_file = config_dir / "config.ini"
+        else:
+            # Linux/Unix: Use .config
+            config_dir = Path.home() / ".config" / "devtype"
+            config_file = config_dir / "config.conf"
+        
+        # Ensure config directory exists
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        return config_file
+    
     def _load_custom_data_dir(self):
-        """Load custom data directory path from config file."""
-        config_file = self._base_dir / "data_location.txt"
-        if config_file.exists():
+        """Load custom data directory path from platform-specific config file."""
+        # First, check for old data_location.txt file and migrate if exists
+        old_config_file = self._base_dir / "data_location.txt"
+        if old_config_file.exists():
             try:
-                path_str = config_file.read_text().strip()
+                path_str = old_config_file.read_text().strip()
                 if path_str:
                     custom_path = Path(path_str)
                     if custom_path.exists() and custom_path.is_dir():
                         self._custom_data_dir = custom_path
+                        # Migrate to new config format
+                        self._save_custom_data_dir()
+                        # Remove old file
+                        old_config_file.unlink()
+                        print(f"Migrated data directory config from data_location.txt to platform config")
+                        return
             except Exception as e:
-                print(f"Error loading custom data directory: {e}")
+                print(f"Error migrating old config: {e}")
+        
+        # Load from platform-specific config file
+        config_file = self._get_config_file_path()
+        if not config_file.exists():
+            return
+        
+        try:
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            
+            if config.has_section('Paths') and config.has_option('Paths', 'data_directory'):
+                path_str = config.get('Paths', 'data_directory')
+                if path_str:
+                    custom_path = Path(path_str)
+                    if custom_path.exists() and custom_path.is_dir():
+                        self._custom_data_dir = custom_path
+        except Exception as e:
+            print(f"Error loading custom data directory from config: {e}")
     
     def _save_custom_data_dir(self):
-        """Save custom data directory path to config file."""
-        config_file = self._base_dir / "data_location.txt"
+        """Save custom data directory path to platform-specific config file."""
+        config_file = self._get_config_file_path()
+        
         try:
+            config = configparser.ConfigParser()
+            
+            # Load existing config if it exists
+            if config_file.exists():
+                config.read(config_file)
+            
+            # Ensure Paths section exists
+            if not config.has_section('Paths'):
+                config.add_section('Paths')
+            
+            # Set or remove data directory
             if self._custom_data_dir:
-                config_file.write_text(str(self._custom_data_dir))
-            elif config_file.exists():
-                config_file.unlink()  # Remove if no custom dir
+                config.set('Paths', 'data_directory', str(self._custom_data_dir))
+            else:
+                # Remove the setting if no custom dir
+                if config.has_option('Paths', 'data_directory'):
+                    config.remove_option('Paths', 'data_directory')
+            
+            # Write config file
+            with open(config_file, 'w') as f:
+                config.write(f)
+                
         except Exception as e:
-            print(f"Error saving custom data directory: {e}")
+            print(f"Error saving custom data directory to config: {e}")
     
     def _ensure_directories(self):
         """Create data directory structure if it doesn't exist."""
