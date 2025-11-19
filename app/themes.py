@@ -175,15 +175,253 @@ LIGHT_THEME = ColorScheme(
 )
 
 
+# Cyberpunk (High contrast neon)
+CYBERPUNK_DARK = ColorScheme(
+    # Backgrounds
+    bg_primary="#0b0c15",  # Deep dark blue/black
+    bg_secondary="#161822",  # Slightly lighter
+    bg_tertiary="#2a2d3e",  # Selection bg
+    
+    # Text
+    text_primary="#00ff9f",  # Neon Green
+    text_secondary="#00b8ff",  # Neon Blue
+    text_disabled="#565869",
+    
+    # Typing colors
+    text_untyped="#565869",
+    text_correct="#fcee0a",  # Neon Yellow
+    text_incorrect="#ff003c",  # Neon Red
+    text_paused="#00b8ff",  # Neon Blue
+    cursor_color="#ff003c",  # Neon Red
+    
+    # UI colors
+    border_color="#2a2d3e",
+    accent_color="#ff003c",  # Neon Red
+    button_bg="#161822",
+    button_hover="#2a2d3e",
+    
+    # Status colors
+    success_color="#00ff9f",
+    warning_color="#fcee0a",
+    error_color="#ff003c",
+    info_color="#00b8ff",
+)
+
+
+# Monokai Pro (Professional dark theme)
+MONOKAI_PRO = ColorScheme(
+    # Backgrounds
+    bg_primary="#2D2A2E",
+    bg_secondary="#403E41",
+    bg_tertiary="#5B595C",
+    
+    # Text
+    text_primary="#FCFCFA",
+    text_secondary="#939293",
+    text_disabled="#727072",
+    
+    # Typing colors
+    text_untyped="#727072",
+    text_correct="#A9DC76",  # Green
+    text_incorrect="#FF6188",  # Red
+    text_paused="#FFD866",  # Yellow
+    cursor_color="#78DCE8",  # Blue
+    
+    # UI colors
+    border_color="#5B595C",
+    accent_color="#FFD866",  # Yellow accent
+    button_bg="#403E41",
+    button_hover="#5B595C",
+    
+    # Status colors
+    success_color="#A9DC76",
+    warning_color="#FFD866",
+    error_color="#FF6188",
+    info_color="#78DCE8",
+)
+
+
+# Gruvbox Dark (Retro warm theme)
+GRUVBOX_DARK = ColorScheme(
+    # Backgrounds
+    bg_primary="#282828",
+    bg_secondary="#3c3836",
+    bg_tertiary="#504945",
+    
+    # Text
+    text_primary="#ebdbb2",
+    text_secondary="#a89984",
+    text_disabled="#928374",
+    
+    # Typing colors
+    text_untyped="#928374",
+    text_correct="#b8bb26",  # Green
+    text_incorrect="#fb4934",  # Red
+    text_paused="#fabd2f",  # Yellow
+    cursor_color="#fe8019",  # Orange
+    
+    # UI colors
+    border_color="#504945",
+    accent_color="#d3869b",  # Purple
+    button_bg="#3c3836",
+    button_hover="#504945",
+    
+    # Status colors
+    success_color="#b8bb26",
+    warning_color="#fabd2f",
+    error_color="#fb4934",
+    info_color="#83a598",
+)
+
+
+# Solarized Dark (Precision colors)
+SOLARIZED_DARK = ColorScheme(
+    # Backgrounds
+    bg_primary="#002b36",
+    bg_secondary="#073642",
+    bg_tertiary="#586e75",
+    
+    # Text
+    text_primary="#839496",
+    text_secondary="#586e75",
+    text_disabled="#657b83",
+    
+    # Typing colors
+    text_untyped="#657b83",
+    text_correct="#859900",  # Green
+    text_incorrect="#dc322f",  # Red
+    text_paused="#b58900",  # Yellow
+    cursor_color="#268bd2",  # Blue
+    
+    # UI colors
+    border_color="#586e75",
+    accent_color="#268bd2",  # Blue
+    button_bg="#073642",
+    button_hover="#586e75",
+    
+    # Status colors
+    success_color="#859900",
+    warning_color="#b58900",
+    error_color="#dc322f",
+    info_color="#268bd2",
+)
+
+
+# Rose Pine Dawn (Soft warm light)
+ROSE_PINE_DAWN = ColorScheme(
+    # Backgrounds
+    bg_primary="#faf4ed",
+    bg_secondary="#fffaf3",
+    bg_tertiary="#f2e9e1",
+    
+    # Text
+    text_primary="#575279",
+    text_secondary="#797593",
+    text_disabled="#9893a5",
+    
+    # Typing colors
+    text_untyped="#9893a5",
+    text_correct="#286983",  # Pine
+    text_incorrect="#b4637a",  # Love
+    text_paused="#ea9d34",  # Gold
+    cursor_color="#56949f",  # Foam
+    
+    # UI colors
+    border_color="#dfdad9",
+    accent_color="#d7827e",  # Rose
+    button_bg="#fffaf3",
+    button_hover="#f2e9e1",
+    
+    # Status colors
+    success_color="#286983",
+    warning_color="#ea9d34",
+    error_color="#b4637a",
+    info_color="#56949f",
+)
+
+
+# Solarized Light (Precision light)
+SOLARIZED_LIGHT = ColorScheme(
+    # Backgrounds
+    bg_primary="#fdf6e3",
+    bg_secondary="#eee8d5",
+    bg_tertiary="#e0dcc7",
+    
+    # Text
+    text_primary="#657b83",
+    text_secondary="#93a1a1",
+    text_disabled="#a1a1a1",
+    
+    # Typing colors
+    text_untyped="#93a1a1",
+    text_correct="#859900",  # Green
+    text_incorrect="#dc322f",  # Red
+    text_paused="#b58900",  # Yellow
+    cursor_color="#268bd2",  # Blue
+    
+    # UI colors
+    border_color="#d3d0c8",
+    accent_color="#268bd2",  # Blue
+    button_bg="#eee8d5",
+    button_hover="#e0dcc7",
+    
+    # Status colors
+    success_color="#859900",
+    warning_color="#b58900",
+    error_color="#dc322f",
+    info_color="#268bd2",
+)
+
+
+# Catppuccin Latte (Vibrant light)
+CATPPUCCIN_LATTE = ColorScheme(
+    # Backgrounds
+    bg_primary="#eff1f5",
+    bg_secondary="#e6e9ef",
+    bg_tertiary="#bcc0cc",
+    
+    # Text
+    text_primary="#4c4f69",
+    text_secondary="#6c6f85",
+    text_disabled="#9ca0b0",
+    
+    # Typing colors
+    text_untyped="#9ca0b0",
+    text_correct="#40a02b",  # Green
+    text_incorrect="#d20f39",  # Red
+    text_paused="#df8e1d",  # Yellow
+    cursor_color="#ea76cb",  # Pink
+    
+    # UI colors
+    border_color="#ccd0da",
+    accent_color="#8839ef",  # Mauve
+    button_bg="#e6e9ef",
+    button_hover="#bcc0cc",
+    
+    # Status colors
+    success_color="#40a02b",
+    warning_color="#df8e1d",
+    error_color="#d20f39",
+    info_color="#1e66f5",
+)
+
+
 # Theme registry
 THEMES: Dict[str, Dict[str, ColorScheme]] = {
     "dark": {
         "nord": NORD_DARK,
         "catppuccin": CATPPUCCIN_DARK,
         "dracula": DRACULA_DARK,
+        "cyberpunk": CYBERPUNK_DARK,
+        "monokai_pro": MONOKAI_PRO,
+        "gruvbox": GRUVBOX_DARK,
+        "solarized_dark": SOLARIZED_DARK,
     },
     "light": {
         "default": LIGHT_THEME,
+        "rose_pine_dawn": ROSE_PINE_DAWN,
+        "solarized_light": SOLARIZED_LIGHT,
+        "catppuccin_latte": CATPPUCCIN_LATTE,
     }
 }
 
@@ -193,13 +431,13 @@ def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
     
     Args:
         theme: Theme type ("dark" or "light")
-        scheme: Scheme name ("nord", "catppuccin", "dracula") for dark mode
+        scheme: Scheme name ("nord", "catppuccin", "dracula", etc.)
         
     Returns:
         ColorScheme object with all colors
     """
     if theme == "light":
-        return LIGHT_THEME
+        return THEMES["light"].get(scheme, LIGHT_THEME)
     
     # Default to nord if scheme not found
     return THEMES["dark"].get(scheme, NORD_DARK)
@@ -217,7 +455,7 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         Complete Qt stylesheet string
     """
     # Create cache key from scheme colors
-    cache_key = f"{scheme.bg_primary}_{scheme.text_primary}_{scheme.accent_color}"
+    cache_key = f"{scheme.bg_primary}_{scheme.text_primary}_{scheme.accent_color}_v2"
     
     # Return cached stylesheet if available
     if cache_key in _stylesheet_cache:
@@ -229,32 +467,39 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QMainWindow, QWidget {{
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
+        font-family: "Segoe UI", "Roboto", sans-serif;
     }}
     
     /* Tabs */
     QTabWidget::pane {{
         border: 1px solid {scheme.border_color};
         background-color: {scheme.bg_primary};
+        border-radius: 6px;
+        top: -1px;
     }}
     
     QTabBar::tab {{
         background-color: {scheme.bg_secondary};
         color: {scheme.text_secondary};
-        padding: 8px 16px;
+        padding: 8px 20px;
         border: 1px solid {scheme.border_color};
         border-bottom: none;
-        border-top-left-radius: 4px;
-        border-top-right-radius: 4px;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+        margin-right: 2px;
+        font-weight: 500;
     }}
     
     QTabBar::tab:selected {{
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
         border-bottom: 2px solid {scheme.accent_color};
+        font-weight: bold;
     }}
     
     QTabBar::tab:hover {{
         background-color: {scheme.bg_tertiary};
+        color: {scheme.text_primary};
     }}
     
     /* Buttons */
@@ -262,8 +507,9 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.button_bg};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
-        padding: 6px 12px;
-        border-radius: 4px;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 500;
     }}
     
     QPushButton:hover {{
@@ -273,11 +519,13 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     
     QPushButton:pressed {{
         background-color: {scheme.bg_tertiary};
+        border-color: {scheme.accent_color};
     }}
     
     QPushButton:disabled {{
         color: {scheme.text_disabled};
         background-color: {scheme.bg_secondary};
+        border-color: {scheme.border_color};
     }}
     
     /* Text Edits */
@@ -285,8 +533,10 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
+        border-radius: 6px;
         selection-background-color: {scheme.accent_color};
         selection-color: {scheme.text_primary};
+        padding: 8px;
     }}
     
     /* List Widgets */
@@ -294,12 +544,24 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
+        border-radius: 6px;
         selection-background-color: {scheme.accent_color};
         selection-color: {scheme.text_primary};
+        outline: none;
+    }}
+    
+    QListWidget::item {{
+        padding: 4px;
+        border-radius: 4px;
     }}
     
     QListWidget::item:hover {{
         background-color: {scheme.bg_tertiary};
+    }}
+    
+    QListWidget::item:selected {{
+        background-color: {scheme.bg_tertiary};
+        border: 1px solid {scheme.accent_color};
     }}
     
     /* Tree Widgets */
@@ -307,12 +569,23 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
+        border-radius: 6px;
         selection-background-color: {scheme.accent_color};
         selection-color: {scheme.text_primary};
+        outline: none;
+    }}
+    
+    QTreeWidget::item {{
+        padding: 4px;
     }}
     
     QTreeWidget::item:hover {{
         background-color: {scheme.bg_tertiary};
+    }}
+    
+    QTreeWidget::item:selected {{
+        background-color: {scheme.bg_tertiary};
+        color: {scheme.text_primary};
     }}
     
     /* Combo Boxes */
@@ -320,17 +593,18 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.button_bg};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
-        padding: 4px 8px;
-        border-radius: 4px;
+        padding: 6px 12px;
+        border-radius: 6px;
     }}
     
     QComboBox:hover {{
         border-color: {scheme.accent_color};
+        background-color: {scheme.button_hover};
     }}
     
     QComboBox::drop-down {{
         border: none;
-        padding-right: 8px;
+        padding-right: 12px;
     }}
     
     QComboBox QAbstractItemView {{
@@ -338,6 +612,8 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
         selection-background-color: {scheme.accent_color};
+        selection-color: {scheme.text_primary};
+        outline: none;
     }}
     
     /* Spin Boxes */
@@ -345,8 +621,8 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.button_bg};
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
-        padding: 4px;
-        border-radius: 4px;
+        padding: 6px;
+        border-radius: 6px;
     }}
     
     QSpinBox:hover, QDoubleSpinBox:hover {{
@@ -360,10 +636,10 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     }}
     
     QCheckBox::indicator {{
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         border: 1px solid {scheme.border_color};
-        border-radius: 3px;
+        border-radius: 4px;
         background-color: {scheme.bg_secondary};
     }}
     
@@ -380,16 +656,18 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QGroupBox {{
         color: {scheme.text_primary};
         border: 1px solid {scheme.border_color};
-        border-radius: 4px;
-        margin-top: 12px;
-        padding-top: 8px;
+        border-radius: 8px;
+        margin-top: 16px;
+        padding-top: 12px;
+        font-weight: bold;
     }}
     
     QGroupBox::title {{
         color: {scheme.accent_color};
         subcontrol-origin: margin;
-        left: 8px;
-        padding: 0 4px;
+        left: 12px;
+        padding: 0 6px;
+        background-color: {scheme.bg_primary};
     }}
     
     /* Labels */
@@ -399,15 +677,17 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     
     /* Scroll Bars */
     QScrollBar:vertical {{
-        background-color: {scheme.bg_secondary};
-        width: 12px;
-        border: none;
+        background-color: {scheme.bg_primary};
+        width: 10px;
+        margin: 0;
+        border-radius: 5px;
     }}
     
     QScrollBar::handle:vertical {{
         background-color: {scheme.border_color};
-        border-radius: 6px;
-        min-height: 20px;
+        min-height: 30px;
+        border-radius: 5px;
+        margin: 2px;
     }}
     
     QScrollBar::handle:vertical:hover {{
@@ -415,15 +695,17 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     }}
     
     QScrollBar:horizontal {{
-        background-color: {scheme.bg_secondary};
-        height: 12px;
-        border: none;
+        background-color: {scheme.bg_primary};
+        height: 10px;
+        margin: 0;
+        border-radius: 5px;
     }}
     
     QScrollBar::handle:horizontal {{
         background-color: {scheme.border_color};
-        border-radius: 6px;
-        min-width: 20px;
+        min-width: 30px;
+        border-radius: 5px;
+        margin: 2px;
     }}
     
     QScrollBar::handle:horizontal:hover {{
@@ -431,7 +713,11 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     }}
     
     QScrollBar::add-line, QScrollBar::sub-line {{
-        border: none;
+        height: 0px;
+        width: 0px;
+    }}
+    
+    QScrollBar::add-page, QScrollBar::sub-page {{
         background: none;
     }}
     
@@ -458,6 +744,7 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     /* Splitter */
     QSplitter::handle {{
         background-color: {scheme.border_color};
+        width: 2px;
     }}
     
     QSplitter::handle:hover {{
@@ -468,16 +755,24 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QMenuBar {{
         background-color: {scheme.bg_secondary};
         color: {scheme.text_primary};
+        border-bottom: 1px solid {scheme.border_color};
+    }}
+    
+    QMenuBar::item {{
+        padding: 6px 10px;
+        background: transparent;
     }}
     
     QMenuBar::item:selected {{
-        background-color: {scheme.accent_color};
+        background-color: {scheme.bg_tertiary};
+        border-radius: 4px;
     }}
     
     /* Status Bar */
     QStatusBar {{
         background-color: {scheme.bg_secondary};
         color: {scheme.text_secondary};
+        border-top: 1px solid {scheme.border_color};
     }}
     """
     

@@ -778,11 +778,17 @@ class MainWindow(QMainWindow):
         theme_layout.addRow("Theme:", self.theme_combo)
         
         self.scheme_combo = QComboBox()
-        self.scheme_combo.addItems(["nord", "catppuccin", "dracula"])
+        # Initial population based on current theme
+        self._populate_scheme_combo(cur_theme)
+        
         cur_scheme = settings.get_setting("dark_scheme", "dracula")
-        self.scheme_combo.setCurrentText(cur_scheme)
+        # If we switched themes, this setting might not match, but on_theme_changed handles that
+        index = self.scheme_combo.findText(cur_scheme)
+        if index >= 0:
+            self.scheme_combo.setCurrentIndex(index)
+            
         self.scheme_combo.currentTextChanged.connect(self.on_scheme_changed)
-        theme_layout.addRow("Dark scheme:", self.scheme_combo)
+        theme_layout.addRow("Color Scheme:", self.scheme_combo)
         
         theme_group.setLayout(theme_layout)
         s_layout.addWidget(theme_group)
@@ -1091,17 +1097,49 @@ class MainWindow(QMainWindow):
         if hasattr(self, "history_tab"):
             self.history_tab.refresh_history()
 
-    def on_allow_continue_changed(self, state: int):
-        """Handle allow continue with mistakes setting change."""
-        settings.set_setting("allow_continue_mistakes", "1" if state == Qt.Checked else "0")
-        self.allow_continue_changed.emit(state == Qt.Checked)
+    def _populate_scheme_combo(self, theme_type: str):
+        """Populate the scheme combo box based on the selected theme type."""
+        self.scheme_combo.blockSignals(True)
+        self.scheme_combo.clear()
+        
+        if theme_type == "light":
+            self.scheme_combo.addItems([
+                "default",
+                "rose_pine_dawn",
+                "solarized_light",
+                "catppuccin_latte"
+            ])
+        else:
+            self.scheme_combo.addItems([
+                "nord", 
+                "catppuccin", 
+                "dracula", 
+                "cyberpunk", 
+                "monokai_pro", 
+                "gruvbox", 
+                "solarized_dark"
+            ])
+        self.scheme_combo.blockSignals(False)
 
     def on_theme_changed(self, theme: str):
+        """Handle theme change (dark/light)."""
         settings.set_setting("theme", theme)
+        
+        # Update scheme options for the new theme
+        self._populate_scheme_combo(theme)
+        
+        # Select a default scheme for the new theme if current one isn't valid
+        current_scheme = self.scheme_combo.currentText()
+        if not current_scheme:
+            default_scheme = "default" if theme == "light" else "dracula"
+            self.scheme_combo.setCurrentText(default_scheme)
+            settings.set_setting("dark_scheme", default_scheme)
+        
         self.apply_current_theme()
         self.update_color_buttons_from_theme()
 
     def on_scheme_changed(self, scheme: str):
+        """Handle scheme change."""
         settings.set_setting("dark_scheme", scheme)
         self.apply_current_theme()
         self.update_color_buttons_from_theme()

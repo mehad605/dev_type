@@ -165,6 +165,39 @@ class EditorTab(QWidget):
         # Ensure engine matches current instant death state
         self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
         
+        # Connect to parent window signals for dynamic updates
+        window = self.window()
+        if hasattr(window, 'cursor_changed'):
+            # Connect signals
+            window.cursor_changed.connect(self.typing_area.update_cursor)
+            window.font_changed.connect(self.typing_area.update_font)
+            window.colors_changed.connect(self.typing_area.update_colors)
+            window.space_char_changed.connect(self.typing_area.update_space_char)
+            window.pause_delay_changed.connect(self.typing_area.update_pause_delay)
+            window.allow_continue_changed.connect(self.typing_area.update_allow_continue)
+            window.show_typed_changed.connect(self.typing_area.update_show_typed_characters)
+            
+            # Also connect progress bar color
+            window.colors_changed.connect(self.update_progress_bar_color)
+            
+            # Apply current settings immediately
+            from app import settings
+            
+            # Cursor
+            c_type = settings.get_setting("cursor_type", "static")
+            c_style = settings.get_setting("cursor_style", "block")
+            self.typing_area.update_cursor(c_type, c_style)
+            
+            # Font
+            f_family = settings.get_setting("font_family", "JetBrains Mono")
+            f_size = int(settings.get_setting("font_size", "12"))
+            self.typing_area.update_font(f_family, f_size, False)
+            
+            # Colors
+            self.typing_area.update_colors()
+            self.update_progress_bar_color()
+
+        
         # Container for progress bar and stats
         bottom_container = QWidget()
         bottom_layout = QVBoxLayout(bottom_container)
