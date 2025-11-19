@@ -536,6 +536,7 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
         
+        # --- Folders Tab (Immediate) ---
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.folders_tab = FoldersTab()
@@ -543,10 +544,8 @@ class MainWindow(QMainWindow):
             t_add = time.time()
             print(f"  [INIT] FoldersTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.folders_tab, "Folders")
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] FoldersTab.addTab: {time.time() - t_add:.3f}s")
         
-        # Languages tab
+        # --- Languages Tab (Immediate) ---
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.languages_tab = LanguagesTab()
@@ -554,41 +553,28 @@ class MainWindow(QMainWindow):
             t_add = time.time()
             print(f"  [INIT] LanguagesTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.languages_tab, "Languages")
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] LanguagesTab.addTab: {time.time() - t_add:.3f}s")
 
-        # History tab
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
-        self.history_tab = HistoryTab()
-        if DEBUG_STARTUP_TIMING:
-            t_add = time.time()
-            print(f"  [INIT] HistoryTab: {t_add - t:.3f}s")
+        # --- History Tab (Lazy) ---
+        self.history_tab = QLabel("Loading History...")
+        self.history_tab.setAlignment(Qt.AlignCenter)
+        self.history_tab.setStyleSheet("color: #888888; font-size: 14pt;")
         self.tabs.addTab(self.history_tab, "History")
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] HistoryTab.addTab: {time.time() - t_add:.3f}s")
         
-        # Editor/Typing tab
+        # --- Editor/Typing Tab (Lazy) ---
+        # EditorTab is lightweight in init, but we want to defer its 'ensure_loaded'
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self.editor_tab = EditorTab()
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
-            print(f"  [INIT] EditorTab: {t_add - t:.3f}s")
+            print(f"  [INIT] EditorTab (init only): {t_add - t:.3f}s")
         self.tabs.addTab(self.editor_tab, "Typing")
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] EditorTab.addTab: {time.time() - t_add:.3f}s")
 
-        # Settings tab
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
-        self.settings_tab = self._create_settings_tab()
-        if DEBUG_STARTUP_TIMING:
-            t_add = time.time()
-            print(f"  [INIT] SettingsTab: {t_add - t:.3f}s")
+        # --- Settings Tab (Lazy) ---
+        self.settings_tab = QLabel("Loading Settings...")
+        self.settings_tab.setAlignment(Qt.AlignCenter)
+        self.settings_tab.setStyleSheet("color: #888888; font-size: 14pt;")
         self.tabs.addTab(self.settings_tab, "Settings")
-        if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] SettingsTab.addTab: {time.time() - t_add:.3f}s")
 
         if DEBUG_STARTUP_TIMING:
             t = time.time()
@@ -599,6 +585,7 @@ class MainWindow(QMainWindow):
             print(f"  [INIT] setCentralWidget + signals: {time.time() - t:.3f}s")
         
         # Connect settings signals to editor tab for dynamic updates
+        # (We can connect these now because editor_tab instance exists, even if not fully loaded)
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self._connect_settings_signals()
@@ -606,19 +593,68 @@ class MainWindow(QMainWindow):
             print(f"  [INIT] Connect signals: {time.time() - t:.3f}s")
         
         # Emit initial settings to apply them to the typing area
+        # (This might need to be re-emitted when editor loads, but safe to do now)
         if DEBUG_STARTUP_TIMING:
             t = time.time()
         self._emit_initial_settings()
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Emit settings: {time.time() - t:.3f}s")
 
-        # Trigger a lazy language scan shortly after launch without blocking the UI.
+        # Trigger background loading sequence
         if DEBUG_STARTUP_TIMING:
             t = time.time()
-        QTimer.singleShot(250, self.languages_tab.ensure_loaded)
+        # Start loading other tabs after a brief delay to let the UI show up
+        QTimer.singleShot(100, self._start_background_loading)
+        
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] QTimer.singleShot: {time.time() - t:.3f}s")
+            print(f"  [INIT] QTimer.singleShot (background load): {time.time() - t:.3f}s")
             print(f"  [INIT] === TOTAL MainWindow.__init__: {time.time() - t_init_start:.3f}s ===")
+
+    def _start_background_loading(self):
+        """Start the chain of background tab loading."""
+        # 1. Load Languages data (scan) - was previously done separately
+        self.languages_tab.ensure_loaded()
+        
+        # 2. Schedule next step: History Tab
+        QTimer.singleShot(50, self._load_history_tab_lazy)
+
+    def _load_history_tab_lazy(self):
+        """Lazy load history tab."""
+        if isinstance(self.history_tab, QLabel):
+            real_history = HistoryTab()
+            self._replace_tab(self.history_tab, real_history, "History")
+            self.history_tab = real_history
+        
+        # 3. Schedule next step: Editor Tab content
+        QTimer.singleShot(50, self._load_editor_tab_lazy)
+
+    def _load_editor_tab_lazy(self):
+        """Lazy load editor tab content."""
+        self.editor_tab.ensure_loaded()
+        
+        # 4. Schedule next step: Settings Tab
+        QTimer.singleShot(50, self._load_settings_tab_lazy)
+
+    def _load_settings_tab_lazy(self):
+        """Lazy load settings tab."""
+        if isinstance(self.settings_tab, QLabel):
+            real_settings = self._create_settings_tab()
+            self._replace_tab(self.settings_tab, real_settings, "Settings")
+            self.settings_tab = real_settings
+            
+            # Re-emit settings to ensure all UI elements are synced
+            self._emit_initial_settings()
+
+    def _replace_tab(self, old_widget, new_widget, label):
+        """Helper to replace a tab widget in-place."""
+        index = self.tabs.indexOf(old_widget)
+        if index != -1:
+            is_current = (self.tabs.currentIndex() == index)
+            self.tabs.removeTab(index)
+            self.tabs.insertTab(index, new_widget, label)
+            if is_current:
+                self.tabs.setCurrentIndex(index)
+            old_widget.deleteLater()
 
     def _on_tab_changed(self, index: int):
         """Persist typing progress whenever we leave the typing tab."""
