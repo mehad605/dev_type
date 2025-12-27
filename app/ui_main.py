@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QFormLayout,
+    QDialog,
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
@@ -48,10 +49,7 @@ DEBUG_STARTUP_TIMING = True
 class FolderCardWidget(QFrame):
     """Stylized folder row used within the folders list."""
 
-    BADGE_STYLE = (
-        "background-color: #bf616a; color: white; padding: 2px 10px;"
-        "border-radius: 10px; font-size: 10px; text-transform: uppercase;"
-    )
+    remove_requested = Signal(str)  # Signal to request removal of this folder path
 
     def __init__(self, folder_path: str, parent=None):
         super().__init__(parent)
@@ -61,81 +59,69 @@ class FolderCardWidget(QFrame):
         self._list_item: Optional[QListWidgetItem] = None
         self._selected = False
         self._remove_mode = False
-        self._compact = False
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        # Main layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setSpacing(12)
 
-        self.stack = QStackedLayout()
-        self.stack.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(self.stack)
+        # Icon
+        self.icon_label = QLabel("📁")
+        self.icon_label.setObjectName("folderIcon")
+        self.icon_label.setStyleSheet("font-size: 22px; background: transparent; border: none;")
+        layout.addWidget(self.icon_label)
 
-        # Detail layout
-        self.detail_widget = QWidget()
-        detail_layout = QHBoxLayout(self.detail_widget)
-        detail_layout.setContentsMargins(16, 12, 16, 12)
-        detail_layout.setSpacing(12)
+        # Text details
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        
+        self.name_label = QLabel(Path(folder_path).name or folder_path)
+        self.name_label.setObjectName("folderName")
+        self.name_label.setStyleSheet("background: transparent; border: none;")
+        
+        self.path_label = QLabel(folder_path)
+        self.path_label.setObjectName("folderPath")
+        self.path_label.setStyleSheet("background: transparent; border: none;")
+        
+        text_layout.addWidget(self.name_label)
+        text_layout.addWidget(self.path_label)
+        layout.addLayout(text_layout, stretch=1)
 
-        self.detail_icon = QLabel("📁")
-        self.detail_icon.setObjectName("folderIcon")
-        self.detail_icon.setStyleSheet("font-size: 22px;")
-        detail_layout.addWidget(self.detail_icon)
-
-        detail_text = QVBoxLayout()
-        detail_text.setContentsMargins(0, 0, 0, 0)
-        detail_text.setSpacing(2)
-        self.detail_name = QLabel(Path(folder_path).name or folder_path)
-        self.detail_name.setObjectName("folderName")
-        self.detail_info = QLabel(folder_path)
-        self.detail_info.setObjectName("folderPath")
-        self.detail_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        detail_text.addWidget(self.detail_name)
-        detail_text.addWidget(self.detail_info)
-        detail_layout.addLayout(detail_text, stretch=1)
-
-        self.detail_remove = QLabel("Remove")
-        self.detail_remove.setObjectName("removeBadgeDetail")
-        self.detail_remove.setStyleSheet(self.BADGE_STYLE)
-        self.detail_remove.setVisible(False)
-        detail_layout.addWidget(self.detail_remove, alignment=Qt.AlignRight | Qt.AlignTop)
-
-        self.stack.addWidget(self.detail_widget)
-
-        # Compact layout
-        self.compact_widget = QWidget()
-        compact_layout = QVBoxLayout(self.compact_widget)
-        compact_layout.setContentsMargins(16, 16, 16, 16)
-        compact_layout.setSpacing(6)
-        compact_layout.setAlignment(Qt.AlignCenter)
-
-        self.compact_icon = QLabel("📁")
-        self.compact_icon.setObjectName("compactFolderIcon")
-        self.compact_icon.setStyleSheet("font-size: 28px;")
-        compact_layout.addWidget(self.compact_icon, alignment=Qt.AlignHCenter)
-
-        self.compact_name = QLabel(Path(folder_path).name or folder_path)
-        self.compact_name.setObjectName("compactFolderName")
-        self.compact_name.setAlignment(Qt.AlignCenter)
-        compact_layout.addWidget(self.compact_name)
-
-        self.compact_remove = QLabel("Remove")
-        self.compact_remove.setObjectName("removeBadgeCompact")
-        self.compact_remove.setStyleSheet(self.BADGE_STYLE)
-        self.compact_remove.setVisible(False)
-        compact_layout.addWidget(self.compact_remove, alignment=Qt.AlignHCenter)
-
-        self.stack.addWidget(self.compact_widget)
+        # Remove button (Trash Can)
+        self.remove_btn = QPushButton("🗑️")
+        self.remove_btn.setCursor(Qt.PointingHandCursor)
+        self.remove_btn.setFixedSize(36, 36)
+        self.remove_btn.setToolTip("Remove Folder")
+        self.remove_btn.hide() # Start hidden
+        self.remove_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #e0e0e0;
+                border: none;
+                font-size: 22px;
+                padding: 0px;
+                margin: 0px;
+            }
+            QPushButton:hover {
+                color: #ff4444;
+                background-color: rgba(255, 68, 68, 0.15);
+                border-radius: 18px;
+            }
+        """)
+        self.remove_btn.clicked.connect(self._on_remove_clicked)
+        layout.addWidget(self.remove_btn)
 
         self._apply_style()
-
-    def sizeHint(self):  # noqa: D401 - simple override for predictable sizing
-        """Return preferred size depending on active layout."""
-        if self._compact:
-            return QSize(200, 150)
-        return QSize(360, 76)
 
     def attach(self, list_widget: QListWidget, list_item: QListWidgetItem):
         self._list_widget = list_widget
         self._list_item = list_item
+
+    def _on_remove_clicked(self):
+        self.remove_requested.emit(self.folder_path)
 
     def set_selected(self, selected: bool):
         self._selected = selected
@@ -143,31 +129,18 @@ class FolderCardWidget(QFrame):
 
     def set_remove_mode(self, enabled: bool):
         self._remove_mode = enabled
-        self.detail_remove.setVisible(enabled)
-        self.compact_remove.setVisible(enabled)
-        self._apply_style()
-
-    def set_compact(self, compact: bool):
-        if self._compact == compact:
-            return
-        self._compact = compact
-        if compact:
-            self.stack.setCurrentWidget(self.compact_widget)
-            self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            hint = self.sizeHint()
-            self.setMinimumSize(hint)
-            self.setMaximumSize(hint)
+        if enabled:
+            self.remove_btn.show()
         else:
-            self.stack.setCurrentWidget(self.detail_widget)
-            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            detail_height = self.sizeHint().height()
-            self.setMinimumHeight(detail_height)
-            self.setMaximumHeight(detail_height)
-            self.setMinimumWidth(0)
-            self.setMaximumWidth(16777215)
-            self.setMaximumSize(QSize(16777215, detail_height))
-        self.updateGeometry()
+            self.remove_btn.hide()
         self._apply_style()
+        
+        # Force layout update
+        if self._list_item and self._list_widget:
+            self.adjustSize()
+            self._list_item.setSizeHint(self.sizeHint())
+            # Use a timer to force a redraw if immediate update fails
+            QTimer.singleShot(0, self._list_widget.doItemsLayout)
 
     def _apply_style(self):
         # Get current theme colors
@@ -183,21 +156,18 @@ class FolderCardWidget(QFrame):
         text_secondary = scheme.text_secondary
         
         if self._selected:
-            # Use tertiary background for selection with accent border
             base_color = scheme.bg_tertiary
             border_color = scheme.accent_color
         
-        if self._remove_mode:
-            border_color = scheme.error_color
-
+        # Outline style requested by user
         self.setStyleSheet(
             f"QFrame#folderCard {{"
             f"background-color: {base_color};"
             f"border: 1px solid {border_color};"
-            "border-radius: 12px;"
+            "border-radius: 8px;"
             "}"
             f"QFrame#folderCard:hover {{ border-color: {scheme.accent_color}; }}"
-            f"QLabel#folderName, QLabel#compactFolderName {{ color: {text_primary}; font-weight: 600; }}"
+            f"QLabel#folderName {{ color: {text_primary}; font-weight: 600; font-size: 14px; }}"
             f"QLabel#folderPath {{ color: {text_secondary}; font-size: 11px; }}"
         )
 
@@ -259,43 +229,42 @@ class FoldersTab(QWidget):
         self.add_btn = QPushButton("➕ Add Folder")
         self.add_btn.setToolTip("Add a new folder")
         self.add_btn.setMinimumHeight(36)
-        # Use theme accent color for primary action
-        self.add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {scheme.accent_color};
-                color: {scheme.bg_primary};
+        # Soft green
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5cb85c;
+                color: white;
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
                 font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {scheme.text_primary};
-            }}
+            }
+            QPushButton:hover {
+                background-color: #4cae4c;
+            }
         """)
         
-        self.edit_btn = QPushButton("✏️ Remove Mode")
+        self.edit_btn = QPushButton("🗑️ Remove Folder")
         self.edit_btn.setCheckable(True)
         self.edit_btn.setMinimumHeight(36)
-        # Use theme error color for destructive action
-        self.edit_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {scheme.error_color};
-                color: {scheme.bg_primary};
+        # Bright red
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4444;
+                color: white;
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {scheme.text_incorrect};
-            }}
-            QPushButton:checked {{
-                background-color: {scheme.text_incorrect};
-                border: 2px solid {scheme.text_primary};
-            }}
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #ff0000;
+            }
+            QPushButton:checked {
+                background-color: #ff0000;
+                border: 3px solid #ffeb3b;
+            }
         """)
-        
-        # View toggle removed in simple mode
         
         toolbar.addWidget(self.add_btn)
         toolbar.addWidget(self.edit_btn)
@@ -306,7 +275,7 @@ class FoldersTab(QWidget):
         # Styled list widget
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.NoFrame)
-        self.list.setSpacing(12)
+        self.list.setSpacing(6)
         self.list.setSelectionMode(QListWidget.SingleSelection)
         self.list.setStyleSheet("""
             QListWidget {
@@ -317,6 +286,7 @@ class FoldersTab(QWidget):
             QListWidget::item {
                 margin: 0;
                 padding: 0;
+                background: transparent;
             }
             QListWidget::item:selected {
                 background: transparent;
@@ -346,40 +316,33 @@ class FoldersTab(QWidget):
             parent_window.open_typing_tab(folder_path)
 
     def load_folders(self):
-        """Load folders as simple text items - ultra-fast version."""
+        """Load folders using custom FolderCardWidget."""
         if DEBUG_STARTUP_TIMING:
             import time
             t0 = time.time()
         
         self.list.clear()
         
-        if DEBUG_STARTUP_TIMING:
-            t1 = time.time()
-            print(f"      [FOLDERS] clear(): {t1-t0:.3f}s")
-        
         folders = settings.get_folders()
+        is_remove_mode = hasattr(self, 'edit_btn') and self.edit_btn.isChecked()
         
-        if DEBUG_STARTUP_TIMING:
-            t2 = time.time()
-            print(f"      [FOLDERS] get_folders() [{len(folders)} folders]: {t2-t1:.3f}s")
-        
-        # Simple text-only version - no custom widgets
         for i, path_str in enumerate(folders):
-            if DEBUG_STARTUP_TIMING:
-                t_folder_start = time.time()
+            # Create widget
+            card = FolderCardWidget(path_str)
+            card.set_remove_mode(is_remove_mode)
+            card.remove_requested.connect(self._maybe_remove_item)
             
-            # Create simple list item with text only
-            item = QListWidgetItem(f"📁 {path_str}")
+            # Create list item
+            item = QListWidgetItem(self.list)
+            item.setSizeHint(card.sizeHint())
             item.setData(Qt.UserRole, path_str)
-            self.list.addItem(item)
             
-            if DEBUG_STARTUP_TIMING:
-                t_folder_end = time.time()
-                print(f"        [FOLDERS] Folder {i+1}: {t_folder_end-t_folder_start:.3f}s")
+            # Attach widget to item
+            card.attach(self.list, item)
+            self.list.setItemWidget(item, card)
 
         if DEBUG_STARTUP_TIMING:
             t3 = time.time()
-            print(f"      [FOLDERS] Total items creation: {t3-t2:.3f}s")
             print(f"      [FOLDERS] TOTAL load_folders(): {t3-t0:.3f}s")
 
     def on_add(self):
@@ -399,59 +362,209 @@ class FoldersTab(QWidget):
 
     def on_edit_toggled(self, checked: bool):
         """Toggle remove mode for folders."""
-        if checked:
-            self.edit_btn.setText("✅ Done")
-            # Connect click handler for removal (only if not already connected)
-            try:
-                self.list.itemClicked.connect(self._maybe_remove_item)
-            except (RuntimeError, TypeError):
-                # Already connected
-                pass
-        else:
-            self.edit_btn.setText("✏️ Remove Mode")
-            # Disconnect click handler
-            try:
-                self.list.itemClicked.disconnect(self._maybe_remove_item)
-            except (RuntimeError, TypeError):
-                # Already disconnected or never connected
-                pass
-
-    def _maybe_remove_item(self, item: QListWidgetItem):
-        """Handle folder removal with optional confirmation."""
-        if not self.edit_btn.isChecked():
-            return
+        # Text remains "Remove Folder" even when checked
         
-        p = item.data(Qt.UserRole)
+        # Update all widgets
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_remove_mode(checked)
+
+    def _maybe_remove_item(self, folder_path: str):
+        """Handle folder removal with optional confirmation."""
         delete_confirm = settings.get_setting("delete_confirm", "1")
         should_confirm = (delete_confirm == "1")
         
         should_remove = True
         if should_confirm:
-            mb = QMessageBox(self)
-            mb.setWindowTitle("Confirm Removal")
-            mb.setText(f"Remove folder from list?\n\n{p}")
-            mb.setIcon(QMessageBox.Question)
-            mb.setInformativeText("This will not delete the folder from your computer, only remove it from the app.")
+            # Custom styled dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Confirm Removal")
+            dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            dialog.setAttribute(Qt.WA_TranslucentBackground)
             
-            # Add "Don't ask again" checkbox
+            # Get theme colors
+            from app.themes import get_color_scheme
+            theme = settings.get_setting("theme", "dark")
+            scheme_name = settings.get_setting("dark_scheme", "dracula")
+            scheme = get_color_scheme(theme, scheme_name)
+            
+            # Layout
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Main container
+            container = QFrame()
+            container.setObjectName("dialogContainer")
+            container.setStyleSheet(f"""
+                QFrame#dialogContainer {{
+                    background-color: {scheme.bg_secondary};
+                    border: 1px solid {scheme.border_color};
+                    border-radius: 16px;
+                }}
+                QLabel {{ color: {scheme.text_primary}; }}
+                QCheckBox {{ color: {scheme.text_primary}; }}
+            """)
+            layout.addWidget(container)
+            
+            c_layout = QVBoxLayout(container)
+            c_layout.setSpacing(0)
+            # Add 1px margin so the container border is visible
+            c_layout.setContentsMargins(1, 1, 1, 1)
+            
+            # Header
+            header = QFrame()
+            header.setStyleSheet("""
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5e81ac, stop:1 #81a1c1);
+                border-top-left-radius: 15px;
+                border-top-right-radius: 15px;
+                padding: 20px;
+            """)
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(0, 0, 0, 0)
+            header_layout.setSpacing(12)
+            
+            header_icon = QLabel("🗑️")
+            header_icon.setStyleSheet("font-size: 24px; background: transparent;")
+            header_layout.addWidget(header_icon)
+            
+            header_title = QLabel("Remove Folder?")
+            header_title.setStyleSheet("font-size: 20px; font-weight: bold; color: white; background: transparent;")
+            header_layout.addWidget(header_title)
+            header_layout.addStretch()
+            
+            c_layout.addWidget(header)
+            
+            # Content Body
+            body = QWidget()
+            # Add bottom radius to match container
+            body.setStyleSheet("border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; background-color: transparent;")
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(24, 24, 24, 24)
+            body_layout.setSpacing(16)
+            
+            # Question
+            msg = QLabel("Are you sure you want to remove this folder from the app?")
+            msg.setWordWrap(True)
+            msg.setStyleSheet(f"font-size: 15px; color: {scheme.text_primary};")
+            body_layout.addWidget(msg)
+            
+            # Folder Path Box
+            path_box = QFrame()
+            path_box.setStyleSheet(f"""
+                background-color: {scheme.bg_tertiary};
+                border-radius: 8px;
+                padding: 12px;
+            """)
+            path_layout = QHBoxLayout(path_box)
+            path_layout.setContentsMargins(0, 0, 0, 0)
+            path_layout.setSpacing(10)
+            
+            folder_icon = QLabel("📁")
+            folder_icon.setStyleSheet("font-size: 18px; background: transparent;")
+            path_layout.addWidget(folder_icon)
+            
+            path_text = QLabel(folder_path)
+            path_text.setStyleSheet(f"font-family: monospace; font-size: 13px; color: {scheme.text_primary}; background: transparent;")
+            path_text.setWordWrap(True)
+            path_layout.addWidget(path_text, 1)
+            
+            body_layout.addWidget(path_box)
+            
+            # Info Text
+            info = QLabel("This action only removes the folder from the application; the actual folder remains on your computer.")
+            info.setWordWrap(True)
+            info.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 12px;")
+            body_layout.addWidget(info)
+            
+            # Checkbox
             cb = QCheckBox("Don't ask me again")
-            mb.setCheckBox(cb)
-            mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            mb.setDefaultButton(QMessageBox.No)
+            cb.setCursor(Qt.PointingHandCursor)
+            cb.setStyleSheet(f"""
+                QCheckBox {{
+                    spacing: 8px;
+                    font-size: 14px;
+                    color: {scheme.text_primary};
+                }}
+                QCheckBox::indicator {{
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    border: 2px solid {scheme.border_color};
+                    background-color: transparent;
+                }}
+                QCheckBox::indicator:checked {{
+                    background-color: #4a90e2;
+                    border-color: #4a90e2;
+                    image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+                }}
+            """)
+            body_layout.addWidget(cb)
             
-            result = mb.exec()
+            # Buttons
+            btn_layout = QHBoxLayout()
+            btn_layout.setSpacing(12)
+            btn_layout.addStretch()
             
-            if result == QMessageBox.Yes:
-                # If "don't ask again" was checked, save the setting
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.setCursor(Qt.PointingHandCursor)
+            cancel_btn.setMinimumHeight(36)
+            cancel_btn.setMinimumWidth(100)
+            cancel_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {scheme.bg_tertiary};
+                    color: {scheme.text_primary};
+                    border: none;
+                    border-radius: 18px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }}
+                QPushButton:hover {{ background-color: {scheme.border_color}; }}
+            """)
+            cancel_btn.clicked.connect(dialog.reject)
+            
+            remove_btn = QPushButton("🗑️ Remove")
+            remove_btn.setCursor(Qt.PointingHandCursor)
+            remove_btn.setMinimumHeight(36)
+            remove_btn.setMinimumWidth(100)
+            remove_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #ff4444;
+                    color: white;
+                    border: none;
+                    border-radius: 18px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover { background-color: #ff0000; }
+            """)
+            remove_btn.clicked.connect(dialog.accept)
+            
+            btn_layout.addWidget(cancel_btn)
+            btn_layout.addWidget(remove_btn)
+            body_layout.addLayout(btn_layout)
+            
+            c_layout.addWidget(body)
+            
+            btn_layout.addWidget(cancel_btn)
+            btn_layout.addWidget(remove_btn)
+            c_layout.addLayout(btn_layout)
+            
+            if dialog.exec() == QDialog.Accepted:
                 if cb.isChecked():
                     settings.set_setting("delete_confirm", "0")
+                    # Notify main window to update settings UI
+                    parent_window = self.window()
+                    if hasattr(parent_window, 'refresh_settings_ui'):
+                        parent_window.refresh_settings_ui()
                 should_remove = True
             else:
                 should_remove = False
         
         if should_remove:
             # Remove the folder
-            settings.remove_folder(p)
+            settings.remove_folder(folder_path)
             
             # Immediately update the UI
             self.load_folders()
@@ -462,34 +575,25 @@ class FoldersTab(QWidget):
                 parent_window.refresh_languages_tab()
 
     def on_view_toggled(self, checked: bool):
-        """View toggle disabled in simple mode."""
         pass
 
     def _update_folder_selection_state(self):
-        """No-op in simple mode."""
         pass
 
     def _set_remove_mode_for_cards(self, enabled: bool):
-        """No-op in simple mode."""
         pass
 
     def _apply_view_mode_to_cards(self, compact: bool):
-        """No-op in simple mode."""
         pass
 
     def _apply_view_mode_styles(self):
-        """No-op in simple mode."""
         pass
-        # minimize the native list highlight to let cards show their own focus
-        self.list.setStyleSheet(
-            "QListWidget::item { margin: 0; padding: 0; }"
-            "QListWidget::item:selected { background-color: transparent; }"
-        )
 
     def _first_card_size(self) -> Optional[QSize]:
         if not self.list.count():
             return None
         widget = self.list.itemWidget(self.list.item(0))
+        return widget.sizeHint() if widget else None
         if isinstance(widget, FolderCardWidget):
             return widget.sizeHint()
         else:
@@ -714,6 +818,43 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"    [SettingsTab] Basic setup: {time.time() - t:.3f}s")
         
+        # General settings group
+        general_group = QGroupBox("General")
+        general_layout = QVBoxLayout()
+        
+        confirm_del_label = QLabel("Confirm Folder Deletion")
+        confirm_del_label.setStyleSheet("font-weight: bold;")
+        general_layout.addWidget(confirm_del_label)
+        
+        confirm_del_desc = QLabel("Ask for confirmation before removing a folder from the list.")
+        confirm_del_desc.setWordWrap(True)
+        confirm_del_desc.setStyleSheet("color: #888888; font-size: 10pt;")
+        general_layout.addWidget(confirm_del_desc)
+        
+        confirm_del_row = QHBoxLayout()
+        confirm_del_row.setSpacing(8)
+        
+        self.confirm_del_enabled_btn = QPushButton("Enabled")
+        self.confirm_del_disabled_btn = QPushButton("Disabled")
+        for btn in (self.confirm_del_enabled_btn, self.confirm_del_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+            
+        self.confirm_del_enabled_btn.clicked.connect(lambda: self._handle_confirm_del_button(True))
+        self.confirm_del_disabled_btn.clicked.connect(lambda: self._handle_confirm_del_button(False))
+        
+        confirm_del_row.addWidget(self.confirm_del_enabled_btn)
+        confirm_del_row.addWidget(self.confirm_del_disabled_btn)
+        confirm_del_row.addStretch()
+        general_layout.addLayout(confirm_del_row)
+        
+        confirm_del = settings.get_setting("delete_confirm", "1") == "1"
+        self._update_confirm_del_buttons(confirm_del)
+        
+        general_group.setLayout(general_layout)
+        s_layout.addWidget(general_group)
+
         # Typing Behavior settings group
         typing_behavior_group = QGroupBox("Typing Behavior")
         typing_behavior_layout = QVBoxLayout()
@@ -942,24 +1083,125 @@ class MainWindow(QMainWindow):
         
         # Cursor settings group
         cursor_group = QGroupBox("Cursor")
-        cursor_layout = QFormLayout()
+        cursor_layout = QVBoxLayout()
         
-        self.cursor_type_combo = QComboBox()
-        self.cursor_type_combo.addItems(["blinking", "static"])
-        cursor_type = settings.get_setting("cursor_type", "static")
-        self.cursor_type_combo.setCurrentText(cursor_type)
-        self.cursor_type_combo.currentTextChanged.connect(self.on_cursor_type_changed)
-        cursor_layout.addRow("Type:", self.cursor_type_combo)
+        # Cursor Type (Blinking/Static)
+        cursor_layout.addWidget(QLabel("Type:"))
+        type_row = QHBoxLayout()
+        type_row.setSpacing(8)
         
-        self.cursor_style_combo = QComboBox()
-        self.cursor_style_combo.addItems(["block", "underscore", "ibeam"])
-        cursor_style = settings.get_setting("cursor_style", "underscore")
-        self.cursor_style_combo.setCurrentText(cursor_style)
-        self.cursor_style_combo.currentTextChanged.connect(self.on_cursor_style_changed)
-        cursor_layout.addRow("Style:", self.cursor_style_combo)
+        self.cursor_blink_btn = QPushButton("Blinking")
+        self.cursor_static_btn = QPushButton("Static")
+        
+        for btn in (self.cursor_blink_btn, self.cursor_static_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+            
+        self.cursor_blink_btn.clicked.connect(lambda: self._handle_cursor_type_button("blinking"))
+        self.cursor_static_btn.clicked.connect(lambda: self._handle_cursor_type_button("static"))
+        
+        type_row.addWidget(self.cursor_blink_btn)
+        type_row.addWidget(self.cursor_static_btn)
+        type_row.addStretch()
+        cursor_layout.addLayout(type_row)
+        
+        # Cursor Style (Block/Underscore/IBeam)
+        cursor_layout.addWidget(QLabel("Style:"))
+        style_row = QHBoxLayout()
+        style_row.setSpacing(12)
+        
+        self.cursor_preview_widgets = []  # List of (style_name, widget) to toggle blinking
+        
+        def create_cursor_style_button(style_name: str, label: str):
+            btn = QPushButton()
+            btn.setCheckable(True)
+            btn.setFixedSize(100, 80)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda: self._handle_cursor_style_button(style_name))
+            
+            btn_layout = QVBoxLayout(btn)
+            btn_layout.setContentsMargins(4, 8, 4, 8)
+            
+            # Preview container (mimic editor look)
+            preview_container = QWidget()
+            preview_container.setFixedSize(40, 40)
+            preview_container.setStyleSheet("background-color: #2e3440; border-radius: 4px;")
+            
+            # Character label (the 'text' being typed)
+            char_label = QLabel("a", preview_container)
+            char_label.setAlignment(Qt.AlignCenter)
+            char_label.setGeometry(0, 0, 40, 40)
+            char_label.setStyleSheet("color: #d8dee9; font-family: 'JetBrains Mono', monospace; font-size: 24px; background: transparent;")
+            
+            # The actual cursor shape
+            cursor_shape = QLabel(preview_container)
+            
+            if style_name == "block":
+                # Block covers the character, semi-transparent or behind?
+                # In editor it's usually an overlay or inverted color. 
+                # Let's make it a white block with opacity to show character through, or just white block.
+                # Standard block cursor usually covers.
+                cursor_shape.setStyleSheet("background-color: rgba(255, 255, 255, 0.8);") 
+                cursor_shape.setGeometry(10, 5, 20, 30) # Centered over 'a'
+                # Ensure cursor is on top of char for block? Or behind? 
+                # If on top with opacity, it looks like a selection.
+                # Let's put it behind for "block" style if we want to see the letter, 
+                # OR make the letter color inverted. 
+                # For simplicity, let's just put it on top with high alpha.
+                char_label.raise_() # Keep character on top of block cursor so it's visible (inverted look simulation)
+                char_label.setStyleSheet("color: #2e3440; font-family: 'JetBrains Mono', monospace; font-size: 24px; background: transparent; font-weight: bold;")
+                
+            elif style_name == "underscore":
+                cursor_shape.setStyleSheet("background-color: #ffffff;")
+                cursor_shape.setGeometry(10, 32, 20, 4)  # Bottom line
+                
+            elif style_name == "ibeam":
+                cursor_shape.setStyleSheet("background-color: #ffffff;")
+                cursor_shape.setGeometry(9, 5, 2, 30)  # Vertical line to the left of character
+            
+            # Center the preview container in the button layout
+            preview_layout = QHBoxLayout()
+            preview_layout.addStretch()
+            preview_layout.addWidget(preview_container)
+            preview_layout.addStretch()
+            btn_layout.addLayout(preview_layout)
+            
+            # Label
+            lbl = QLabel(label)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("background: transparent; font-weight: bold;")
+            btn_layout.addWidget(lbl)
+            
+            self.cursor_preview_widgets.append((style_name, cursor_shape))
+            return btn
+
+        self.cursor_block_btn = create_cursor_style_button("block", "Block")
+        self.cursor_underscore_btn = create_cursor_style_button("underscore", "Underscore")
+        self.cursor_ibeam_btn = create_cursor_style_button("ibeam", "I-Beam")
+        
+        style_row.addWidget(self.cursor_block_btn)
+        style_row.addWidget(self.cursor_underscore_btn)
+        style_row.addWidget(self.cursor_ibeam_btn)
+        style_row.addStretch()
+        cursor_layout.addLayout(style_row)
         
         cursor_group.setLayout(cursor_layout)
         s_layout.addWidget(cursor_group)
+        
+        # Initialize cursor buttons state
+        current_type = settings.get_setting("cursor_type", "static")
+        self._update_cursor_type_buttons(current_type)
+        
+        current_style = settings.get_setting("cursor_style", "underscore")
+        self._update_cursor_style_buttons(current_style)
+        
+        # Setup blink timer for previews
+        self._settings_cursor_timer = QTimer(self)
+        self._settings_cursor_timer.setInterval(500)
+        self._settings_cursor_timer.timeout.connect(self._on_cursor_preview_blink)
+        if current_type == "blinking":
+            self._settings_cursor_timer.start()
         
         # Font settings group
         font_group = QGroupBox("Font")
@@ -1271,16 +1513,82 @@ class MainWindow(QMainWindow):
         button.setStyleSheet(f"background-color: {default}; border: 1px solid #666;")
         self.colors_changed.emit()
     
-    def on_cursor_type_changed(self, cursor_type: str):
-        settings.set_setting("cursor_type", cursor_type)
+    def _handle_cursor_type_button(self, type_str: str):
+        """Handle cursor type button click."""
+        current = settings.get_setting("cursor_type", "static")
+        if current == type_str:
+            self._update_cursor_type_buttons(type_str)
+            return
+            
+        settings.set_setting("cursor_type", type_str)
+        self._update_cursor_type_buttons(type_str)
+        
+        # Handle timer
+        if type_str == "blinking":
+            self._settings_cursor_timer.start()
+        else:
+            self._settings_cursor_timer.stop()
+            # Ensure visible when stopped
+            for _, widget in self.cursor_preview_widgets:
+                widget.setVisible(True)
+                
         cursor_style = settings.get_setting("cursor_style", "underscore")
-        self.cursor_changed.emit(cursor_type, cursor_style)
-    
-    def on_cursor_style_changed(self, cursor_style: str):
-        settings.set_setting("cursor_style", cursor_style)
+        self.cursor_changed.emit(type_str, cursor_style)
+
+    def _update_cursor_type_buttons(self, type_str: str):
+        """Update visual state of cursor type buttons."""
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        
+        is_blinking = (type_str == "blinking")
+        self.cursor_blink_btn.setChecked(is_blinking)
+        self.cursor_static_btn.setChecked(not is_blinking)
+        
+        self.cursor_blink_btn.setStyleSheet(active_style if is_blinking else inactive_style)
+        self.cursor_static_btn.setStyleSheet(active_style if not is_blinking else inactive_style)
+
+    def _handle_cursor_style_button(self, style_str: str):
+        """Handle cursor style button click."""
+        current = settings.get_setting("cursor_style", "underscore")
+        if current == style_str:
+            self._update_cursor_style_buttons(style_str)
+            return
+            
+        settings.set_setting("cursor_style", style_str)
+        self._update_cursor_style_buttons(style_str)
+        
         cursor_type = settings.get_setting("cursor_type", "static")
-        self.cursor_changed.emit(cursor_type, cursor_style)
-    
+        self.cursor_changed.emit(cursor_type, style_str)
+
+    def _update_cursor_style_buttons(self, style_str: str):
+        """Update visual state of cursor style buttons."""
+        active_style = (
+            "QPushButton { background-color: #5e81ac; color: white; border: 2px solid #88c0d0; border-radius: 8px; }"
+        )
+        inactive_style = (
+            "QPushButton { background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 8px; }"
+            "QPushButton:hover { border: 1px solid #88c0d0; }"
+        )
+        
+        for btn, name in [
+            (self.cursor_block_btn, "block"),
+            (self.cursor_underscore_btn, "underscore"),
+            (self.cursor_ibeam_btn, "ibeam")
+        ]:
+            is_active = (name == style_str)
+            btn.setChecked(is_active)
+            btn.setStyleSheet(active_style if is_active else inactive_style)
+
+    def _on_cursor_preview_blink(self):
+        """Toggle visibility of cursor previews for blinking effect."""
+        for _, widget in self.cursor_preview_widgets:
+            widget.setVisible(not widget.isVisible())
+
     def on_font_family_changed(self, font_family: str):
         settings.set_setting("font_family", font_family)
         self._emit_font_changed()
@@ -1333,37 +1641,19 @@ class MainWindow(QMainWindow):
     
     def _update_sound_enabled_buttons(self, enabled: bool):
         """Update sound enabled/disabled button states."""
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        
         self.sound_enabled_btn.setChecked(enabled)
         self.sound_disabled_btn.setChecked(not enabled)
         
-        if enabled:
-            self.sound_enabled_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #4CAF50;
-                    color: white;
-                    border: 2px solid #45a049;
-                    border-radius: 4px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #45a049;
-                }
-            """)
-            self.sound_disabled_btn.setStyleSheet("")
-        else:
-            self.sound_disabled_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f44336;
-                    color: white;
-                    border: 2px solid #da190b;
-                    border-radius: 4px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #da190b;
-                }
-            """)
-            self.sound_enabled_btn.setStyleSheet("")
+        self.sound_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.sound_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
     
     def _handle_sound_enabled_button(self, enabled: bool):
         """Handle sound enabled/disabled button clicks."""
@@ -1672,10 +1962,10 @@ class MainWindow(QMainWindow):
         
         # Cursor settings
         cursor_type = settings.get_setting("cursor_type", "static")
-        self.cursor_type_combo.setCurrentText(cursor_type)
+        self._update_cursor_type_buttons(cursor_type)
         
         cursor_style = settings.get_setting("cursor_style", "underscore")
-        self.cursor_style_combo.setCurrentText(cursor_style)
+        self._update_cursor_style_buttons(cursor_style)
         
         # Font settings
         font_family = settings.get_setting("font_family", "JetBrains Mono")
@@ -1696,6 +1986,9 @@ class MainWindow(QMainWindow):
         self.pause_delay_spin.setValue(pause_delay)
         
         # Typing behavior
+        confirm_del = settings.get_setting("delete_confirm", "1")
+        self._update_confirm_del_buttons(confirm_del == "1")
+        
         allow_continue = settings.get_setting("allow_continue_mistakes", "0")
         self._update_allow_continue_buttons(allow_continue == "1")
         show_typed_state = settings.get_setting("show_typed_characters", "0") == "1"
@@ -1776,6 +2069,17 @@ class MainWindow(QMainWindow):
         cursor_style = settings.get_setting("cursor_style", "underscore")
         self.cursor_changed.emit(cursor_type, cursor_style)
         
+        # Update preview timer state
+        if cursor_type == "blinking":
+            if hasattr(self, '_settings_cursor_timer') and not self._settings_cursor_timer.isActive():
+                self._settings_cursor_timer.start()
+        else:
+            if hasattr(self, '_settings_cursor_timer'):
+                self._settings_cursor_timer.stop()
+                if hasattr(self, 'cursor_preview_widgets'):
+                    for _, widget in self.cursor_preview_widgets:
+                        widget.setVisible(True)
+        
         # Space character
         space_char = settings.get_setting("space_char", "␣")
         self.space_char_changed.emit(space_char)
@@ -1814,6 +2118,31 @@ class MainWindow(QMainWindow):
         self.allow_continue_disabled_btn.setChecked(not enabled)
         self.allow_continue_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
         self.allow_continue_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _update_confirm_del_buttons(self, enabled: bool):
+        """Refresh the button styles for the confirm-deletion setting."""
+        if not hasattr(self, 'confirm_del_enabled_btn'):
+            return
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        self.confirm_del_enabled_btn.setChecked(enabled)
+        self.confirm_del_disabled_btn.setChecked(not enabled)
+        self.confirm_del_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.confirm_del_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_confirm_del_button(self, enabled: bool):
+        """Handle clicks on the confirm-deletion buttons."""
+        current = settings.get_setting("delete_confirm", "1") == "1"
+        if current == enabled:
+            self._update_confirm_del_buttons(enabled)
+            return
+        settings.set_setting("delete_confirm", "1" if enabled else "0")
+        self._update_confirm_del_buttons(enabled)
 
     def _handle_allow_continue_button(self, enabled: bool):
         """Handle clicks on the allow-continue buttons."""

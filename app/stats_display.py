@@ -174,6 +174,7 @@ class KeystrokeBox(QFrame):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         
@@ -191,8 +192,8 @@ class KeystrokeBox(QFrame):
         layout.addWidget(self.title)
         
         # Container for the grid to center it
-        grid_container = QWidget()
-        grid_layout = QHBoxLayout(grid_container)
+        self.grid_container = QWidget()
+        grid_layout = QHBoxLayout(self.grid_container)
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setAlignment(Qt.AlignCenter)
         
@@ -258,7 +259,7 @@ class KeystrokeBox(QFrame):
         grid.addWidget(self.total_pct, 2, 2)
         
         grid_layout.addLayout(grid)
-        layout.addWidget(grid_container)
+        layout.addWidget(self.grid_container)
         
         self.apply_theme()
     
@@ -302,6 +303,7 @@ class KeystrokeBox(QFrame):
         """)
         
         self.title.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
+        self.grid_container.setStyleSheet("background: transparent; border: none;")
         
         # Icons
         self.correct_icon.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none; font-size: 14px;")
@@ -326,6 +328,7 @@ class InteractiveStatusBox(QFrame):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         self.setCursor(Qt.PointingHandCursor)
