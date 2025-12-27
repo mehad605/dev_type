@@ -158,15 +158,17 @@ class StatCard(QFrame):
         icon_layout.addWidget(name_lbl)
         layout.addLayout(icon_layout)
         
-        layout.addSpacing(10)
+        layout.addSpacing(15)
         
         # 2. WPM
         self._add_stat(layout, f"{wpm:.1f}", "WPM", size=24)
         
+        layout.addSpacing(10)
+        
         # 3. Acc
         self._add_stat(layout, f"{acc:.0f}%", "Acc", size=24)
         
-        layout.addStretch()
+        layout.addSpacing(15)
         
         # 4. Details (Check, X, Total, Time)
         success_color = self.theme.get('success', '#4CAF50')
