@@ -2221,6 +2221,7 @@ class MainWindow(QMainWindow):
 def create_splash_screen(app):
     """Create and show a splash screen during startup."""
     from PySide6.QtGui import QFont, QColor
+    from PySide6.QtWidgets import QProgressBar
     from app.themes import get_color_scheme
     
     # Get current theme for splash
@@ -2230,7 +2231,7 @@ def create_splash_screen(app):
     
     # Create a simple splash widget
     splash_widget = QWidget()
-    splash_widget.setFixedSize(450, 250)
+    splash_widget.setFixedSize(450, 300)
     splash_widget.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
     splash_widget.setStyleSheet(f"""
         QWidget {{
@@ -2241,6 +2242,19 @@ def create_splash_screen(app):
         QLabel {{
             color: {scheme.text_primary};
             background: transparent;
+        }}
+        QProgressBar {{
+            border: 2px solid {scheme.border_color};
+            border-radius: 5px;
+            background-color: {scheme.bg_secondary};
+            text-align: center;
+            color: {scheme.text_primary};
+            font-size: 11px;
+            font-weight: bold;
+        }}
+        QProgressBar::chunk {{
+            background-color: {scheme.accent_color};
+            border-radius: 3px;
         }}
     """)
     
@@ -2265,19 +2279,22 @@ def create_splash_screen(app):
     
     layout.addStretch()
     
+    # Progress bar
+    progress_bar = QProgressBar()
+    progress_bar.setMinimum(0)
+    progress_bar.setMaximum(100)
+    progress_bar.setValue(0)
+    progress_bar.setTextVisible(True)
+    progress_bar.setFormat("%p%")
+    progress_bar.setFixedHeight(25)
+    layout.addWidget(progress_bar)
+    
     # Status label
     status = QLabel("Initializing...")
     status.setAlignment(Qt.AlignCenter)
     status.setFont(QFont("Segoe UI", 10))
     status.setStyleSheet(f"color: {scheme.text_secondary};")
     layout.addWidget(status)
-    
-    # Version/loading indicator
-    version = QLabel("•  •  •")
-    version.setAlignment(Qt.AlignCenter)
-    version.setFont(QFont("Segoe UI", 14))
-    version.setStyleSheet(f"color: {scheme.text_disabled};")
-    layout.addWidget(version)
     
     # Center on screen
     from PySide6.QtGui import QGuiApplication
@@ -2290,7 +2307,7 @@ def create_splash_screen(app):
     splash_widget.show()
     app.processEvents()
     
-    return splash_widget, status
+    return splash_widget, status, progress_bar
 
 
 def run_app():
@@ -2318,7 +2335,8 @@ def run_app():
     # STEP 2: Show splash screen immediately
     if DEBUG_STARTUP_TIMING:
         t_splash = time.time()
-    splash, status_label = create_splash_screen(app)
+    splash, status_label, progress_bar = create_splash_screen(app)
+    progress_bar.setValue(10)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Splash screen shown: {time.time() - t_splash:.3f}s")
     
@@ -2326,9 +2344,11 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         t2 = time.time()
     status_label.setText("Loading application...")
+    progress_bar.setValue(30)
     app.processEvents()
     
     win = MainWindow()
+    progress_bar.setValue(60)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] MainWindow created: {time.time() - t2:.3f}s")
     
@@ -2336,9 +2356,11 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         t_theme = time.time()
     status_label.setText("Applying theme...")
+    progress_bar.setValue(80)
     app.processEvents()
     
     win.apply_current_theme()
+    progress_bar.setValue(95)
     # Don't call processEvents here - it's expensive!
     
     if DEBUG_STARTUP_TIMING:
@@ -2348,6 +2370,7 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         t_final = time.time()
     status_label.setText("Ready!")
+    progress_bar.setValue(100)
     app.processEvents()
     
     # Ensure minimum splash display time (makes loading feel intentional, not glitchy)
