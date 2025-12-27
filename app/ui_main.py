@@ -505,6 +505,7 @@ class MainWindow(QMainWindow):
     pause_delay_changed = Signal(float)
     allow_continue_changed = Signal(bool)
     show_typed_changed = Signal(bool)
+    show_ghost_text_changed = Signal(bool)
     
     def __init__(self):
         if DEBUG_STARTUP_TIMING:
@@ -647,6 +648,9 @@ class MainWindow(QMainWindow):
         """Lazy load editor tab content."""
         self.editor_tab.ensure_loaded()
         
+        # Connect signals now that typing_area exists
+        self._connect_settings_signals()
+        
         # 4. Schedule next step: Settings Tab
         QTimer.singleShot(50, self._load_settings_tab_lazy)
 
@@ -777,6 +781,39 @@ class MainWindow(QMainWindow):
 
         show_typed = settings.get_setting("show_typed_characters", "0") == "1"
         self._update_show_typed_buttons(show_typed)
+        
+        # Show ghost text option
+        show_ghost_label = QLabel("Show Ghost Text")
+        show_ghost_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(show_ghost_label)
+
+        show_ghost_description = QLabel(
+            "Display the ghost text overlay during the race. If disabled, only the ghost progress bar will be shown."
+        )
+        show_ghost_description.setWordWrap(True)
+        show_ghost_description.setStyleSheet("color: #888888; font-size: 9pt;")
+        typing_behavior_layout.addWidget(show_ghost_description)
+
+        show_ghost_button_row = QHBoxLayout()
+        show_ghost_button_row.setSpacing(8)
+
+        self.show_ghost_enabled_btn = QPushButton("Enabled")
+        self.show_ghost_disabled_btn = QPushButton("Disabled")
+        for btn in (self.show_ghost_enabled_btn, self.show_ghost_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.show_ghost_enabled_btn.clicked.connect(lambda: self._handle_show_ghost_text_button(True))
+        self.show_ghost_disabled_btn.clicked.connect(lambda: self._handle_show_ghost_text_button(False))
+
+        show_ghost_button_row.addWidget(self.show_ghost_enabled_btn)
+        show_ghost_button_row.addWidget(self.show_ghost_disabled_btn)
+        show_ghost_button_row.addStretch()
+        typing_behavior_layout.addLayout(show_ghost_button_row)
+
+        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        self._update_show_ghost_text_buttons(show_ghost)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -1608,6 +1645,8 @@ class MainWindow(QMainWindow):
         self._update_allow_continue_buttons(allow_continue == "1")
         show_typed_state = settings.get_setting("show_typed_characters", "0") == "1"
         self._update_show_typed_buttons(show_typed_state)
+        show_ghost_state = settings.get_setting("show_ghost_text", "1") == "1"
+        self._update_show_ghost_text_buttons(show_ghost_state)
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -1638,6 +1677,10 @@ class MainWindow(QMainWindow):
         show_typed = settings.get_setting("show_typed_characters", "0") == "1"
         self.show_typed_changed.emit(show_typed)
 
+        # Show ghost text
+        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        self.show_ghost_text_changed.emit(show_ghost)
+
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
         if hasattr(self.editor_tab, 'typing_area'):
@@ -1648,9 +1691,10 @@ class MainWindow(QMainWindow):
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
             self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
             self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed_characters)
+            self.show_ghost_text_changed.connect(self.editor_tab.typing_area.update_show_ghost_text)
         
-        # Connect progress bar color updates
-        self.colors_changed.connect(self.editor_tab.update_progress_bar_color)
+            # Connect progress bar color updates
+            self.colors_changed.connect(self.editor_tab.update_progress_bar_color)
     
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""
@@ -1684,6 +1728,11 @@ class MainWindow(QMainWindow):
         show_typed = settings.get_setting("show_typed_characters", "0") == "1"
         self._update_show_typed_buttons(show_typed)
         self.show_typed_changed.emit(show_typed)
+
+        # Show ghost text
+        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        self._update_show_ghost_text_buttons(show_ghost)
+        self.show_ghost_text_changed.emit(show_ghost)
 
     def _update_allow_continue_buttons(self, enabled: bool):
         """Refresh the button styles for the allow-continue setting."""
@@ -1737,6 +1786,33 @@ class MainWindow(QMainWindow):
         settings.set_setting("show_typed_characters", "1" if enabled else "0")
         self._update_show_typed_buttons(enabled)
         self.show_typed_changed.emit(enabled)
+
+    def _update_show_ghost_text_buttons(self, enabled: bool):
+        """Refresh the button styles for the show-ghost-text setting."""
+        if not hasattr(self, 'show_ghost_enabled_btn'):
+            return
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        self.show_ghost_enabled_btn.setChecked(enabled)
+        self.show_ghost_disabled_btn.setChecked(not enabled)
+        self.show_ghost_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.show_ghost_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_show_ghost_text_button(self, enabled: bool):
+        """Handle clicks on the show-ghost-text buttons."""
+        current = settings.get_setting("show_ghost_text", "1") == "1"
+        if current == enabled:
+            self._update_show_ghost_text_buttons(enabled)
+            return
+        settings.set_setting("show_ghost_text", "1" if enabled else "0")
+        self._update_show_ghost_text_buttons(enabled)
+        self.show_ghost_text_changed.emit(enabled)
+
 
 
 def create_splash_screen(app):

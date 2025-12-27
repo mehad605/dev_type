@@ -4,11 +4,18 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QHeaderView,
     QStyle,
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QTreeWidgetItemIterator,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QBrush, QColor, QPixmap, QPainter, QFont
 from pathlib import Path
 from typing import List, Optional, Dict
+import re
+import fnmatch
+import json
 from app import settings, stats_db
 from app.file_scanner import LANGUAGE_MAP
 
@@ -19,7 +26,7 @@ def _get_icon_manager():
     return get_icon_manager()
 
 
-class FileTreeWidget(QTreeWidget):
+class InternalFileTree(QTreeWidget):
     """Tree widget displaying files with best/last WPM columns."""
     
     file_selected = Signal(str)  # Emits file path when file is clicked
@@ -47,6 +54,47 @@ class FileTreeWidget(QTreeWidget):
         self._icon_cache: Dict[str, QIcon] = {}
         self.folder_icon = self.style().standardIcon(QStyle.SP_DirIcon)
         self.generic_file_icon = self.style().standardIcon(QStyle.SP_FileIcon)
+        
+        # Expansion persistence
+        self.expanded_paths = set()
+        self._persistence_enabled = True
+        self._load_expansion_state()
+        
+        self.itemExpanded.connect(self._on_item_expanded)
+        self.itemCollapsed.connect(self._on_item_collapsed)
+
+    def set_persistence_enabled(self, enabled: bool):
+        """Enable or disable expansion state persistence."""
+        self._persistence_enabled = enabled
+
+    def _load_expansion_state(self):
+        """Load expanded folder paths from settings."""
+        try:
+            data = settings.get_setting("expanded_folders", "[]")
+            self.expanded_paths = set(json.loads(data))
+        except:
+            self.expanded_paths = set()
+
+    def _save_expansion_state_to_db(self):
+        """Save expanded folder paths to settings."""
+        if not self._persistence_enabled:
+            return
+        settings.set_setting("expanded_folders", json.dumps(list(self.expanded_paths)))
+
+    def _on_item_expanded(self, item):
+        """Handle item expansion."""
+        path = item.data(0, Qt.UserRole)
+        if path:
+            self.expanded_paths.add(path)
+            self._save_expansion_state_to_db()
+
+    def _on_item_collapsed(self, item):
+        """Handle item collapse."""
+        path = item.data(0, Qt.UserRole)
+        if path:
+            if path in self.expanded_paths:
+                self.expanded_paths.remove(path)
+                self._save_expansion_state_to_db()
     
     def load_folder(self, folder_path: str):
         """Load a single folder and display its file tree."""
@@ -60,7 +108,7 @@ class FileTreeWidget(QTreeWidget):
         root_item.setData(0, Qt.UserRole, str(root_path))
         root_item.setIcon(0, self.folder_icon)
         self._populate_tree(root_item, root_path)
-        root_item.setExpanded(False)
+        root_item.setExpanded(True)
     
     def load_folders(self, folder_paths: List[str]):
         """Load multiple folders and display them as separate tree roots."""
@@ -75,7 +123,11 @@ class FileTreeWidget(QTreeWidget):
             root_item.setData(0, Qt.UserRole, str(root_path))
             root_item.setIcon(0, self.folder_icon)
             self._populate_tree(root_item, root_path)
-            root_item.setExpanded(False)
+            # Check persistence for root items in multi-folder view
+            if str(root_path) in self.expanded_paths:
+                root_item.setExpanded(True)
+            else:
+                root_item.setExpanded(False)
     
     def load_language_files(self, language: str, files: List[str]):
         """Load files grouped by their parent folders for a specific language."""
@@ -118,7 +170,11 @@ class FileTreeWidget(QTreeWidget):
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path)
             
-            folder_item.setExpanded(False)
+            # Check persistence
+            if str(folder) in self.expanded_paths:
+                folder_item.setExpanded(True)
+            else:
+                folder_item.setExpanded(False)
     
     def _populate_tree(self, parent_item: QTreeWidgetItem, path: Path):
         """Recursively populate tree with files and folders."""
@@ -142,6 +198,10 @@ class FileTreeWidget(QTreeWidget):
                 folder_item.setData(0, Qt.UserRole, str(item))
                 folder_item.setIcon(0, self.folder_icon)
                 self._populate_tree(folder_item, item)
+                
+                # Check persistence
+                if str(item) in self.expanded_paths:
+                    folder_item.setExpanded(True)
             elif item.is_file():
                 # Only show supported file types
                 if item.suffix.lower() not in LANGUAGE_MAP:
@@ -291,3 +351,150 @@ class FileTreeWidget(QTreeWidget):
         icon = QIcon(pixmap)
         self._icon_cache[cache_key] = icon
         return icon
+
+
+class FileTreeWidget(QWidget):
+    """Wrapper widget containing search bar and file tree."""
+    
+    file_selected = Signal(str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        
+        # Search bar
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search files... (glob or regex)")
+        self.search_bar.setClearButtonEnabled(True)
+        self.search_bar.textChanged.connect(self.filter_tree)
+        self.search_bar.setStyleSheet("""
+            QLineEdit {
+                padding: 4px;
+                border: 1px solid #3b4252;
+                border-radius: 4px;
+                background-color: #2e3440;
+                color: #d8dee9;
+            }
+            QLineEdit:focus {
+                border: 1px solid #88c0d0;
+            }
+        """)
+        layout.addWidget(self.search_bar)
+        
+        # Internal tree
+        self.tree = InternalFileTree()
+        self.tree.file_selected.connect(self.file_selected.emit)
+        layout.addWidget(self.tree)
+        
+        self._expanded_paths = set()
+        self._is_searching = False
+        
+    def filter_tree(self, text: str):
+        """Filter tree items based on search text."""
+        if not text:
+            self._show_all_items()
+            if self._is_searching:
+                self._restore_expansion_state()
+                self._is_searching = False
+                self.tree.set_persistence_enabled(True)
+            return
+            
+        if not self._is_searching:
+            self._save_expansion_state()
+            self._is_searching = True
+            self.tree.set_persistence_enabled(False)
+            
+        # Determine matching strategy
+        use_glob = '*' in text or '?' in text
+        regex_pattern = None
+        
+        if not use_glob:
+            try:
+                regex_pattern = re.compile(text, re.IGNORECASE)
+            except re.error:
+                # Fallback to substring if regex is invalid
+                pass
+        
+        # Helper to check match
+        def matches(item_text):
+            if use_glob:
+                return fnmatch.fnmatch(item_text.lower(), text.lower())
+            elif regex_pattern:
+                return bool(regex_pattern.search(item_text))
+            else:
+                return text.lower() in item_text.lower()
+        
+        # Recursive filter function
+        def filter_item(item):
+            has_visible_children = False
+            child_count = item.childCount()
+            
+            for i in range(child_count):
+                child = item.child(i)
+                if filter_item(child):
+                    has_visible_children = True
+            
+            is_file = bool(item.data(0, Qt.UserRole) and Path(item.data(0, Qt.UserRole)).is_file())
+            item_matches = matches(item.text(0))
+            
+            should_show = has_visible_children or (is_file and item_matches)
+            
+            item.setHidden(not should_show)
+            if should_show:
+                item.setExpanded(True)
+            
+            return should_show
+
+        # Apply filter to top level items
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            filter_item(item)
+
+    def _save_expansion_state(self):
+        """Save current expansion state of the tree."""
+        self._expanded_paths.clear()
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            if item.isExpanded():
+                path = item.data(0, Qt.UserRole)
+                if path:
+                    self._expanded_paths.add(path)
+            iterator += 1
+
+    def _restore_expansion_state(self):
+        """Restore expansion state of the tree."""
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            path = item.data(0, Qt.UserRole)
+            if path:
+                item.setExpanded(path in self._expanded_paths)
+            iterator += 1
+
+    def _show_all_items(self):
+        """Show all items."""
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            item.setHidden(False)
+            iterator += 1
+
+    # Proxy methods
+    def load_folder(self, folder_path: str):
+        self.tree.load_folder(folder_path)
+        
+    def load_folders(self, folder_paths: List[str]):
+        self.tree.load_folders(folder_paths)
+        
+    def load_language_files(self, language: str, files: List[str]):
+        self.tree.load_language_files(language, files)
+        
+    def refresh_file_stats(self, file_path: str):
+        self.tree.refresh_file_stats(file_path)
+        
+    def refresh_incomplete_sessions(self):
+        self.tree.refresh_incomplete_sessions()

@@ -34,6 +34,8 @@ class TypingHighlighter(QSyntaxHighlighter):
         ghost_color = settings.get_setting("ghost_text_color", "#8AB4F8")
         self.ghost_format.setForeground(QColor(ghost_color))
         
+        self.show_ghost_text = settings.get_setting("show_ghost_text", "1") == "1"
+        
         self.typed_chars = {}  # position -> {typed, expected, is_correct}
         self.ghost_display_limit = 0
     
@@ -74,11 +76,16 @@ class TypingHighlighter(QSyntaxHighlighter):
             elif pos < self.engine.state.cursor_position:
                 # Already typed correctly (moved past it)
                 self.setFormat(i, 1, self.correct_format)
-            elif pos < self.ghost_display_limit:
+            elif pos < self.ghost_display_limit and self.show_ghost_text:
                 self.setFormat(i, 1, self.ghost_format)
             else:
                 # Not yet typed
                 self.setFormat(i, 1, self.untyped_format)
+
+    def update_show_ghost_text(self, enabled: bool):
+        """Update whether ghost text should be shown."""
+        self.show_ghost_text = enabled
+        self.rehighlight()
 
     def set_ghost_display_limit(self, limit: int):
         """Update the highest display index the ghost has reached."""
@@ -1023,3 +1030,9 @@ class TypingAreaWidget(QTextEdit):
             return
         self.show_typed_characters = enabled
         self._refresh_typed_display()
+
+    def update_show_ghost_text(self, enabled: bool):
+        """Toggle visibility of the ghost text."""
+        if self.highlighter:
+            self.highlighter.update_show_ghost_text(enabled)
+
