@@ -527,12 +527,15 @@ class EditorTab(QWidget):
         
         # Show modern completion dialog
         theme_colors = self._get_theme_colors()
+        user_keystrokes = self.typing_area.get_ghost_data() if hasattr(self.typing_area, 'get_ghost_data') else []
         dialog = SessionResultDialog(
             parent=self,
             stats=stats,
             is_new_best=is_new_best,
             is_race=False,
-            theme_colors=theme_colors
+            theme_colors=theme_colors,
+            filename=self.current_file,
+            user_keystrokes=user_keystrokes
         )
         dialog.exec()
     
@@ -1133,13 +1136,18 @@ class EditorTab(QWidget):
         
         # Show modern race completion dialog
         theme_colors = self._get_theme_colors()
+        user_keystrokes = self.typing_area.get_ghost_data() if hasattr(self.typing_area, 'get_ghost_data') else []
+        ghost_keystroke_data = ghost_data.get('keys', []) if ghost_data else []
         dialog = SessionResultDialog(
             parent=self,
             stats=race_stats,
             is_new_best=is_new_best,
             is_race=True,
             race_info=race_info,
-            theme_colors=theme_colors
+            theme_colors=theme_colors,
+            filename=self.current_file,
+            user_keystrokes=user_keystrokes,
+            ghost_keystrokes=ghost_keystroke_data
         )
         dialog.exec()
         
@@ -1148,22 +1156,36 @@ class EditorTab(QWidget):
     
     def _get_theme_colors(self):
         """Get current theme colors for dialogs."""
+        from app.themes import get_color_scheme
         from app import settings
         
-        # Get colors from settings
-        bg_color = settings.get_setting("color_background", "#1e2738")
-        text_color = settings.get_setting("color_untyped", "#e0e6ed")
-        correct_color = settings.get_setting("color_correct", "#7ed957")
-        incorrect_color = settings.get_setting("color_incorrect", "#ff6b6b")
+        # Get current theme settings
+        theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula") if theme == "dark" else settings.get_setting("light_scheme", "default")
+        
+        # Get the color scheme
+        scheme = get_color_scheme(theme, scheme_name)
+        
+        # Get user/ghost progress bar colors from settings (these are custom)
+        user_progress_color = settings.get_setting("user_progress_bar_color", scheme.success_color)
+        ghost_progress_color = settings.get_setting("ghost_progress_bar_color", scheme.error_color)
         
         return {
-            'bg': bg_color,
-            'card_bg': self._lighten_color(bg_color, 1.2),
-            'text': text_color,
-            'accent': '#5cb3ff',
-            'success': correct_color,
-            'warning': '#ffd93d',
-            'error': incorrect_color,
+            'bg': scheme.bg_primary,
+            'card_bg': scheme.bg_secondary,
+            'text': scheme.text_primary,
+            'text_secondary': scheme.text_secondary,
+            'accent': scheme.accent_color,
+            'success': scheme.success_color,
+            'warning': scheme.warning_color,
+            'error': scheme.error_color,
+            'user_color': user_progress_color,
+            'ghost_color': ghost_progress_color,
+            'user_error': scheme.error_color,
+            'ghost_error': scheme.warning_color,
+            'border': scheme.border_color,
+            'button_bg': scheme.button_bg,
+            'button_hover': scheme.button_hover,
         }
     
     def _lighten_color(self, hex_color, factor):
