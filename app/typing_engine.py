@@ -139,16 +139,21 @@ class TypingEngine:
     
     def process_backspace(self):
         """Process a backspace keystroke."""
-        # If there's a mistake at current position, clear it without moving cursor
-        if self.mistake_at is not None and self.state.cursor_position == self.mistake_at:
+        # If there's a mistake at current position and we're in strict mode,
+        # just clear the mistake marker without moving the cursor
+        if self.mistake_at is not None and self.state.cursor_position == self.mistake_at and not self.allow_continue_mistakes:
             self.mistake_at = None
             self.state.last_keystroke_time = time.time()
             return
         
-        # Normal backspace - move cursor back
+        # In lenient mode or when mistake is behind us, clear mistake marker
+        # and move cursor back
+        if self.mistake_at is not None:
+            self.mistake_at = None
+        
+        # Move cursor back if possible
         if self.state.cursor_position > 0:
             self.state.cursor_position -= 1
-            # Don't count backspace in keystroke stats
             self.state.last_keystroke_time = time.time()
     
     def process_ctrl_backspace(self):

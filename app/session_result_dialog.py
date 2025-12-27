@@ -236,7 +236,16 @@ class SessionResultDialog(QDialog):
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setModal(True)
-        self.setFixedSize(500, 550) # Fixed size like the screenshot
+        
+        # Calculate dynamic height based on content
+        base_height = 280  # Title + file + player card + button + margins
+        card_height = 100  # Height per stat card
+        if self.is_race:
+            total_height = base_height + (2 * card_height)  # User + Ghost cards
+        else:
+            total_height = base_height + card_height  # User card only
+        
+        self.setFixedSize(500, total_height)
         
         self._drag_pos = None
         
@@ -255,9 +264,9 @@ class SessionResultDialog(QDialog):
         user_color = theme.get('user_color', '#4CAF50')
         ghost_color = theme.get('ghost_color', '#9C27B0')
         
-        # Main background frame
+        # Main background frame - use dynamic height
         bg_frame = QFrame(self)
-        bg_frame.setGeometry(0, 0, 500, 550)
+        bg_frame.setGeometry(0, 0, self.width(), self.height())
         bg_frame.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_primary};
@@ -328,10 +337,6 @@ class SessionResultDialog(QDialog):
                 ghost_color, "ghost", theme
             )
             layout.addWidget(ghost_card)
-        else:
-            # If not race, maybe show Personal Best? Or just hide?
-            # For now, let's just add a spacer to keep layout balanced if no ghost
-            layout.addStretch()
             
         layout.addSpacing(20)
         
