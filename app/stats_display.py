@@ -1,22 +1,110 @@
 """Stats display widget showing live typing statistics."""
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGridLayout, QToolTip
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QCursor
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGridLayout, QToolTip, QPushButton, QSizePolicy
+from PySide6.QtCore import Qt, Signal, QPointF
+from PySide6.QtGui import QFont, QCursor, QPainter, QPainterPath, QColor, QPen, QLinearGradient
 from app import settings
 
 
+class SparklineWidget(QWidget):
+    """Mini chart widget for visualizing data trends."""
+    
+    def __init__(self, color_hex="#88c0d0", parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.values = []
+        self.color_hex = color_hex
+        self.setFixedHeight(30)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def add_value(self, value: float):
+        self.values.append(value)
+        if len(self.values) > 50:  # Keep last 50 points
+            self.values.pop(0)
+        self.update()
+        
+    def set_color(self, color_hex):
+        self.color_hex = color_hex
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        width = self.width()
+        height = self.height()
+        
+        # Draw flat line if not enough data
+        if len(self.values) < 2:
+            color = QColor(self.color_hex)
+            pen = QPen(color, 2)
+            painter.setPen(pen)
+            # Draw a flat line at the bottom
+            y = height - 2
+            painter.drawLine(0, y, width, y)
+            
+            # Fill with very low opacity
+            gradient = QLinearGradient(0, 0, 0, height)
+            gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), 20))
+            gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
+            painter.fillRect(0, int(y), width, int(height - y), gradient)
+            return
+            
+        min_val = min(self.values)
+        max_val = max(self.values)
+        val_range = max_val - min_val if max_val != min_val else 1.0
+        
+        # Create path
+        path = QPainterPath()
+        
+        # Calculate points
+        points = []
+        step_x = width / (len(self.values) - 1)
+        
+        for i, val in enumerate(self.values):
+            x = i * step_x
+            # Normalize value to 0-1 range, then flip Y (0 is top)
+            normalized = (val - min_val) / val_range
+            y = height - (normalized * height)
+            # Add some padding so it doesn't touch edges exactly
+            y = height - 2 - (normalized * (height - 4))
+            points.append(QPointF(x, y))
+            
+        path.moveTo(points[0])
+        for p in points[1:]:
+            path.lineTo(p)
+            
+        # Draw line
+        color = QColor(self.color_hex)
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        painter.drawPath(path)
+        
+        # Optional: Fill under line
+        fill_path = QPainterPath(path)
+        fill_path.lineTo(width, height)
+        fill_path.lineTo(0, height)
+        fill_path.closeSubpath()
+        
+        gradient = QLinearGradient(0, 0, 0, height)
+        gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), 100))
+        gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
+        
+        painter.fillPath(fill_path, gradient)
+
+
 class StatsBox(QFrame):
-    """Individual stat display box with theme support."""
+    """Individual stat display box with sparkline and theme support."""
     
     def __init__(self, title: str, value_key: str = None, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.value_key = value_key
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(2)
         
         # Title
         self.title_label = QLabel(title)
@@ -27,62 +115,58 @@ class StatsBox(QFrame):
         self.title_label.setFont(font)
         layout.addWidget(self.title_label)
         
+        # Sparkline
+        self.sparkline = SparklineWidget()
+        layout.addWidget(self.sparkline)
+        
         # Value
         self.value_label = QLabel("--")
         self.value_label.setAlignment(Qt.AlignCenter)
         value_font = QFont()
-        value_font.setPointSize(20)
+        value_font.setPointSize(22)
         value_font.setBold(True)
         self.value_label.setFont(value_font)
         layout.addWidget(self.value_label)
         
         self.apply_theme()
     
-    def set_value(self, value: str):
-        """Update the displayed value."""
-        self.value_label.setText(value)
+    def set_value(self, value_str: str, raw_value: float = None):
+        """Update the displayed value and sparkline."""
+        self.value_label.setText(value_str)
+        if raw_value is not None:
+            self.sparkline.add_value(raw_value)
     
     def apply_theme(self):
         """Apply current theme colors."""
+        from app.themes import get_color_scheme
         theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
         
-        if theme == "dark":
-            bg_color = "#2e3440"
-            border_color = "#4c566a"
-            title_color = "#d8dee9"
-            
-            # Value colors based on stat type
-            if self.value_key == "wpm":
-                value_color = "#88c0d0"  # Nord frost blue
-            elif self.value_key == "accuracy":
-                value_color = "#a3be8c"  # Nord green
-            elif self.value_key == "time":
-                value_color = "#ebcb8b"  # Nord yellow
-            else:
-                value_color = "#d8dee9"
+        bg_color = scheme.bg_secondary
+        border_color = scheme.border_color
+        title_color = scheme.text_secondary
+        
+        # Value colors based on stat type
+        if self.value_key == "wpm":
+            value_color = scheme.info_color
+        elif self.value_key == "accuracy":
+            value_color = scheme.success_color
+        elif self.value_key == "time":
+            value_color = scheme.warning_color
         else:
-            bg_color = "#eceff4"
-            border_color = "#d8dee9"
-            title_color = "#2e3440"
-            
-            if self.value_key == "wpm":
-                value_color = "#5e81ac"  # Nord blue
-            elif self.value_key == "accuracy":
-                value_color = "#a3be8c"  # Nord green
-            elif self.value_key == "time":
-                value_color = "#d08770"  # Nord orange
-            else:
-                value_color = "#2e3440"
+            value_color = scheme.text_primary
         
         self.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 6px;
+                border-radius: 12px;
             }}
         """)
-        self.title_label.setStyleSheet(f"color: {title_color};")
-        self.value_label.setStyleSheet(f"color: {value_color};")
+        self.title_label.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
+        self.value_label.setStyleSheet(f"color: {value_color}; background: transparent; border: none;")
+        self.sparkline.set_color(value_color)
 
 
 class KeystrokeBox(QFrame):
@@ -94,8 +178,8 @@ class KeystrokeBox(QFrame):
         self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
         
         # Title
         self.title = QLabel("Keystrokes")
@@ -106,42 +190,75 @@ class KeystrokeBox(QFrame):
         self.title.setFont(font)
         layout.addWidget(self.title)
         
+        # Container for the grid to center it
+        grid_container = QWidget()
+        grid_layout = QHBoxLayout(grid_container)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setAlignment(Qt.AlignCenter)
+        
         # Grid for stats
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(6)
+        grid.setContentsMargins(0, 0, 0, 0)
         
-        # Correct keystrokes
-        self.correct_icon = QLabel("✓")
-        self.correct_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.correct_count = QLabel("0")
-        self.correct_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         count_font = QFont()
-        count_font.setPointSize(14)
+        count_font.setPointSize(11)
         count_font.setBold(True)
+        
+        # Correct
+        self.correct_count = QLabel("0")
+        self.correct_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.correct_count.setFont(count_font)
         
-        # Incorrect keystrokes
-        self.incorrect_icon = QLabel("✗")
-        self.incorrect_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.correct_icon = QLabel("✓")
+        self.correct_icon.setAlignment(Qt.AlignCenter)
+        
+        self.correct_pct = QLabel("0%")
+        self.correct_pct.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.correct_pct.setFont(count_font)
+        
+        # Incorrect
         self.incorrect_count = QLabel("0")
-        self.incorrect_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.incorrect_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.incorrect_count.setFont(count_font)
         
-        # Total keystrokes
-        self.total_icon = QLabel("Σ")
-        self.total_icon.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.incorrect_icon = QLabel("✗")
+        self.incorrect_icon.setAlignment(Qt.AlignCenter)
+        
+        self.incorrect_pct = QLabel("0%")
+        self.incorrect_pct.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.incorrect_pct.setFont(count_font)
+        
+        # Total
         self.total_count = QLabel("0")
-        self.total_count.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.total_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.total_count.setFont(count_font)
         
-        grid.addWidget(self.correct_icon, 0, 0)
-        grid.addWidget(self.correct_count, 0, 1)
-        grid.addWidget(self.incorrect_icon, 1, 0)
-        grid.addWidget(self.incorrect_count, 1, 1)
-        grid.addWidget(self.total_icon, 2, 0)
-        grid.addWidget(self.total_count, 2, 1)
+        self.total_icon = QLabel("Σ")
+        self.total_icon.setAlignment(Qt.AlignCenter)
         
-        layout.addLayout(grid)
+        self.total_pct = QLabel("100%")
+        self.total_pct.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.total_pct.setFont(count_font)
+        
+        # Add to grid: Count | Icon | Percent
+        # Row 0: Correct
+        grid.addWidget(self.correct_count, 0, 0)
+        grid.addWidget(self.correct_icon, 0, 1)
+        grid.addWidget(self.correct_pct, 0, 2)
+        
+        # Row 1: Incorrect
+        grid.addWidget(self.incorrect_count, 1, 0)
+        grid.addWidget(self.incorrect_icon, 1, 1)
+        grid.addWidget(self.incorrect_pct, 1, 2)
+        
+        # Row 2: Total
+        grid.addWidget(self.total_count, 2, 0)
+        grid.addWidget(self.total_icon, 2, 1)
+        grid.addWidget(self.total_pct, 2, 2)
+        
+        grid_layout.addLayout(grid)
+        layout.addWidget(grid_container)
         
         self.apply_theme()
     
@@ -151,51 +268,55 @@ class KeystrokeBox(QFrame):
         if total > 0:
             correct_pct = (correct / total) * 100
             incorrect_pct = (incorrect / total) * 100
-            total_pct = 100.0
         else:
             correct_pct = 0.0
             incorrect_pct = 0.0
-            total_pct = 0.0
         
-        # Format as "count(percentage%)"
-        self.correct_count.setText(f"{correct}({correct_pct:.0f}%)")
-        self.incorrect_count.setText(f"{incorrect}({incorrect_pct:.0f}%)")
-        self.total_count.setText(f"{total}({total_pct:.0f}%)")
+        # Update counts
+        self.correct_count.setText(str(correct))
+        self.incorrect_count.setText(str(incorrect))
+        self.total_count.setText(str(total))
+        
+        # Update percentages
+        self.correct_pct.setText(f"{correct_pct:.0f}%")
+        self.incorrect_pct.setText(f"{incorrect_pct:.0f}%")
+        self.total_pct.setText("100%")
     
     def apply_theme(self):
         """Apply current theme colors."""
+        from app.themes import get_color_scheme
         theme = settings.get_setting("theme", "dark")
-        correct_color = settings.get_setting("color_correct", "#00ff00")
-        incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
         
-        if theme == "dark":
-            bg_color = "#2e3440"
-            border_color = "#4c566a"
-            title_color = "#d8dee9"
-            total_color = "#88c0d0"
-            icon_color = "#d8dee9"
-        else:
-            bg_color = "#eceff4"
-            border_color = "#d8dee9"
-            title_color = "#2e3440"
-            total_color = "#5e81ac"
-            icon_color = "#4c566a"
+        bg_color = scheme.bg_secondary
+        border_color = scheme.border_color
+        title_color = scheme.text_secondary
         
         self.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 6px;
+                border-radius: 12px;
             }}
         """)
         
-        self.title.setStyleSheet(f"color: {title_color};")
-        self.correct_icon.setStyleSheet(f"color: {icon_color};")
-        self.incorrect_icon.setStyleSheet(f"color: {icon_color};")
-        self.total_icon.setStyleSheet(f"color: {icon_color};")
-        self.correct_count.setStyleSheet(f"color: {correct_color};")
-        self.incorrect_count.setStyleSheet(f"color: {incorrect_color};")
-        self.total_count.setStyleSheet(f"color: {total_color};")
+        self.title.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
+        
+        # Icons
+        self.correct_icon.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none; font-size: 14px;")
+        self.incorrect_icon.setStyleSheet(f"color: {scheme.error_color}; background: transparent; border: none; font-size: 14px;")
+        self.total_icon.setStyleSheet(f"color: {scheme.info_color}; background: transparent; border: none; font-size: 14px;")
+        
+        # Counts (same color as icons for visual connection)
+        self.correct_count.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none;")
+        self.incorrect_count.setStyleSheet(f"color: {scheme.error_color}; background: transparent; border: none;")
+        self.total_count.setStyleSheet(f"color: {scheme.info_color}; background: transparent; border: none;")
+        
+        # Percentages (slightly dimmer or same)
+        self.correct_pct.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none;")
+        self.incorrect_pct.setStyleSheet(f"color: {scheme.error_color}; background: transparent; border: none;")
+        self.total_pct.setStyleSheet(f"color: {scheme.info_color}; background: transparent; border: none;")
 
 
 class InteractiveStatusBox(QFrame):
@@ -214,7 +335,8 @@ class InteractiveStatusBox(QFrame):
         self.is_finished = False
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
         
         self.status_label = QLabel("Status")
         self.status_label.setAlignment(Qt.AlignCenter)
@@ -223,25 +345,21 @@ class InteractiveStatusBox(QFrame):
         self.status_label.setFont(font)
         layout.addWidget(self.status_label)
         
-        self.paused_label = QLabel("⏸\nPAUSED")
-        self.paused_label.setAlignment(Qt.AlignCenter)
-        pause_font = QFont()
-        pause_font.setPointSize(12)
-        pause_font.setBold(True)
-        self.paused_label.setFont(pause_font)
-        layout.addWidget(self.paused_label)
+        # Status Text
+        self.status_text = QLabel("ACTIVE")
+        self.status_text.setAlignment(Qt.AlignCenter)
+        status_font = QFont()
+        status_font.setPointSize(14)
+        status_font.setBold(True)
+        self.status_text.setFont(status_font)
+        layout.addWidget(self.status_text)
         
-        self.active_label = QLabel("▶\nACTIVE")
-        self.active_label.setAlignment(Qt.AlignCenter)
-        self.active_label.setFont(pause_font)
-        self.active_label.hide()
-        layout.addWidget(self.active_label)
-        
-        self.finished_label = QLabel("✓\nFINISHED")
-        self.finished_label.setAlignment(Qt.AlignCenter)
-        self.finished_label.setFont(pause_font)
-        self.finished_label.hide()
-        layout.addWidget(self.finished_label)
+        # Cancel/Pause Button
+        self.action_btn = QPushButton("Cancel")
+        self.action_btn.setCursor(Qt.PointingHandCursor)
+        self.action_btn.setFixedHeight(30)
+        self.action_btn.clicked.connect(self.pause_clicked.emit)
+        layout.addWidget(self.action_btn)
     
     def update_status(self, is_paused: bool, is_finished: bool):
         """Update the status display."""
@@ -249,44 +367,84 @@ class InteractiveStatusBox(QFrame):
         self.is_finished = is_finished
         
         if is_finished:
-            self.finished_label.setVisible(True)
-            self.paused_label.setVisible(False)
-            self.active_label.setVisible(False)
+            self.status_text.setText("FINISHED")
+            self.action_btn.setText("Reset")
+            self.action_btn.setVisible(True)
+        elif is_paused:
+            self.status_text.setText("PAUSED")
+            self.action_btn.setText("Resume")
         else:
-            self.finished_label.setVisible(False)
-            self.paused_label.setVisible(is_paused)
-            self.active_label.setVisible(not is_paused)
+            self.status_text.setText("ACTIVE")
+            self.action_btn.setText("Cancel")
+            
+        self.apply_theme()
     
+    def apply_theme(self):
+        """Apply theme colors."""
+        from app.themes import get_color_scheme
+        theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
+        
+        bg_color = scheme.bg_secondary
+        border_color = scheme.border_color
+        text_color = scheme.text_secondary
+        
+        if self.is_finished:
+            status_color = scheme.success_color
+            btn_border = scheme.success_color
+        elif self.is_paused:
+            status_color = scheme.warning_color
+            btn_border = scheme.warning_color
+        else:
+            status_color = scheme.success_color
+            btn_border = scheme.error_color
+            
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+            }}
+        """)
+        
+        self.status_label.setStyleSheet(f"color: {text_color}; background: transparent; border: none;")
+        self.status_text.setStyleSheet(f"color: {status_color}; background: transparent; border: none;")
+        
+        self.action_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {scheme.text_primary};
+                border: 1px solid {btn_border};
+                border-radius: 15px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {btn_border};
+                color: {scheme.bg_primary};
+            }}
+        """)
+
     def mousePressEvent(self, event):
         """Handle mouse click to toggle pause/unpause."""
-        if event.button() == Qt.LeftButton and not self.is_finished:
+        # Let the button handle clicks, but if they click the frame, also toggle
+        if event.button() == Qt.LeftButton and not self.action_btn.underMouse():
             self.pause_clicked.emit()
             event.accept()
         else:
             super().mousePressEvent(event)
-    
-    def enterEvent(self, event):
-        """Show tooltip on hover."""
-        if not self.is_finished:
-            if self.is_paused:
-                QToolTip.showText(QCursor.pos(), "Click or press Ctrl+P to unpause", self)
-            else:
-                QToolTip.showText(QCursor.pos(), "Click or press Ctrl+P to pause", self)
-        super().enterEvent(event)
-    
-    def leaveEvent(self, event):
-        """Hide tooltip when leaving."""
-        QToolTip.hideText()
-        super().leaveEvent(event)
 
 
 class StatsDisplayWidget(QWidget):
     """Widget displaying live typing statistics with theme support."""
     
     pause_requested = Signal()  # Emitted when user clicks status or presses Ctrl+P
+    reset_requested = Signal()  # Emitted when user clicks reset
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("statsDisplay")
+        self.is_finished = False
         
         layout = QHBoxLayout(self)
         layout.setSpacing(12)
@@ -310,31 +468,43 @@ class StatsDisplayWidget(QWidget):
         
         # Interactive status indicator
         self.status_box = InteractiveStatusBox()
-        self.status_box.pause_clicked.connect(self.pause_requested.emit)
+        self.status_box.pause_clicked.connect(self.on_status_action)
         layout.addWidget(self.status_box, 1)
         
         self.apply_theme()
     
+    def on_status_action(self):
+        """Handle status box click."""
+        if self.is_finished:
+            self.reset_requested.emit()
+        else:
+            self.pause_requested.emit()
+    
     def update_stats(self, stats: dict):
         """Update all statistics displays."""
+        self.is_finished = stats.get("is_finished", False)
+        
         # WPM
         wpm = stats.get("wpm", 0.0)
-        self.wpm_box.set_value(f"{wpm:.1f}")
+        self.wpm_box.set_value(f"{wpm:.1f}", raw_value=wpm)
         
         # Time
         time_sec = stats.get("time", 0.0)
         minutes = int(time_sec // 60)
         seconds = int(time_sec % 60)
-        self.time_box.set_value(f"{minutes}:{seconds:02d}")
+        self.time_box.set_value(f"{minutes}:{seconds:02d}", raw_value=time_sec)
         
         # Accuracy
-        accuracy = stats.get("accuracy", 1.0) * 100
-        self.accuracy_box.set_value(f"{accuracy:.1f}%")
+        total = stats.get("total", 0)
+        if total > 0:
+            accuracy = stats.get("accuracy", 1.0) * 100
+        else:
+            accuracy = 0.0
+        self.accuracy_box.set_value(f"{accuracy:.1f}%", raw_value=accuracy)
         
         # Keystrokes
         correct = stats.get("correct", 0)
         incorrect = stats.get("incorrect", 0)
-        total = stats.get("total", 0)
         self.keystroke_box.update_stats(correct, incorrect, total)
         
         # Status indicator
@@ -344,48 +514,20 @@ class StatsDisplayWidget(QWidget):
     
     def apply_theme(self):
         """Apply current theme to all components."""
+        from app.themes import get_color_scheme
         theme = settings.get_setting("theme", "dark")
-        paused_color = settings.get_setting("color_paused_highlight", "#ffaa00")
-        
-        if theme == "dark":
-            bg_color = "#2e3440"
-            border_color = "#4c566a"
-            text_color = "#d8dee9"
-            active_color = "#a3be8c"
-        else:
-            bg_color = "#eceff4"
-            border_color = "#d8dee9"
-            text_color = "#2e3440"
-            active_color = "#a3be8c"
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
         
         self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {bg_color};
+            #statsDisplay {{
+                background-color: {scheme.bg_primary};
             }}
         """)
-        
-        # Style the interactive status box
-        self.status_box.setStyleSheet(f"""
-            QFrame {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 6px;
-            }}
-            QFrame:hover {{
-                border: 2px solid {active_color};
-            }}
-        """)
-        
-        self.status_box.status_label.setStyleSheet(f"color: {text_color};")
-        self.status_box.paused_label.setStyleSheet(f"color: {paused_color};")
-        self.status_box.active_label.setStyleSheet(f"color: {active_color};")
-        
-        # Finished color - use green/success color
-        finished_color = "#a3be8c" if theme == "dark" else "#a3be8c"
-        self.status_box.finished_label.setStyleSheet(f"color: {finished_color};")
         
         # Update all boxes
         self.wpm_box.apply_theme()
         self.accuracy_box.apply_theme()
         self.time_box.apply_theme()
         self.keystroke_box.apply_theme()
+        self.status_box.apply_theme()

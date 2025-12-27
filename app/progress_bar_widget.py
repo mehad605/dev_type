@@ -73,7 +73,7 @@ class ProgressBarWidget(QWidget):
         self.update()
     
     def paintEvent(self, event):
-        """Draw the progress bar."""
+        """Draw the progress bar with glow effect."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -81,39 +81,64 @@ class ProgressBarWidget(QWidget):
         
         # Background (unfilled portion)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#2a2a2a"))
-        painter.drawRoundedRect(rect, 4, 4)
+        # Use a semi-transparent dark background
+        painter.setBrush(QColor(0, 0, 0, 60))
+        painter.drawRoundedRect(rect, 6, 6)
         
-        # Filled portion(s)
+        # Determine colors
         if self.bar_type == "ghost":
             # Ghost bar uses ghost color
-            progress_color = settings.get_setting("ghost_progress_bar_color", "#8AB4F8")
+            base_color_hex = settings.get_setting("ghost_progress_bar_color", "#8AB4F8")
         else:
             # User bar uses user/progress color
-            progress_color = settings.get_setting("user_progress_bar_color", None)
-            if not progress_color:
-                progress_color = settings.get_setting("progress_bar_color", "#4CAF50")
+            base_color_hex = settings.get_setting("user_progress_bar_color", None)
+            if not base_color_hex:
+                base_color_hex = settings.get_setting("progress_bar_color", "#4CAF50")
 
-        ghost_color_value = settings.get_setting("ghost_progress_bar_color", "#8AB4F8")
-        ghost_color = QColor(ghost_color_value)
-        ghost_color.setAlpha(170)
-
+        base_color = QColor(base_color_hex)
+        
+        # Draw Outline
+        outline_color = QColor(base_color)
+        outline_color.setAlpha(100)
+        painter.setPen(QPen(outline_color, 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect, 6, 6)
+        
+        # Draw Ghost Bar (if visible)
         if self.display_ghost and self.ghost_progress > 0:
+            ghost_color_hex = settings.get_setting("ghost_progress_bar_color", "#8AB4F8")
+            ghost_color = QColor(ghost_color_hex)
+            ghost_color.setAlpha(100)  # More transparent
+            
             ghost_width = int(rect.width() * min(1.0, self.ghost_progress))
-            ghost_rect = rect.adjusted(0, 1, -(rect.width() - ghost_width), -1)
-            painter.setBrush(ghost_color)
-            painter.drawRoundedRect(ghost_rect, 4, 4)
+            if ghost_width > 0:
+                ghost_rect = rect.adjusted(0, 0, -(rect.width() - ghost_width), 0)
+                painter.setBrush(ghost_color)
+                painter.drawRoundedRect(ghost_rect, 6, 6)
 
+        # Draw User Bar
         if self.progress > 0:
             filled_width = int(rect.width() * min(1.0, self.progress))
-            filled_rect = rect.adjusted(0, 0, -(rect.width() - filled_width), 0)
-            painter.setBrush(QColor(progress_color))
-            painter.drawRoundedRect(filled_rect, 4, 4)
-        
-        # Optional: Border
-        painter.setPen(QPen(QColor("#444444"), 1))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), 4, 4)
+            if filled_width > 0:
+                filled_rect = rect.adjusted(0, 0, -(rect.width() - filled_width), 0)
+                
+                # Create gradient for glow effect
+                from PySide6.QtGui import QLinearGradient
+                gradient = QLinearGradient(filled_rect.topLeft(), filled_rect.bottomLeft())
+                gradient.setColorAt(0, base_color.lighter(130))
+                gradient.setColorAt(1, base_color)
+                
+                painter.setBrush(gradient)
+                painter.drawRoundedRect(filled_rect, 6, 6)
+                
+                # Add a subtle glow at the end
+                if filled_width > 10:
+                    glow_rect = filled_rect.adjusted(filled_width - 10, 0, 0, 0)
+                    glow_gradient = QLinearGradient(glow_rect.topLeft(), glow_rect.topRight())
+                    glow_gradient.setColorAt(0, QColor(255, 255, 255, 0))
+                    glow_gradient.setColorAt(1, QColor(255, 255, 255, 100))
+                    painter.setBrush(glow_gradient)
+                    painter.drawRoundedRect(filled_rect, 6, 6) # Re-draw to clip glow to rounded rect
         
         painter.end()
     

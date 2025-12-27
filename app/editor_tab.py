@@ -44,6 +44,7 @@ class EditorTab(QWidget):
         self._race_start_perf: Optional[float] = None
         self._user_finish_elapsed: Optional[float] = None
         self._ghost_finish_elapsed: Optional[float] = None
+        self._race_paused_at: Optional[float] = None
         self._instant_death_pre_race: Optional[bool] = None
         self._instant_death_tooltip_pre_race: Optional[str] = None
         
@@ -178,7 +179,7 @@ class EditorTab(QWidget):
             window.show_typed_changed.connect(self.typing_area.update_show_typed_characters)
             
             # Also connect progress bar color
-            window.colors_changed.connect(self.update_progress_bar_color)
+            window.colors_changed.connect(self.apply_theme)
             
             # Apply current settings immediately
             from app import settings
@@ -199,8 +200,8 @@ class EditorTab(QWidget):
 
         
         # Container for progress bar and stats
-        bottom_container = QWidget()
-        bottom_layout = QVBoxLayout(bottom_container)
+        self.bottom_container = QWidget()
+        bottom_layout = QVBoxLayout(self.bottom_container)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(5)
         
@@ -209,10 +210,10 @@ class EditorTab(QWidget):
         user_progress_layout = QHBoxLayout(user_progress_widget)
         user_progress_layout.setContentsMargins(5, 3, 5, 3)
         
-        user_label = QLabel("You:")
-        user_label.setStyleSheet("color: #888888; font-weight: bold;")
-        user_label.setMinimumWidth(35)
-        user_progress_layout.addWidget(user_label, stretch=0)
+        self.user_label = QLabel("You:")
+        self.user_label.setStyleSheet("color: #888888; font-weight: bold;")
+        self.user_label.setMinimumWidth(35)
+        user_progress_layout.addWidget(self.user_label, stretch=0)
         
         self.user_progress_bar = ProgressBarWidget(bar_type="user")
         user_progress_layout.addWidget(self.user_progress_bar, stretch=1)
@@ -230,10 +231,10 @@ class EditorTab(QWidget):
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
         ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
         
-        ghost_label = QLabel("Ghost:")
-        ghost_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
-        ghost_label.setMinimumWidth(35)
-        ghost_progress_layout.addWidget(ghost_label, stretch=0)
+        self.ghost_label = QLabel("Ghost:")
+        self.ghost_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
+        self.ghost_label.setMinimumWidth(35)
+        ghost_progress_layout.addWidget(self.ghost_label, stretch=0)
         
         self.ghost_progress_bar = ProgressBarWidget(bar_type="ghost")
         ghost_progress_layout.addWidget(self.ghost_progress_bar, stretch=1)
@@ -253,11 +254,12 @@ class EditorTab(QWidget):
             t = time.time()
         self.stats_display = StatsDisplayWidget()
         self.stats_display.pause_requested.connect(self.toggle_pause)
+        self.stats_display.reset_requested.connect(self.on_reset_clicked)
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
         bottom_layout.addWidget(self.stats_display)
         
-        v_splitter.addWidget(bottom_container)
+        v_splitter.addWidget(self.bottom_container)
         
         # Set initial sizes (75% typing, 25% bottom section with progress+stats)
         v_splitter.setSizes([750, 250])
@@ -276,6 +278,7 @@ class EditorTab(QWidget):
         self.update_timer.start(100)  # Update every 100ms
         
         self._loaded = True
+        self.apply_theme()
         
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] Load complete: {time.time() - t_start:.3f}s")
@@ -591,9 +594,26 @@ class EditorTab(QWidget):
             if self.typing_area.engine.state.is_paused:
                 # Unpause (resume)
                 self.typing_area.engine.start()
+                
+                # Resume ghost if racing
+                if self.is_racing and not self._race_pending_start and self._race_paused_at is not None:
+                    # Adjust start time to account for pause duration
+                    pause_duration = time.perf_counter() - self._race_paused_at
+                    if self._race_start_perf is not None:
+                        self._race_start_perf += pause_duration
+                    self._race_paused_at = None
+                    
+                    # Resume ghost timer
+                    self._advance_ghost_race()
             else:
                 # Pause
                 self.typing_area.engine.pause()
+                
+                # Pause ghost if racing
+                if self.is_racing:
+                    self._race_paused_at = time.perf_counter()
+                    if self._ghost_timer.isActive():
+                        self._ghost_timer.stop()
             
             # Update stats immediately
             self.on_stats_updated()
@@ -607,9 +627,48 @@ class EditorTab(QWidget):
                 self.ghost_progress_bar.update()
     
     def apply_theme(self):
-        """Apply current theme to stats display."""
-        if self._loaded and hasattr(self, 'stats_display'):
+        """Apply current theme to stats display and bottom container."""
+        if not self._loaded:
+            return
+            
+        from app import settings
+        from app.themes import get_color_scheme
+        
+        theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
+        
+        # Apply background to bottom container
+        if hasattr(self, 'bottom_container'):
+            self.bottom_container.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {scheme.bg_primary};
+                    border-top: 1px solid {scheme.bg_secondary};
+                }}
+                QLabel {{
+                    background-color: transparent;
+                }}
+            """)
+            
+        # Update labels
+        label_style = f"color: {scheme.text_secondary}; font-weight: bold;"
+        if hasattr(self, 'user_label'):
+            self.user_label.setStyleSheet(label_style)
+        if hasattr(self, 'user_progress_label'):
+            self.user_progress_label.setStyleSheet(label_style)
+        
+        ghost_style = f"color: {settings.get_setting('ghost_progress_bar_color', '#8AB4F8')}; font-weight: bold;"
+        if hasattr(self, 'ghost_label'):
+            self.ghost_label.setStyleSheet(ghost_style)
+        if hasattr(self, 'ghost_progress_label'):
+            self.ghost_progress_label.setStyleSheet(ghost_style)
+
+        # Update stats display
+        if hasattr(self, 'stats_display'):
             self.stats_display.apply_theme()
+            
+        # Update progress bars
+        self.update_progress_bar_color()
     
     def _check_and_save_ghost(self, stats: dict) -> bool:
         """Check if this session is a new best and save ghost if so. Returns True if new best."""
