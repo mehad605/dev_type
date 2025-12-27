@@ -170,13 +170,25 @@ class FolderCardWidget(QFrame):
         self._apply_style()
 
     def _apply_style(self):
-        base_color = "rgba(236, 239, 244, 0.05)"
-        border_color = "rgba(236, 239, 244, 0.10)"
+        # Get current theme colors
+        from app.themes import get_color_scheme
+        theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
+        
+        # Default state
+        base_color = "transparent"
+        border_color = scheme.border_color
+        text_primary = scheme.text_primary
+        text_secondary = scheme.text_secondary
+        
         if self._selected:
-            base_color = "rgba(129, 161, 193, 0.20)"
-            border_color = "#81a1c1"
+            # Use tertiary background for selection with accent border
+            base_color = scheme.bg_tertiary
+            border_color = scheme.accent_color
+        
         if self._remove_mode:
-            border_color = "#bf616a"
+            border_color = scheme.error_color
 
         self.setStyleSheet(
             f"QFrame#folderCard {{"
@@ -184,9 +196,9 @@ class FolderCardWidget(QFrame):
             f"border: 1px solid {border_color};"
             "border-radius: 12px;"
             "}"
-            "QFrame#folderCard:hover { border-color: #88c0d0; }"
-            "QLabel#folderName, QLabel#compactFolderName { color: #eceff4; font-weight: 600; }"
-            "QLabel#folderPath { color: #a5abb6; font-size: 11px; }"
+            f"QFrame#folderCard:hover {{ border-color: {scheme.accent_color}; }}"
+            f"QLabel#folderName, QLabel#compactFolderName {{ color: {text_primary}; font-weight: 600; }}"
+            f"QLabel#folderPath {{ color: {text_secondary}; font-size: 11px; }}"
         )
 
     def mousePressEvent(self, event):
@@ -238,46 +250,49 @@ class FoldersTab(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         
+        # Get theme colors for buttons
+        from app.themes import get_color_scheme
+        theme = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        scheme = get_color_scheme(theme, scheme_name)
+        
         self.add_btn = QPushButton("➕ Add Folder")
         self.add_btn.setToolTip("Add a new folder")
         self.add_btn.setMinimumHeight(36)
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #5e81ac;
-                color: white;
+        # Use theme accent color for primary action
+        self.add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {scheme.accent_color};
+                color: {scheme.bg_primary};
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #81a1c1;
-            }
-            QPushButton:pressed {
-                background-color: #4c566a;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {scheme.text_primary};
+            }}
         """)
         
         self.edit_btn = QPushButton("✏️ Remove Mode")
         self.edit_btn.setCheckable(True)
         self.edit_btn.setMinimumHeight(36)
-        self.edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #bf616a;
-                color: white;
+        # Use theme error color for destructive action
+        self.edit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {scheme.error_color};
+                color: {scheme.bg_primary};
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #d08770;
-            }
-            QPushButton:pressed {
-                background-color: #a54c56;
-            }
-            QPushButton:checked {
-                background-color: #d08770;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {scheme.text_incorrect};
+            }}
+            QPushButton:checked {{
+                background-color: {scheme.text_incorrect};
+                border: 2px solid {scheme.text_primary};
+            }}
         """)
         
         # View toggle removed in simple mode
@@ -1727,21 +1742,27 @@ class MainWindow(QMainWindow):
 def create_splash_screen(app):
     """Create and show a splash screen during startup."""
     from PySide6.QtGui import QFont, QColor
+    from app.themes import get_color_scheme
+    
+    # Get current theme for splash
+    theme = settings.get_setting("theme", "dark")
+    scheme_name = settings.get_setting("dark_scheme", "dracula")
+    scheme = get_color_scheme(theme, scheme_name)
     
     # Create a simple splash widget
     splash_widget = QWidget()
     splash_widget.setFixedSize(450, 250)
     splash_widget.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-    splash_widget.setStyleSheet("""
-        QWidget {
-            background-color: #2e3440;
-            border: 3px solid #88c0d0;
+    splash_widget.setStyleSheet(f"""
+        QWidget {{
+            background-color: {scheme.bg_primary};
+            border: 3px solid {scheme.border_color};
             border-radius: 12px;
-        }
-        QLabel {
-            color: #eceff4;
+        }}
+        QLabel {{
+            color: {scheme.text_primary};
             background: transparent;
-        }
+        }}
     """)
     
     layout = QVBoxLayout(splash_widget)
@@ -1760,7 +1781,7 @@ def create_splash_screen(app):
     subtitle = QLabel("Practice coding by typing")
     subtitle.setAlignment(Qt.AlignCenter)
     subtitle.setFont(QFont("Segoe UI", 11))
-    subtitle.setStyleSheet("color: #88c0d0;")
+    subtitle.setStyleSheet(f"color: {scheme.accent_color};")
     layout.addWidget(subtitle)
     
     layout.addStretch()
@@ -1769,14 +1790,14 @@ def create_splash_screen(app):
     status = QLabel("Initializing...")
     status.setAlignment(Qt.AlignCenter)
     status.setFont(QFont("Segoe UI", 10))
-    status.setStyleSheet("color: #d8dee9;")
+    status.setStyleSheet(f"color: {scheme.text_secondary};")
     layout.addWidget(status)
     
     # Version/loading indicator
     version = QLabel("•  •  •")
     version.setAlignment(Qt.AlignCenter)
     version.setFont(QFont("Segoe UI", 14))
-    version.setStyleSheet("color: #4c566a;")
+    version.setStyleSheet(f"color: {scheme.text_disabled};")
     layout.addWidget(version)
     
     # Center on screen
