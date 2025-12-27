@@ -481,7 +481,7 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QTabBar::tab {{
         background-color: {scheme.bg_secondary};
         color: {scheme.text_secondary};
-        padding: 8px 20px;
+        padding: 10px 20px 14px 20px;
         border: 1px solid {scheme.border_color};
         border-bottom: none;
         border-top-left-radius: 6px;
