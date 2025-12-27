@@ -62,6 +62,14 @@ class InternalFileTree(QTreeWidget):
         
         self.itemExpanded.connect(self._on_item_expanded)
         self.itemCollapsed.connect(self._on_item_collapsed)
+        
+        # Ignore settings
+        self.ignored_files = []
+        self.ignored_folders = []
+        self._load_ignore_settings()
+        
+        # State for reloading
+        self._last_load_args = None  # (method_name, args, kwargs)
 
     def set_persistence_enabled(self, enabled: bool):
         """Enable or disable expansion state persistence."""
@@ -96,8 +104,82 @@ class InternalFileTree(QTreeWidget):
                 self.expanded_paths.remove(path)
                 self._save_expansion_state_to_db()
     
+    def _load_ignore_settings(self):
+        """Load ignore patterns from settings."""
+        raw_files = settings.get_setting("ignored_files", "")
+        raw_folders = settings.get_setting("ignored_folders", "")
+        
+        self.ignored_files = [p.strip() for p in raw_files.split('\n') if p.strip()]
+        self.ignored_folders = [p.strip() for p in raw_folders.split('\n') if p.strip()]
+
+    def update_ignore_settings(self):
+        """Reload ignore settings and refresh the tree."""
+        self._load_ignore_settings()
+        self.reload_tree()
+
+    def reload_tree(self):
+        """Reload the tree using the last used load method."""
+        if not self._last_load_args:
+            return
+            
+        method_name, args, kwargs = self._last_load_args
+        if hasattr(self, method_name):
+            getattr(self, method_name)(*args, **kwargs)
+
+    def _is_ignored(self, path: Path) -> bool:
+        """Check if a file or folder should be ignored."""
+        name = path.name
+        str_path = str(path)
+        
+        # Check folders
+        if path.is_dir():
+            for pattern in self.ignored_folders:
+                if self._match_pattern(name, str_path, pattern):
+                    return True
+        
+        # Check files
+        if path.is_file():
+            for pattern in self.ignored_files:
+                if self._match_pattern(name, str_path, pattern):
+                    return True
+                    
+        return False
+
+    def _match_pattern(self, name: str, full_path: str, pattern: str) -> bool:
+        """Match a name or path against a pattern with case-sensitivity rules."""
+        is_case_insensitive = pattern.startswith('"') and pattern.endswith('"')
+        if is_case_insensitive:
+            pattern = pattern[1:-1]
+            name_to_check = name.lower()
+            path_to_check = full_path.lower()
+            pattern_to_check = pattern.lower()
+        else:
+            name_to_check = name
+            path_to_check = full_path
+            pattern_to_check = pattern
+            
+        # Check if pattern is a full path (contains separator)
+        if "\\" in pattern or "/" in pattern:
+            # Normalize separators for comparison if needed, but simple string check first
+            # For full path matching with globs
+            if '*' in pattern or '?' in pattern:
+                if is_case_insensitive:
+                    return fnmatch.fnmatch(path_to_check, pattern_to_check)
+                else:
+                    return fnmatch.fnmatchcase(path_to_check, pattern_to_check)
+            return path_to_check == pattern_to_check
+        else:
+            # Match against name
+            if '*' in pattern or '?' in pattern:
+                if is_case_insensitive:
+                    return fnmatch.fnmatch(name_to_check, pattern_to_check)
+                else:
+                    return fnmatch.fnmatchcase(name_to_check, pattern_to_check)
+            return name_to_check == pattern_to_check
+
     def load_folder(self, folder_path: str):
         """Load a single folder and display its file tree."""
+        self._last_load_args = ("load_folder", (folder_path,), {})
         self.refresh_incomplete_sessions()
         self.clear()
         root_path = Path(folder_path)
@@ -112,6 +194,7 @@ class InternalFileTree(QTreeWidget):
     
     def load_folders(self, folder_paths: List[str]):
         """Load multiple folders and display them as separate tree roots."""
+        self._last_load_args = ("load_folders", (folder_paths,), {})
         self.refresh_incomplete_sessions()
         self.clear()
         for folder_path in folder_paths:
@@ -131,6 +214,7 @@ class InternalFileTree(QTreeWidget):
     
     def load_language_files(self, language: str, files: List[str]):
         """Load files grouped by their parent folders for a specific language."""
+        self._last_load_args = ("load_language_files", (language, files), {})
         self.refresh_incomplete_sessions()
         self.clear()
         
@@ -191,6 +275,9 @@ class InternalFileTree(QTreeWidget):
 
         for item in items:
             if item.name.startswith('.'):
+                continue
+            
+            if self._is_ignored(item):
                 continue
             
             if item.is_dir():
@@ -498,3 +585,7 @@ class FileTreeWidget(QWidget):
         
     def refresh_incomplete_sessions(self):
         self.tree.refresh_incomplete_sessions()
+
+    def update_ignore_settings(self):
+        """Update ignore settings and refresh tree."""
+        self.tree.update_ignore_settings()

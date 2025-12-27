@@ -625,6 +625,11 @@ class EditorTab(QWidget):
                 self.user_progress_bar.update()
             if hasattr(self, 'ghost_progress_bar'):
                 self.ghost_progress_bar.update()
+
+    def update_ignore_settings(self):
+        """Update file tree ignore settings."""
+        if self._loaded and hasattr(self, 'file_tree'):
+            self.file_tree.update_ignore_settings()
     
     def apply_theme(self):
         """Apply current theme to stats display and bottom container."""

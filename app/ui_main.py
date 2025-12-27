@@ -506,6 +506,7 @@ class MainWindow(QMainWindow):
     allow_continue_changed = Signal(bool)
     show_typed_changed = Signal(bool)
     show_ghost_text_changed = Signal(bool)
+    ignored_patterns_changed = Signal()
     
     def __init__(self):
         if DEBUG_STARTUP_TIMING:
@@ -698,7 +699,7 @@ class MainWindow(QMainWindow):
             import time
             t_start = time.time()
         
-        from PySide6.QtWidgets import QScrollArea, QSlider, QSpinBox, QLineEdit, QColorDialog
+        from PySide6.QtWidgets import QScrollArea, QSlider, QSpinBox, QLineEdit, QColorDialog, QTextEdit
         from PySide6.QtCore import QSize
         
         if DEBUG_STARTUP_TIMING:
@@ -817,6 +818,60 @@ class MainWindow(QMainWindow):
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
+        
+        # File Explorer settings group
+        explorer_group = QGroupBox("File Explorer")
+        explorer_layout = QVBoxLayout()
+        
+        explorer_desc = QLabel(
+            "Configure files and folders to ignore in the file tree. "
+            "One pattern per line. Wrap in double quotes for case-insensitive matching (e.g. \"test.py\")."
+        )
+        explorer_desc.setWordWrap(True)
+        explorer_desc.setStyleSheet("color: #888888; font-size: 9pt;")
+        explorer_layout.addWidget(explorer_desc)
+        
+        input_style = """
+            QTextEdit {
+                background-color: #2e3440;
+                color: #d8dee9;
+                border: 1px solid #4c566a;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QTextEdit:focus {
+                border: 1px solid #88c0d0;
+            }
+        """
+        
+        # Ignored Files
+        explorer_layout.addWidget(QLabel("Ignored Files/Patterns:"))
+        self.ignored_files_edit = QTextEdit()
+        self.ignored_files_edit.setPlaceholderText("*.pyc\n__pycache__\n\"Test.py\"")
+        self.ignored_files_edit.setMaximumHeight(100)
+        self.ignored_files_edit.setStyleSheet(input_style)
+        self.ignored_files_edit.setText(settings.get_setting("ignored_files", ""))
+        # Use a timer to debounce save
+        self._ignore_save_timer = QTimer()
+        self._ignore_save_timer.setSingleShot(True)
+        self._ignore_save_timer.setInterval(500)
+        self._ignore_save_timer.timeout.connect(self._save_ignore_settings)
+        
+        self.ignored_files_edit.textChanged.connect(self._ignore_save_timer.start)
+        explorer_layout.addWidget(self.ignored_files_edit)
+        
+        # Ignored Folders
+        explorer_layout.addWidget(QLabel("Ignored Folders:"))
+        self.ignored_folders_edit = QTextEdit()
+        self.ignored_folders_edit.setPlaceholderText(".git\nnode_modules\n\"Build\"")
+        self.ignored_folders_edit.setMaximumHeight(100)
+        self.ignored_folders_edit.setStyleSheet(input_style)
+        self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", ""))
+        self.ignored_folders_edit.textChanged.connect(self._ignore_save_timer.start)
+        explorer_layout.addWidget(self.ignored_folders_edit)
+        
+        explorer_group.setLayout(explorer_layout)
+        s_layout.addWidget(explorer_group)
         
         # Theme settings group
         theme_group = QGroupBox("Theme")
@@ -1647,6 +1702,12 @@ class MainWindow(QMainWindow):
         self._update_show_typed_buttons(show_typed_state)
         show_ghost_state = settings.get_setting("show_ghost_text", "1") == "1"
         self._update_show_ghost_text_buttons(show_ghost_state)
+        
+        # File Explorer settings
+        if hasattr(self, 'ignored_files_edit'):
+            self.ignored_files_edit.setText(settings.get_setting("ignored_files", ""))
+        if hasattr(self, 'ignored_folders_edit'):
+            self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", ""))
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -1680,6 +1741,9 @@ class MainWindow(QMainWindow):
         # Show ghost text
         show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
         self.show_ghost_text_changed.emit(show_ghost)
+        
+        # Ignored patterns
+        self.ignored_patterns_changed.emit()
 
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
@@ -1692,6 +1756,7 @@ class MainWindow(QMainWindow):
             self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
             self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed_characters)
             self.show_ghost_text_changed.connect(self.editor_tab.typing_area.update_show_ghost_text)
+            self.ignored_patterns_changed.connect(self.editor_tab.update_ignore_settings)
         
             # Connect progress bar color updates
             self.colors_changed.connect(self.editor_tab.update_progress_bar_color)
@@ -1812,6 +1877,15 @@ class MainWindow(QMainWindow):
         settings.set_setting("show_ghost_text", "1" if enabled else "0")
         self._update_show_ghost_text_buttons(enabled)
         self.show_ghost_text_changed.emit(enabled)
+
+    def _save_ignore_settings(self):
+        """Save ignored files/folders settings and emit change signal."""
+        if hasattr(self, 'ignored_files_edit'):
+            settings.set_setting("ignored_files", self.ignored_files_edit.toPlainText())
+        if hasattr(self, 'ignored_folders_edit'):
+            settings.set_setting("ignored_folders", self.ignored_folders_edit.toPlainText())
+        self.ignored_patterns_changed.emit()
+
 
 
 
