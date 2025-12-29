@@ -48,12 +48,6 @@ class Builder:
                 shutil.rmtree(dir_path)
                 print(f"   Removed {dir_path}")
         
-        # Remove spec file if it was auto-generated
-        spec_file = self.root / "dev_type.spec"
-        if spec_file.exists():
-            spec_file.unlink()
-            print(f"   Removed {spec_file}")
-        
         print("✓ Clean complete\n")
     
     def check_pyinstaller(self):
@@ -66,6 +60,33 @@ class Builder:
             print("❌ PyInstaller not found!")
             print("   Install it with: pip install pyinstaller")
             return False
+    
+    def check_assets(self):
+        """Verify required asset files exist."""
+        print("📋 Checking required assets...")
+        
+        required_files = [
+            self.root / "assets" / "icon.png",
+            self.root / "assets" / "sounds",
+        ]
+        
+        if self.is_windows:
+            required_files.append(self.root / "assets" / "icon.ico")
+        
+        missing = []
+        for file_path in required_files:
+            if not file_path.exists():
+                missing.append(file_path)
+                print(f"   ❌ Missing: {file_path}")
+            else:
+                print(f"   ✓ Found: {file_path.name}")
+        
+        if missing:
+            print("\n❌ Some required assets are missing!")
+            return False
+        
+        print("✓ All required assets found\n")
+        return True
     
     def get_icon_path(self) -> str:
         """Get the appropriate icon file for the platform."""
@@ -120,10 +141,32 @@ if __name__ == "__main__":
             # Hidden imports that PyInstaller might miss
             "--hidden-import=PySide6.QtSvg",
             "--hidden-import=PySide6.QtSvgWidgets",
+            "--hidden-import=PySide6.QtMultimedia",
             "--hidden-import=app.portable_data",
             "--hidden-import=app.ghost_manager",
             "--hidden-import=app.stats_db",
             "--hidden-import=app.settings",
+            "--hidden-import=app.themes",
+            "--hidden-import=app.typing_engine",
+            "--hidden-import=app.typing_area",
+            "--hidden-import=app.sound_manager",
+            "--hidden-import=app.sound_profile_editor",
+            "--hidden-import=app.sound_volume_widget",
+            "--hidden-import=app.icon_manager",
+            "--hidden-import=app.language_cache",
+            "--hidden-import=app.file_scanner",
+            "--hidden-import=app.file_tree",
+            "--hidden-import=app.editor_tab",
+            "--hidden-import=app.history_tab",
+            "--hidden-import=app.languages_tab",
+            "--hidden-import=app.session_result_dialog",
+            "--hidden-import=app.ghost_replay_widget",
+            "--hidden-import=app.stats_display",
+            "--hidden-import=app.progress_bar_widget",
+            "--hidden-import=app.instant_splash",
+            
+            # Disable UPX compression to avoid antivirus false positives
+            "--noupx",
             
             # Clean build
             "--clean",
@@ -183,10 +226,32 @@ if __name__ == "__main__":
             # Hidden imports
             "--hidden-import=PySide6.QtSvg",
             "--hidden-import=PySide6.QtSvgWidgets",
+            "--hidden-import=PySide6.QtMultimedia",
             "--hidden-import=app.portable_data",
             "--hidden-import=app.ghost_manager",
             "--hidden-import=app.stats_db",
             "--hidden-import=app.settings",
+            "--hidden-import=app.themes",
+            "--hidden-import=app.typing_engine",
+            "--hidden-import=app.typing_area",
+            "--hidden-import=app.sound_manager",
+            "--hidden-import=app.sound_profile_editor",
+            "--hidden-import=app.sound_volume_widget",
+            "--hidden-import=app.icon_manager",
+            "--hidden-import=app.language_cache",
+            "--hidden-import=app.file_scanner",
+            "--hidden-import=app.file_tree",
+            "--hidden-import=app.editor_tab",
+            "--hidden-import=app.history_tab",
+            "--hidden-import=app.languages_tab",
+            "--hidden-import=app.session_result_dialog",
+            "--hidden-import=app.ghost_replay_widget",
+            "--hidden-import=app.stats_display",
+            "--hidden-import=app.progress_bar_widget",
+            "--hidden-import=app.instant_splash",
+            
+            # Disable UPX compression to avoid antivirus false positives
+            "--noupx",
             
             # Clean build
             "--clean",
@@ -230,6 +295,9 @@ if __name__ == "__main__":
             self.clean()
         
         if not self.check_pyinstaller():
+            return False
+        
+        if not self.check_assets():
             return False
         
         success = True

@@ -6,8 +6,10 @@ from PySide6.QtWidgets import (
     QStyle,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QLineEdit,
     QTreeWidgetItemIterator,
+    QPushButton,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QBrush, QColor, QPixmap, QPainter, QFont
@@ -16,6 +18,7 @@ from typing import List, Optional, Dict
 import re
 import fnmatch
 import json
+import random
 from app import settings, stats_db
 from app.file_scanner import LANGUAGE_MAP
 
@@ -438,6 +441,54 @@ class InternalFileTree(QTreeWidget):
         icon = QIcon(pixmap)
         self._icon_cache[cache_key] = icon
         return icon
+    
+    def get_all_file_items(self) -> List[QTreeWidgetItem]:
+        """Get all file items (not folders) from the tree."""
+        file_items = []
+        
+        def collect_files(item: QTreeWidgetItem):
+            file_path = item.data(0, Qt.UserRole)
+            # Check if it's a file (not a folder)
+            if file_path and Path(file_path).is_file():
+                file_items.append(item)
+            
+            # Recursively collect from children
+            for i in range(item.childCount()):
+                collect_files(item.child(i))
+        
+        # Collect from all top-level items
+        for i in range(self.topLevelItemCount()):
+            collect_files(self.topLevelItem(i))
+        
+        return file_items
+    
+    def open_random_file(self):
+        """Select and open a random file from the tree."""
+        file_items = self.get_all_file_items()
+        
+        if not file_items:
+            return  # No files available
+        
+        # Choose a random file
+        random_item = random.choice(file_items)
+        
+        # Ensure the item is visible (expand parents if needed)
+        self._ensure_item_visible(random_item)
+        
+        # Select the item
+        self.setCurrentItem(random_item)
+        
+        # Emit the file_selected signal (simulating double-click)
+        file_path = random_item.data(0, Qt.UserRole)
+        if file_path:
+            self.file_selected.emit(file_path)
+    
+    def _ensure_item_visible(self, item: QTreeWidgetItem):
+        """Expand all parent items to make the given item visible."""
+        parent = item.parent()
+        while parent:
+            parent.setExpanded(True)
+            parent = parent.parent()
 
 
 class FileTreeWidget(QWidget):
@@ -451,6 +502,11 @@ class FileTreeWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
+        
+        # Top bar with search and random button
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.setSpacing(4)
+        top_bar_layout.setContentsMargins(0, 0, 0, 0)
         
         # Search bar
         self.search_bar = QLineEdit()
@@ -469,7 +525,32 @@ class FileTreeWidget(QWidget):
                 border: 1px solid #88c0d0;
             }
         """)
-        layout.addWidget(self.search_bar)
+        top_bar_layout.addWidget(self.search_bar)
+        
+        # Random button
+        self.random_button = QPushButton("🎲 Random")
+        self.random_button.setToolTip("Open a random file from the tree")
+        self.random_button.clicked.connect(self._on_random_clicked)
+        self.random_button.setStyleSheet("""
+            QPushButton {
+                padding: 4px 8px;
+                border: 1px solid #3b4252;
+                border-radius: 4px;
+                background-color: #2e3440;
+                color: #d8dee9;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3b4252;
+                border-color: #88c0d0;
+            }
+            QPushButton:pressed {
+                background-color: #434c5e;
+            }
+        """)
+        top_bar_layout.addWidget(self.random_button)
+        
+        layout.addLayout(top_bar_layout)
         
         # Internal tree
         self.tree = InternalFileTree()
@@ -569,6 +650,15 @@ class FileTreeWidget(QWidget):
             item = iterator.value()
             item.setHidden(False)
             iterator += 1
+    
+    def _on_random_clicked(self):
+        """Handle random button click."""
+        # Clear search filter if active
+        if self.search_bar.text():
+            self.search_bar.clear()
+        
+        # Open random file
+        self.tree.open_random_file()
 
     # Proxy methods
     def load_folder(self, folder_path: str):

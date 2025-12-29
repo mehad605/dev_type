@@ -2332,6 +2332,13 @@ def run_app():
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
+    # STEP 1.5: Initialize database BEFORE splash screen (needed for settings)
+    if DEBUG_STARTUP_TIMING:
+        t_db = time.time()
+    settings.init_db()
+    if DEBUG_STARTUP_TIMING:
+        print(f"[STARTUP] Database initialized: {time.time() - t_db:.3f}s")
+    
     # STEP 2: Show splash screen immediately
     if DEBUG_STARTUP_TIMING:
         t_splash = time.time()
