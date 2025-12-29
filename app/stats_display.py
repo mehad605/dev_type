@@ -449,6 +449,10 @@ class StatsDisplayWidget(QWidget):
         self.setObjectName("statsDisplay")
         self.is_finished = False
         
+        # WPM history tracking: list of (time_seconds, wpm) tuples
+        self.wpm_history = []
+        self._last_recorded_second = -1
+        
         layout = QHBoxLayout(self)
         layout.setSpacing(12)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -497,6 +501,12 @@ class StatsDisplayWidget(QWidget):
         seconds = int(time_sec % 60)
         self.time_box.set_value(f"{minutes}:{seconds:02d}", raw_value=time_sec)
         
+        # Record WPM at each whole second for graph
+        current_second = int(time_sec)
+        if current_second > 0 and current_second > self._last_recorded_second and wpm > 0:
+            self.wpm_history.append((current_second, wpm))
+            self._last_recorded_second = current_second
+        
         # Accuracy
         total = stats.get("total", 0)
         if total > 0:
@@ -514,6 +524,15 @@ class StatsDisplayWidget(QWidget):
         is_finished = stats.get("is_finished", False)
         is_paused = stats.get("is_paused", True)
         self.status_box.update_status(is_paused, is_finished)
+    
+    def get_wpm_history(self) -> list:
+        """Get the recorded WPM history as list of (second, wpm) tuples."""
+        return self.wpm_history.copy()
+    
+    def clear_wpm_history(self):
+        """Clear the WPM history for a new session."""
+        self.wpm_history = []
+        self._last_recorded_second = -1
     
     def apply_theme(self):
         """Apply current theme to all components."""

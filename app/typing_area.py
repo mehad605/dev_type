@@ -911,9 +911,9 @@ class TypingAreaWidget(QTextEdit):
             }
         
         return {
-            "wpm": self.engine.state.wpm(),
+            "wpm": self.engine.get_wpm(),
             "accuracy": self._calculate_current_accuracy(),
-            "time": self.engine.state.elapsed_time,
+            "time": self.engine.get_elapsed_time(),
             "correct": self.engine.state.correct_keystrokes,
             "incorrect": self.engine.state.incorrect_keystrokes,
             "total": self.engine.state.total_keystrokes(),

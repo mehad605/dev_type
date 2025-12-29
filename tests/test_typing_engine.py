@@ -100,17 +100,16 @@ def test_accuracy_calculation():
 def test_wpm_calculation():
     """Test WPM calculation."""
     engine = TypingEngine("hello world")
-    engine.state.start_time = time.time() - 60  # Started 1 minute ago
-    engine.state.is_paused = False
+    engine.start()  # Start the engine properly
+    # Simulate some elapsed time by setting the session start in the past
+    engine.state._session_start = time.time() - 60  # Started 1 minute ago
     
     # Type 5 characters
     for char in "hello":
         engine.process_keystroke(char)
     
-    engine.update_elapsed_time()
-    
     # WPM = (5 chars / 5) / 1 minute = 1 WPM
-    wpm = engine.state.wpm()
+    wpm = engine.get_wpm()
     assert 0.8 < wpm < 1.2  # Allow some timing variance
 
 

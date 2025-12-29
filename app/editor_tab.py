@@ -314,6 +314,9 @@ class EditorTab(QWidget):
         if self.current_file and self.typing_area.engine:
             self._save_current_progress()
         
+        # Clear WPM history for new file
+        self.stats_display.clear_wpm_history()
+        
         # Load new file
         self.current_file = file_path
         self.typing_area.load_file(file_path)
@@ -365,7 +368,6 @@ class EditorTab(QWidget):
         if not self._loaded:
             return
         if self.typing_area.engine and not self.typing_area.engine.state.is_paused and not self.typing_area.engine.state.is_finished:
-            self.typing_area.engine.update_elapsed_time()
             self.on_stats_updated()
     
     def on_reset_clicked(self):
@@ -528,6 +530,24 @@ class EditorTab(QWidget):
         # Show modern completion dialog
         theme_colors = self._get_theme_colors()
         user_keystrokes = self.typing_area.get_ghost_data() if hasattr(self.typing_area, 'get_ghost_data') else []
+        
+        # Get WPM history from stats display and add final data point
+        wpm_history = self.stats_display.get_wpm_history()
+        
+        # Add the final WPM at the final time to ensure graph ends at actual result
+        # Use round() to match the display formatting (f"{time_val:.0f}s" uses rounding)
+        final_second = round(stats["time"]) if stats["time"] > 0 else 0
+        final_wpm = stats["wpm"]
+        if final_second > 0 and final_wpm > 0:
+            # If history is empty or last entry is before final second, add final point
+            if not wpm_history or wpm_history[-1][0] < final_second:
+                wpm_history.append((final_second, final_wpm))
+            elif wpm_history and wpm_history[-1][0] == final_second:
+                # Replace last point with final WPM (more accurate)
+                wpm_history[-1] = (final_second, final_wpm)
+        
+        self.stats_display.clear_wpm_history()
+        
         dialog = SessionResultDialog(
             parent=self,
             stats=stats,
@@ -535,7 +555,8 @@ class EditorTab(QWidget):
             is_race=False,
             theme_colors=theme_colors,
             filename=self.current_file,
-            user_keystrokes=user_keystrokes
+            user_keystrokes=user_keystrokes,
+            wpm_history=wpm_history
         )
         dialog.exec()
     
@@ -548,7 +569,6 @@ class EditorTab(QWidget):
         
         engine = self.typing_area.engine
         engine.pause()
-        engine.update_elapsed_time()
         
         if engine.state.is_complete():
             stats_db.clear_session_progress(self.current_file)
@@ -559,7 +579,7 @@ class EditorTab(QWidget):
                 total_chars=len(engine.state.content),
                 correct=engine.state.correct_keystrokes,
                 incorrect=engine.state.incorrect_keystrokes,
-                time=engine.state.elapsed_time,
+                time=engine.get_elapsed_time(),
                 is_paused=True
             )
         else:

@@ -9,4 +9,5 @@ dependencies = [
     "pytest>=8.4.2",
     "pyinstaller>=6.0.0",
     "pillow>=10.0.0",
+    "matplotlib>=3.10.8",
 ]

@@ -11,11 +11,14 @@ class TypingState:
     cursor_position: int = 0  # Current typing position
     correct_keystrokes: int = 0
     incorrect_keystrokes: int = 0
-    start_time: float = 0
-    elapsed_time: float = 0
+    elapsed_time: float = 0  # Total accumulated typing time (excludes pauses)
     is_paused: bool = True
     last_keystroke_time: float = 0
     is_finished: bool = False  # Track if session is completed
+    _session_start: float = 0  # When current typing session started (for pause/resume)
+    
+    # Keep start_time for backward compatibility but it's not used for timing anymore
+    start_time: float = 0
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -52,20 +55,40 @@ class TypingEngine:
         """Start or resume the typing session."""
         if self.state.is_paused:
             self.state.is_paused = False
+            # Record when this active typing session started
+            self.state._session_start = time.time()
             if self.state.start_time == 0:
-                self.state.start_time = time.time()
+                self.state.start_time = time.time()  # For backward compatibility
             self.state.last_keystroke_time = time.time()
     
     def pause(self):
         """Pause the typing session."""
         if not self.state.is_paused:
+            # Accumulate time from this session before pausing
+            if self.state._session_start > 0:
+                self.state.elapsed_time += time.time() - self.state._session_start
+                self.state._session_start = 0
             self.state.is_paused = True
-            self.update_elapsed_time()
     
     def update_elapsed_time(self):
-        """Update elapsed time (call periodically or before pause)."""
-        if not self.state.is_paused and self.state.start_time > 0:
-            self.state.elapsed_time = time.time() - self.state.start_time
+        """Legacy method - no longer needed as get_elapsed_time() calculates live time."""
+        pass  # Time is now calculated on-demand via get_elapsed_time()
+    
+    def get_elapsed_time(self) -> float:
+        """Get the current elapsed time for display."""
+        if not self.state.is_paused and self.state._session_start > 0:
+            return self.state.elapsed_time + (time.time() - self.state._session_start)
+        return self.state.elapsed_time
+    
+    def get_wpm(self) -> float:
+        """Get the current WPM using live elapsed time."""
+        elapsed = self.get_elapsed_time()
+        if elapsed <= 0:
+            return 0.0
+        minutes = elapsed / 60.0
+        if minutes == 0:
+            return 0.0
+        return (self.state.cursor_position / 5.0) / minutes
     
     def check_auto_pause(self) -> bool:
         """Check if session should auto-pause due to inactivity."""
@@ -102,7 +125,6 @@ class TypingEngine:
         if self.mistake_at is not None and not self.allow_continue_mistakes:
             # Count as incorrect keystroke but don't advance
             self.state.incorrect_keystrokes += 1
-            self.update_elapsed_time()
             return False, ""
             
         expected_char = self.state.content[self.state.cursor_position]
@@ -118,9 +140,8 @@ class TypingEngine:
             
             # Check if we just completed the file
             if self.state.cursor_position >= len(self.state.content):
-                self.update_elapsed_time()
                 self.state.is_finished = True
-                self.state.is_paused = True  # Pause to stop timer
+                self.pause()  # Properly pause to accumulate final time
         else:
             self.state.incorrect_keystrokes += 1
             
@@ -134,7 +155,6 @@ class TypingEngine:
                 # Don't advance cursor on incorrect keystroke
                 self.mistake_at = self.state.cursor_position
         
-        self.update_elapsed_time()
         return is_correct, expected_char
     
     def process_backspace(self):
@@ -204,9 +224,9 @@ class TypingEngine:
     def get_final_stats(self) -> dict:
         """Get final stats at the end of a session."""
         return {
-            "wpm": self.state.wpm(),
+            "wpm": self.get_wpm(),
             "accuracy": self.state.accuracy(),
-            "time": self.state.elapsed_time,
+            "time": self.get_elapsed_time(),
             "total": self.state.total_keystrokes(),
             "correct": self.state.correct_keystrokes,
             "incorrect": self.state.incorrect_keystrokes,
