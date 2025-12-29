@@ -717,6 +717,18 @@ class EditorTab(QWidget):
             
             # Get final stats from the engine
             final_stats = self.typing_area.engine.get_final_stats()
+            
+            # Get WPM and error history for graph display
+            wpm_history = self.stats_display.get_wpm_history()
+            error_history = self.stats_display.get_error_history()
+            
+            # Add the final WPM point
+            final_second = round(stats["time"]) if stats.get("time", 0) > 0 else 0
+            if final_second > 0 and wpm > 0:
+                if not wpm_history or wpm_history[-1][0] < final_second:
+                    wpm_history.append((final_second, wpm))
+                elif wpm_history and wpm_history[-1][0] == final_second:
+                    wpm_history[-1] = (final_second, wpm)
 
             # Save the ghost
             success = ghost_mgr.save_ghost(
@@ -726,7 +738,9 @@ class EditorTab(QWidget):
                 keystrokes,
                 datetime.now().isoformat(),
                 final_stats=final_stats,
-                instant_death=instant_death_enabled
+                instant_death=instant_death_enabled,
+                wpm_history=wpm_history,
+                error_history=error_history
             )
             
             if success:
@@ -1154,12 +1168,76 @@ class EditorTab(QWidget):
             'ghost_time': ghost_time or 0,
             'ghost_acc': ghost_acc or 100,
             'time_delta': (user_time - ghost_time) if (user_time and ghost_time) else 0,
+            'ghost_final_stats': ghost_data.get('final_stats') if ghost_data else None,
         }
         
         # Show modern race completion dialog
         theme_colors = self._get_theme_colors()
         user_keystrokes = self.typing_area.get_ghost_data() if hasattr(self.typing_area, 'get_ghost_data') else []
         ghost_keystroke_data = ghost_data.get('keys', []) if ghost_data else []
+        
+        # Get WPM and error history for the graph
+        wpm_history = self.stats_display.get_wpm_history()
+        error_history = self.stats_display.get_error_history()
+        
+        # Add the final WPM at the final time
+        final_second = round(user_time) if user_time and user_time > 0 else 0
+        final_wpm = user_wpm
+        if final_second > 0 and final_wpm > 0:
+            if not wpm_history or wpm_history[-1][0] < final_second:
+                wpm_history.append((final_second, final_wpm))
+            elif wpm_history and wpm_history[-1][0] == final_second:
+                wpm_history[-1] = (final_second, final_wpm)
+        
+        # Get ghost WPM and error history - first try stored data, then calculate
+        ghost_wpm_history = ghost_data.get('wpm_history', []) if ghost_data else []
+        ghost_error_history = ghost_data.get('error_history', []) if ghost_data else []
+        
+        # Convert stored tuples back to tuple format if needed (JSON stores as arrays)
+        if ghost_wpm_history:
+            ghost_wpm_history = [(int(s), float(w)) for s, w in ghost_wpm_history]
+        if ghost_error_history:
+            ghost_error_history = [(int(s), int(e)) for s, e in ghost_error_history]
+        
+        # If no stored history, calculate from keystrokes (legacy ghosts)
+        if not ghost_wpm_history and ghost_keystroke_data and ghost_time:
+            # Calculate ghost WPM at each second based on keystrokes
+            ghost_chars_by_second = {}
+            ghost_errors_by_second = {}
+            for ks in ghost_keystroke_data:
+                t_ms = ks.get('t', 0)
+                second = int(t_ms / 1000) + 1  # Which second this keystroke is in
+                is_correct = ks.get('c', 1) == 1  # 'c' field: 1=correct, 0=incorrect
+                if second not in ghost_chars_by_second:
+                    ghost_chars_by_second[second] = 0
+                    ghost_errors_by_second[second] = 0
+                ghost_chars_by_second[second] += 1
+                if not is_correct:
+                    ghost_errors_by_second[second] += 1
+            
+            # Calculate cumulative WPM at each second
+            cumulative_chars = 0
+            for sec in range(1, int(ghost_time) + 1):
+                cumulative_chars += ghost_chars_by_second.get(sec, 0)
+                minutes = sec / 60.0
+                wpm_at_sec = (cumulative_chars / 5.0) / minutes if minutes > 0 else 0
+                ghost_wpm_history.append((sec, wpm_at_sec))
+                
+                # Track errors for this second
+                errors_this_sec = ghost_errors_by_second.get(sec, 0)
+                if errors_this_sec > 0:
+                    ghost_error_history.append((sec, errors_this_sec))
+            
+            # Add final ghost WPM
+            final_ghost_second = round(ghost_time)
+            if final_ghost_second > 0 and ghost_wpm:
+                if not ghost_wpm_history or ghost_wpm_history[-1][0] < final_ghost_second:
+                    ghost_wpm_history.append((final_ghost_second, ghost_wpm))
+                elif ghost_wpm_history and ghost_wpm_history[-1][0] == final_ghost_second:
+                    ghost_wpm_history[-1] = (final_ghost_second, ghost_wpm)
+        
+        self.stats_display.clear_wpm_history()
+        
         dialog = SessionResultDialog(
             parent=self,
             stats=race_stats,
@@ -1169,7 +1247,11 @@ class EditorTab(QWidget):
             theme_colors=theme_colors,
             filename=self.current_file,
             user_keystrokes=user_keystrokes,
-            ghost_keystrokes=ghost_keystroke_data
+            ghost_keystrokes=ghost_keystroke_data,
+            wpm_history=wpm_history,
+            error_history=error_history,
+            ghost_wpm_history=ghost_wpm_history,
+            ghost_error_history=ghost_error_history
         )
         dialog.exec()
         

@@ -925,7 +925,7 @@ class MainWindow(QMainWindow):
         self._update_show_typed_buttons(show_typed)
         
         # Show ghost text option
-        show_ghost_label = QLabel("Show Ghost Text")
+        show_ghost_label = QLabel("Show what ghost types")
         show_ghost_label.setStyleSheet("font-weight: bold;")
         typing_behavior_layout.addWidget(show_ghost_label)
 

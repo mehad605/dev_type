@@ -62,7 +62,8 @@ class GhostManager:
     
     def save_ghost(self, file_path: str, wpm: float, accuracy: float, 
                    keystrokes: List[Dict], session_date: str = None, 
-                   final_stats: dict = None, instant_death: Optional[bool] = None):
+                   final_stats: dict = None, instant_death: Optional[bool] = None,
+                   wpm_history: List[tuple] = None, error_history: List[tuple] = None):
         """Save ghost session (only if it's the best)."""
         ghost_file = self._get_ghost_path(file_path)
         
@@ -80,6 +81,12 @@ class GhostManager:
         }
         if instant_death is not None:
             ghost_data["instant_death_mode"] = bool(instant_death)
+        
+        # Store WPM and error history for graph display (saves recalculation)
+        if wpm_history:
+            ghost_data["wpm_history"] = wpm_history
+        if error_history:
+            ghost_data["error_history"] = error_history
         
         try:
             # Compress and save
