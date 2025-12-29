@@ -202,3 +202,122 @@ def test_continue_on_error_disabled():
     is_correct2, expected2 = engine.process_keystroke("h")
     assert is_correct2 is True
     assert engine.state.cursor_position == 1
+
+
+def test_allow_continue_mistakes_true():
+    """Test allow_continue_mistakes=True mode (lenient)."""
+    engine = TypingEngine("hello", allow_continue_mistakes=True)
+    
+    # Type incorrect character - cursor should advance
+    is_correct, expected = engine.process_keystroke("x")
+    assert is_correct is False
+    assert engine.state.cursor_position == 1  # Advances even on error
+    assert engine.mistake_at == 0  # Mistake marked at position 0
+    
+    # Can continue typing
+    is_correct2, expected2 = engine.process_keystroke("e")
+    assert is_correct2 is True
+    assert engine.state.cursor_position == 2
+
+
+def test_allow_continue_mistakes_false():
+    """Test allow_continue_mistakes=False mode (strict)."""
+    engine = TypingEngine("hello", allow_continue_mistakes=False)
+    
+    # Type incorrect character - cursor should NOT advance
+    is_correct, expected = engine.process_keystroke("x")
+    assert is_correct is False
+    assert engine.state.cursor_position == 0  # Does not advance
+    assert engine.mistake_at == 0
+    
+    # Cannot continue - blocked
+    is_correct2, expected2 = engine.process_keystroke("e")
+    assert engine.state.cursor_position == 0  # Still blocked
+
+
+def test_backspace_in_lenient_mode():
+    """Test backspace behavior in lenient mode."""
+    engine = TypingEngine("hello", allow_continue_mistakes=True)
+    
+    # Type wrong
+    engine.process_keystroke("x")  # Wrong, advances to 1
+    
+    assert engine.state.cursor_position == 1
+    assert engine.mistake_at == 0
+    
+    # Backspace should move back AND clear mistake
+    engine.process_backspace()
+    assert engine.state.cursor_position == 0
+    assert engine.mistake_at is None  # Cleared
+
+
+def test_backspace_in_strict_mode():
+    """Test backspace behavior in strict mode."""
+    engine = TypingEngine("hello", allow_continue_mistakes=False)
+    
+    # Type wrong
+    engine.process_keystroke("x")  # Wrong, stays at 0
+    
+    assert engine.state.cursor_position == 0
+    assert engine.mistake_at == 0
+    
+    # Backspace clears mistake marker
+    engine.process_backspace()
+    assert engine.state.cursor_position == 0  # Still at 0
+    assert engine.mistake_at is None  # Cleared
+
+
+def test_completion_with_mistakes():
+    """Test completing text with mistakes in lenient mode."""
+    engine = TypingEngine("hi", allow_continue_mistakes=True)
+    
+    engine.process_keystroke("x")  # Wrong
+    engine.process_keystroke("i")  # Right
+    
+    assert engine.state.is_complete()
+    assert engine.state.correct_keystrokes == 1
+    assert engine.state.incorrect_keystrokes == 1
+
+
+def test_auto_pause_inactivity():
+    """Test auto-pause after inactivity."""
+    engine = TypingEngine("hello", pause_delay=0.1)
+    
+    # Start typing
+    engine.process_keystroke("h")
+    assert engine.state.is_paused is False
+    
+    # Wait for auto-pause
+    import time
+    time.sleep(0.15)
+    
+    # Check auto-pause
+    paused = engine.check_auto_pause()
+    assert paused is True
+    assert engine.state.is_paused is True
+
+
+def test_finished_state():
+    """Test that engine marks as finished when complete."""
+    engine = TypingEngine("hi")
+    
+    engine.process_keystroke("h")
+    assert engine.state.is_finished is False
+    
+    engine.process_keystroke("i")
+    assert engine.state.is_finished is True
+    assert engine.state.is_paused is True  # Auto-pauses on completion
+
+
+def test_no_input_after_finished():
+    """Test that no input is processed after finishing."""
+    engine = TypingEngine("hi")
+    
+    engine.process_keystroke("h")
+    engine.process_keystroke("i")
+    assert engine.state.is_finished is True
+    
+    # Try to type more - should be blocked
+    is_correct, expected = engine.process_keystroke("x")
+    assert is_correct is False
+    assert expected == ""

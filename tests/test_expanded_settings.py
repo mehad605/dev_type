@@ -9,9 +9,9 @@ def test_color_settings(tmp_path: Path):
     settings.init_db(str(db_file))
     
     # Test default colors
-    assert settings.get_setting("color_untyped", "") == "#555555"
-    assert settings.get_setting("color_correct", "") == "#00ff00"
-    assert settings.get_setting("color_incorrect", "") == "#ff0000"
+    assert settings.get_setting("color_untyped", "") == "#6272a4"
+    assert settings.get_setting("color_correct", "") == "#50fa7b"
+    assert settings.get_setting("color_incorrect", "") == "#ff5555"
     
     # Test setting custom colors
     settings.set_setting("color_untyped", "#aaaaaa")
@@ -27,8 +27,8 @@ def test_cursor_settings(tmp_path: Path):
     settings.init_db(str(db_file))
     
     # Test defaults
-    assert settings.get_setting("cursor_type", "") == "blinking"
-    assert settings.get_setting("cursor_style", "") == "block"
+    assert settings.get_setting("cursor_type", "") == "static"
+    assert settings.get_setting("cursor_style", "") == "underscore"
     
     # Test changing settings
     settings.set_setting("cursor_type", "static")
@@ -44,7 +44,7 @@ def test_font_settings(tmp_path: Path):
     settings.init_db(str(db_file))
     
     # Test defaults
-    assert settings.get_setting("font_family", "") == "Consolas"
+    assert settings.get_setting("font_family", "") == "JetBrains Mono"
     assert settings.get_setting("font_size", "") == "12"
     assert settings.get_setting("font_ligatures", "") == "0"
     
@@ -66,7 +66,7 @@ def test_typing_settings(tmp_path: Path):
     
     # Test defaults
     assert settings.get_setting("space_char", "") == "␣"
-    assert settings.get_setting("pause_delay", "") == "7"
+    assert settings.get_setting("pause_delay", "") == "4"
     
     # Test changing settings
     settings.set_setting("space_char", "·")
