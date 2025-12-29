@@ -41,6 +41,7 @@ import app.settings as settings
 from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
+from app.stats_tab import StatsTab
 
 # Toggle for startup timing debug output - set to False in production
 DEBUG_STARTUP_TIMING = True
@@ -681,6 +682,12 @@ class MainWindow(QMainWindow):
         self.history_tab.setStyleSheet("color: #888888; font-size: 14pt;")
         self.tabs.addTab(self.history_tab, "History")
         
+        # --- Stats Tab (Lazy) ---
+        self.stats_tab = QLabel("Loading Stats...")
+        self.stats_tab.setAlignment(Qt.AlignCenter)
+        self.stats_tab.setStyleSheet("color: #888888; font-size: 14pt;")
+        self.tabs.addTab(self.stats_tab, "Stats")
+        
         # --- Editor/Typing Tab (Lazy) ---
         # EditorTab is lightweight in init, but we want to defer its 'ensure_loaded'
         if DEBUG_STARTUP_TIMING:
@@ -746,7 +753,17 @@ class MainWindow(QMainWindow):
             self._replace_tab(self.history_tab, real_history, "History")
             self.history_tab = real_history
         
-        # 3. Schedule next step: Editor Tab content
+        # 3. Schedule next step: Stats Tab
+        QTimer.singleShot(50, self._load_stats_tab_lazy)
+    
+    def _load_stats_tab_lazy(self):
+        """Lazy load stats tab."""
+        if isinstance(self.stats_tab, QLabel):
+            real_stats = StatsTab()
+            self._replace_tab(self.stats_tab, real_stats, "Stats")
+            self.stats_tab = real_stats
+        
+        # 4. Schedule next step: Editor Tab content
         QTimer.singleShot(50, self._load_editor_tab_lazy)
 
     def _load_editor_tab_lazy(self):
@@ -756,7 +773,7 @@ class MainWindow(QMainWindow):
         # Connect signals now that typing_area exists
         self._connect_settings_signals()
         
-        # 4. Schedule next step: Settings Tab
+        # 5. Schedule next step: Settings Tab
         QTimer.singleShot(50, self._load_settings_tab_lazy)
 
     def _load_settings_tab_lazy(self):
@@ -1446,6 +1463,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "history_tab"):
             self.history_tab.refresh_history()
 
+    def refresh_stats_tab(self):
+        """Refresh the stats tab after session completion."""
+        if hasattr(self, "stats_tab") and hasattr(self.stats_tab, "refresh"):
+            self.stats_tab.refresh()
+
     def _populate_scheme_combo(self, theme_type: str):
         """Populate the scheme combo box based on the selected theme type."""
         self.scheme_combo.blockSignals(True)
@@ -1893,6 +1915,10 @@ class MainWindow(QMainWindow):
                 self.editor_tab.stats_display.apply_theme()
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] update_typing_colors: {time.time() - t:.3f}s")
+        
+        # Update stats tab theme (if loaded)
+        if hasattr(self, 'stats_tab') and hasattr(self.stats_tab, 'apply_theme'):
+            self.stats_tab.apply_theme()
         
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] TOTAL apply_current_theme: {time.time() - t_total:.3f}s")

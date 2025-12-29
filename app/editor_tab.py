@@ -526,6 +526,8 @@ class EditorTab(QWidget):
             parent_window.refresh_languages_tab()
         if hasattr(parent_window, "refresh_history_tab"):
             parent_window.refresh_history_tab()
+        if hasattr(parent_window, "refresh_stats_tab"):
+            parent_window.refresh_stats_tab()
         
         # Show modern completion dialog
         theme_colors = self._get_theme_colors()
@@ -1047,6 +1049,8 @@ class EditorTab(QWidget):
                 parent_window.refresh_languages_tab()
             if hasattr(parent_window, "refresh_history_tab"):
                 parent_window.refresh_history_tab()
+            if hasattr(parent_window, "refresh_stats_tab"):
+                parent_window.refresh_stats_tab()
         else:
             is_new_best = False
         
