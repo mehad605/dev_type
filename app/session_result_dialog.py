@@ -13,13 +13,24 @@ from typing import List, Dict, Tuple
 
 
 class InteractiveWPMGraph(QWidget):
-    """Interactive WPM vs Time graph widget with hover tooltips."""
+    """Interactive WPM vs Time graph widget with hover tooltips and error markers."""
     
     def __init__(self, times: List[float], wpms: List[float], total_time: float, 
-                 line_color: str, theme_colors: dict, parent=None):
+                 line_color: str, theme_colors: dict, error_history: List[Tuple[int, int]] = None,
+                 parent=None):
         super().__init__(parent)
         self.line_color = QColor(line_color)
+        self.error_color = QColor("#FF5252")  # Red for errors
         self.theme = theme_colors or {}
+        self.error_history = error_history or []  # list of (second, error_count)
+        
+        # Visibility toggles for legend items
+        self.wpm_visible = True
+        self.errors_visible = True
+        
+        # Legend hit areas (will be set in paintEvent)
+        self.wpm_legend_rect = QRectF()
+        self.error_legend_rect = QRectF()
         
         # Round total time to whole seconds
         self.total_time = max(1, int(total_time) if total_time == int(total_time) else int(total_time) + 1)
@@ -28,21 +39,22 @@ class InteractiveWPMGraph(QWidget):
         # times and wpms are parallel lists
         self.second_markers = [(int(t), w) for t, w in zip(times, wpms) if t >= 1]
         
-        # Graph margins
-        self.margin_left = 45
-        self.margin_right = 15
-        self.margin_top = 25
+        # Graph margins - balanced for both axes, extra top margin for legend
+        self.margin_left = 40
+        self.margin_right = 40  # Space for right Y-axis (errors)
+        self.margin_top = 45  # Extra space for legend above graph
         self.margin_bottom = 30
         
         # Mouse tracking
         self.setMouseTracking(True)
         self.hover_second = None  # Which second marker is hovered
+        self.hover_error_second = None  # Which error marker is hovered
         
         # Calculate axis ranges - start from 1 second, end at total_time
         self.x_min = 1
         self.x_max = max(self.total_time, max((s for s, _ in self.second_markers), default=1))
         
-        # Calculate y-axis max - ALWAYS next multiple of 10 above max WPM
+        # Calculate y-axis max (WPM) - ALWAYS next multiple of 10 above max WPM
         if self.second_markers:
             max_wpm = max(wpm for _, wpm in self.second_markers)
         else:
@@ -61,6 +73,32 @@ class InteractiveWPMGraph(QWidget):
         else:
             self.y_step = 100
         
+        # Calculate right Y-axis max (errors) - dynamic based on max errors
+        if self.error_history:
+            max_errors = max(err for _, err in self.error_history)
+        else:
+            max_errors = 0
+        
+        # Calculate error axis max and step
+        if max_errors <= 0:
+            self.error_max = 5  # Default if no errors
+            self.error_step = 1
+        elif max_errors <= 5:
+            self.error_max = 5
+            self.error_step = 1
+        elif max_errors <= 10:
+            self.error_max = 10
+            self.error_step = 2
+        elif max_errors <= 20:
+            self.error_max = 20
+            self.error_step = 5
+        elif max_errors <= 50:
+            self.error_max = 50
+            self.error_step = 10
+        else:
+            self.error_max = ((int(max_errors) // 20) + 1) * 20
+            self.error_step = self.error_max // 5
+        
         # Calculate x-axis step dynamically
         duration = self.x_max - self.x_min
         if duration <= 5:
@@ -72,7 +110,7 @@ class InteractiveWPMGraph(QWidget):
         else:
             self.x_step = 10
         
-        self.setFixedSize(500, 180)
+        self.setFixedSize(470, 200)  # Taller to accommodate legend above
         self.setStyleSheet("background: transparent;")
     
     def _graph_rect(self) -> QRectF:
@@ -96,27 +134,70 @@ class InteractiveWPMGraph(QWidget):
         rect = self._graph_rect()
         return rect.y() + rect.height() - (wpm / self.y_max) * rect.height()
     
-    def _find_hovered_marker(self, x: float, y: float) -> int:
-        """Find which second marker is being hovered, if any."""
+    def _error_to_y(self, errors: int) -> float:
+        """Convert error count to y coordinate (uses right axis scale)."""
+        rect = self._graph_rect()
+        return rect.y() + rect.height() - (errors / self.error_max) * rect.height()
+    
+    def _find_hovered_marker(self, x: float, y: float) -> Tuple[int, str]:
+        """Find which marker is being hovered, if any.
+        Returns (second, 'wpm') or (second, 'error') or (None, None)"""
+        # Check error markers first (they're on top)
+        for second, errors in self.error_history:
+            marker_x = self._time_to_x(second)
+            marker_y = self._error_to_y(errors)
+            
+            if abs(x - marker_x) < 12 and abs(y - marker_y) < 12:
+                return second, 'error'
+        
+        # Then check WPM markers
         for second, wpm in self.second_markers:
             marker_x = self._time_to_x(second)
             marker_y = self._wpm_to_y(wpm)
             
-            # Check if mouse is within 10 pixels of marker
             if abs(x - marker_x) < 12 and abs(y - marker_y) < 12:
-                return second
-        return None
+                return second, 'wpm'
+        
+        return None, None
+    
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click to toggle legend items."""
+        x = event.position().x()
+        y = event.position().y()
+        
+        # Check if clicked on WPM legend
+        if self.wpm_legend_rect.contains(x, y):
+            self.wpm_visible = not self.wpm_visible
+            self.update()
+            return
+        
+        # Check if clicked on Error legend
+        if self.error_legend_rect.contains(x, y):
+            self.errors_visible = not self.errors_visible
+            self.update()
+            return
     
     def mouseMoveEvent(self, event):
         """Track mouse position and update hover info."""
         x = event.position().x()
         y = event.position().y()
-        self.hover_second = self._find_hovered_marker(x, y)
+        second, marker_type = self._find_hovered_marker(x, y)
+        
+        if marker_type == 'wpm' and self.wpm_visible:
+            self.hover_second = second
+            self.hover_error_second = None
+        elif marker_type == 'error' and self.errors_visible:
+            self.hover_second = None
+            self.hover_error_second = second
+        else:
+            self.hover_second = None
+            self.hover_error_second = None
         self.update()
     
     def leaveEvent(self, event):
         """Clear hover when mouse leaves."""
         self.hover_second = None
+        self.hover_error_second = None
         self.update()
     
     def paintEvent(self, event):
@@ -161,11 +242,20 @@ class InteractiveWPMGraph(QWidget):
         font.setPointSize(8)
         painter.setFont(font)
         
-        # Y-axis labels - dynamic spacing
+        # Y-axis labels (WPM - left side) - dynamic spacing
         for wpm in range(0, self.y_max + 1, self.y_step):
             y = self._wpm_to_y(wpm)
             painter.drawText(QRectF(0, y - 8, self.margin_left - 5, 16), 
                            Qt.AlignRight | Qt.AlignVCenter, str(wpm))
+        
+        # Right Y-axis labels (Errors) - only if we have error data and errors are visible
+        if self.error_history and self.errors_visible:
+            painter.setPen(self.error_color)
+            for errors in range(0, self.error_max + 1, self.error_step):
+                y = self._error_to_y(errors)
+                painter.drawText(QRectF(rect.x() + rect.width() + 5, y - 8, self.margin_right - 5, 16), 
+                               Qt.AlignLeft | Qt.AlignVCenter, str(errors))
+            painter.setPen(text_color)
         
         # X-axis labels - dynamic spacing (whole seconds only)
         t = self.x_min
@@ -179,19 +269,30 @@ class InteractiveWPMGraph(QWidget):
         font.setPointSize(9)
         painter.setFont(font)
         
-        # Y-axis title (rotated)
+        # Y-axis title (rotated) - WPM on left
         painter.save()
         painter.translate(12, rect.y() + rect.height() / 2)
         painter.rotate(-90)
         painter.drawText(QRectF(-30, -10, 60, 20), Qt.AlignCenter, "WPM")
         painter.restore()
         
+        # Right Y-axis title (rotated) - Errors - only if we have error data
+        # Right Y-axis title - only show if errors visible and have error data
+        if self.error_history and self.errors_visible:
+            painter.save()
+            painter.setPen(self.error_color)
+            painter.translate(self.width() - 12, rect.y() + rect.height() / 2)
+            painter.rotate(90)
+            painter.drawText(QRectF(-30, -10, 60, 20), Qt.AlignCenter, "Errors")
+            painter.restore()
+            painter.setPen(text_color)
+        
         # X-axis title
         painter.drawText(QRectF(rect.x(), self.height() - 15, rect.width(), 15), 
                         Qt.AlignCenter, "Time (seconds)")
         
-        # Draw the WPM curve connecting the second markers (smooth line through whole seconds only)
-        if len(self.second_markers) >= 2:
+        # Draw the WPM curve connecting the second markers (only if visible)
+        if self.wpm_visible and len(self.second_markers) >= 2:
             path = QPainterPath()
             first_sec, first_wpm = self.second_markers[0]
             path.moveTo(self._time_to_x(first_sec), self._wpm_to_y(first_wpm))
@@ -203,25 +304,43 @@ class InteractiveWPMGraph(QWidget):
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(path)
         
-        # Draw second markers (interactive dots)
-        for second, wpm in self.second_markers:
-            marker_x = self._time_to_x(second)
-            marker_y = self._wpm_to_y(wpm)
-            
-            is_hovered = (self.hover_second == second)
-            
-            # Draw dot
-            if is_hovered:
-                painter.setPen(QPen(self.line_color, 2))
-                painter.setBrush(QBrush(self.line_color))
-                painter.drawEllipse(QPointF(marker_x, marker_y), 5, 5)
-            else:
-                painter.setPen(QPen(self.line_color, 1))
-                painter.setBrush(QBrush(bg_color))
-                painter.drawEllipse(QPointF(marker_x, marker_y), 3, 3)
+        # Draw second markers (interactive dots) - only if visible
+        if self.wpm_visible:
+            for second, wpm in self.second_markers:
+                marker_x = self._time_to_x(second)
+                marker_y = self._wpm_to_y(wpm)
+                
+                is_hovered = (self.hover_second == second)
+                
+                # Draw dot
+                if is_hovered:
+                    painter.setPen(QPen(self.line_color, 2))
+                    painter.setBrush(QBrush(self.line_color))
+                    painter.drawEllipse(QPointF(marker_x, marker_y), 5, 5)
+                else:
+                    painter.setPen(QPen(self.line_color, 1))
+                    painter.setBrush(QBrush(bg_color))
+                    painter.drawEllipse(QPointF(marker_x, marker_y), 3, 3)
         
-        # Draw tooltip for hovered marker
-        if self.hover_second is not None:
+        # Draw error markers (red X marks) - only if visible
+        if self.errors_visible:
+            for second, errors in self.error_history:
+                marker_x = self._time_to_x(second)
+                marker_y = self._error_to_y(errors)
+                
+                is_hovered = (self.hover_error_second == second)
+                
+                # Draw X mark
+                size = 6 if is_hovered else 4
+                pen_width = 2.5 if is_hovered else 2
+                painter.setPen(QPen(self.error_color, pen_width))
+                painter.drawLine(QPointF(marker_x - size, marker_y - size), 
+                               QPointF(marker_x + size, marker_y + size))
+                painter.drawLine(QPointF(marker_x - size, marker_y + size), 
+                               QPointF(marker_x + size, marker_y - size))
+        
+        # Draw tooltip for hovered WPM marker (only if WPM visible)
+        if self.hover_second is not None and self.wpm_visible:
             # Find the WPM for this second
             hover_wpm = None
             for sec, wpm in self.second_markers:
@@ -268,18 +387,135 @@ class InteractiveWPMGraph(QWidget):
                 painter.setPen(text_color)
                 painter.drawText(tooltip_rect, Qt.AlignCenter, tooltip_text)
         
-        # Draw legend
-        legend_x = rect.x() + 10
-        legend_y = rect.y() + 5
+        # Draw tooltip for hovered error marker (only if errors visible)
+        if self.hover_error_second is not None and self.errors_visible:
+            # Find the error count for this second
+            hover_errors = None
+            for sec, errors in self.error_history:
+                if sec == self.hover_error_second:
+                    hover_errors = errors
+                    break
+            
+            if hover_errors is not None:
+                dot_x = self._time_to_x(self.hover_error_second)
+                dot_y = self._error_to_y(hover_errors)
+                
+                # Tooltip text
+                error_label = "error" if hover_errors == 1 else "errors"
+                tooltip_text = f"{self.hover_error_second}s | {hover_errors} {error_label}"
+                font.setPointSize(9)
+                font.setBold(True)
+                painter.setFont(font)
+                fm = QFontMetrics(font)
+                text_width = fm.horizontalAdvance(tooltip_text)
+                text_height = fm.height()
+                
+                tooltip_x = dot_x + 10
+                tooltip_y = dot_y - 25
+                
+                # Keep tooltip on screen
+                if tooltip_x + text_width + 10 > self.width():
+                    tooltip_x = dot_x - text_width - 20
+                if tooltip_y < 5:
+                    tooltip_y = dot_y + 10
+                
+                # Draw tooltip background
+                tooltip_rect = QRectF(tooltip_x, tooltip_y, text_width + 10, text_height + 6)
+                painter.setPen(Qt.NoPen)
+                tooltip_bg = QColor(bg_color)
+                tooltip_bg.setAlpha(230)
+                painter.setBrush(tooltip_bg)
+                painter.drawRoundedRect(tooltip_rect, 4, 4)
+                
+                # Draw tooltip border (red for errors)
+                painter.setPen(QPen(self.error_color, 1))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRoundedRect(tooltip_rect, 4, 4)
+                
+                # Draw tooltip text
+                painter.setPen(text_color)
+                painter.drawText(tooltip_rect, Qt.AlignCenter, tooltip_text)
         
-        painter.setPen(QPen(self.line_color, 2))
-        painter.drawLine(QPointF(legend_x, legend_y + 6), QPointF(legend_x + 20, legend_y + 6))
-        
-        font.setPointSize(8)
+        # Draw legend - stacked vertically, positioned top-right outside the graph box
+        font.setPointSize(9)
         font.setBold(False)
         painter.setFont(font)
-        painter.setPen(text_color)
-        painter.drawText(QPointF(legend_x + 25, legend_y + 10), "Your WPM")
+        fm = QFontMetrics(font)
+        
+        legend_right = rect.x() + rect.width() - 5  # Right edge of graph
+        legend_top = 5  # Above the graph box
+        
+        # WPM legend item
+        wpm_text = "WPM"
+        wpm_text_width = fm.horizontalAdvance(wpm_text)
+        wpm_line_width = 20
+        wpm_spacing = 5
+        wpm_total_width = wpm_line_width + wpm_spacing + wpm_text_width
+        
+        wpm_x = legend_right - wpm_total_width
+        wpm_y = legend_top
+        
+        # Store hit area for click detection
+        self.wpm_legend_rect = QRectF(wpm_x - 5, wpm_y - 2, wpm_total_width + 10, 18)
+        
+        # Draw WPM legend (dimmed if disabled)
+        if self.wpm_visible:
+            wpm_color = self.line_color
+            wpm_text_col = text_color
+        else:
+            wpm_color = QColor(self.line_color)
+            wpm_color.setAlpha(80)
+            wpm_text_col = QColor(text_color)
+            wpm_text_col.setAlpha(80)
+        
+        painter.setPen(QPen(wpm_color, 2))
+        painter.drawLine(QPointF(wpm_x, wpm_y + 7), QPointF(wpm_x + wpm_line_width, wpm_y + 7))
+        # Draw small dot on line
+        painter.setBrush(QBrush(wpm_color))
+        painter.drawEllipse(QPointF(wpm_x + wpm_line_width / 2, wpm_y + 7), 3, 3)
+        painter.setBrush(Qt.NoBrush)
+        
+        painter.setPen(wpm_text_col)
+        painter.drawText(QPointF(wpm_x + wpm_line_width + wpm_spacing, wpm_y + 12), wpm_text)
+        
+        # Error legend item (only if we have error data)
+        if self.error_history:
+            error_text = "Errors"
+            error_text_width = fm.horizontalAdvance(error_text)
+            error_x_width = 10
+            error_spacing = 5
+            error_total_width = error_x_width + error_spacing + error_text_width
+            
+            error_x = legend_right - error_total_width
+            error_y = wpm_y + 16  # Below WPM legend
+            
+            # Store hit area for click detection
+            self.error_legend_rect = QRectF(error_x - 5, error_y - 2, error_total_width + 10, 18)
+            
+            # Draw Error legend (dimmed if disabled)
+            if self.errors_visible:
+                err_color = self.error_color
+                err_text_col = text_color
+            else:
+                err_color = QColor(self.error_color)
+                err_color.setAlpha(80)
+                err_text_col = QColor(text_color)
+                err_text_col.setAlpha(80)
+            
+            # Draw small X
+            painter.setPen(QPen(err_color, 2))
+            x_center = error_x + error_x_width / 2
+            y_center = error_y + 7
+            painter.drawLine(QPointF(x_center - 4, y_center - 4), 
+                           QPointF(x_center + 4, y_center + 4))
+            painter.drawLine(QPointF(x_center - 4, y_center + 4), 
+                           QPointF(x_center + 4, y_center - 4))
+            
+            painter.setPen(err_text_col)
+            painter.drawText(QPointF(error_x + error_x_width + error_spacing, error_y + 12), error_text)
+        else:
+            # No error data, clear the rect
+            self.error_legend_rect = QRectF()
 
 
 class IconWidget(QWidget):
@@ -497,7 +733,8 @@ class SessionResultDialog(QDialog):
     def __init__(self, parent=None, stats=None, is_new_best=False, is_race=False,
                  race_info=None, theme_colors=None, filename: str = None,
                  user_keystrokes: List[Dict] = None, ghost_keystrokes: List[Dict] = None,
-                 wpm_history: List[Tuple[int, float]] = None):
+                 wpm_history: List[Tuple[int, float]] = None, 
+                 error_history: List[Tuple[int, int]] = None):
         super().__init__(parent)
         self.stats = stats or {}
         self.is_race = is_race
@@ -507,6 +744,7 @@ class SessionResultDialog(QDialog):
         self.user_keystrokes = user_keystrokes or []
         self.ghost_keystrokes = ghost_keystrokes or []
         self.wpm_history = wpm_history or []  # List of (second, wpm) tuples
+        self.error_history = error_history or []  # List of (second, error_count) tuples
         
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -630,6 +868,7 @@ class SessionResultDialog(QDialog):
                 total_time=total_time,
                 line_color=user_color,
                 theme_colors=theme,
+                error_history=self.error_history,
                 parent=self
             )
             layout.addWidget(graph_widget, alignment=Qt.AlignCenter)

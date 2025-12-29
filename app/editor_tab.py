@@ -533,6 +533,7 @@ class EditorTab(QWidget):
         
         # Get WPM history from stats display and add final data point
         wpm_history = self.stats_display.get_wpm_history()
+        error_history = self.stats_display.get_error_history()
         
         # Add the final WPM at the final time to ensure graph ends at actual result
         # Use round() to match the display formatting (f"{time_val:.0f}s" uses rounding)
@@ -556,7 +557,8 @@ class EditorTab(QWidget):
             theme_colors=theme_colors,
             filename=self.current_file,
             user_keystrokes=user_keystrokes,
-            wpm_history=wpm_history
+            wpm_history=wpm_history,
+            error_history=error_history
         )
         dialog.exec()
     

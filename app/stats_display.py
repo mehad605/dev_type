@@ -453,6 +453,10 @@ class StatsDisplayWidget(QWidget):
         self.wpm_history = []
         self._last_recorded_second = -1
         
+        # Error tracking: errors per second interval
+        self._last_recorded_incorrect = 0  # Track cumulative incorrect count
+        self.error_history = []  # list of (second, errors_in_that_second)
+        
         layout = QHBoxLayout(self)
         layout.setSpacing(12)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -501,23 +505,32 @@ class StatsDisplayWidget(QWidget):
         seconds = int(time_sec % 60)
         self.time_box.set_value(f"{minutes}:{seconds:02d}", raw_value=time_sec)
         
+        # Keystrokes - get these early for error tracking
+        correct = stats.get("correct", 0)
+        incorrect = stats.get("incorrect", 0)
+        total = stats.get("total", 0)
+        
         # Record WPM at each whole second for graph
         current_second = int(time_sec)
         if current_second > 0 and current_second > self._last_recorded_second and wpm > 0:
             self.wpm_history.append((current_second, wpm))
+            
+            # Track errors for this second interval
+            errors_this_second = incorrect - self._last_recorded_incorrect
+            if errors_this_second > 0:
+                self.error_history.append((current_second, errors_this_second))
+            self._last_recorded_incorrect = incorrect
+            
             self._last_recorded_second = current_second
         
         # Accuracy
-        total = stats.get("total", 0)
         if total > 0:
             accuracy = stats.get("accuracy", 1.0) * 100
         else:
             accuracy = 0.0
         self.accuracy_box.set_value(f"{accuracy:.1f}%", raw_value=accuracy)
         
-        # Keystrokes
-        correct = stats.get("correct", 0)
-        incorrect = stats.get("incorrect", 0)
+        # Update keystroke display
         self.keystroke_box.update_stats(correct, incorrect, total)
         
         # Status indicator
@@ -529,10 +542,16 @@ class StatsDisplayWidget(QWidget):
         """Get the recorded WPM history as list of (second, wpm) tuples."""
         return self.wpm_history.copy()
     
+    def get_error_history(self) -> list:
+        """Get the recorded error history as list of (second, error_count) tuples."""
+        return self.error_history.copy()
+    
     def clear_wpm_history(self):
         """Clear the WPM history for a new session."""
         self.wpm_history = []
         self._last_recorded_second = -1
+        self.error_history = []
+        self._last_recorded_incorrect = 0
     
     def apply_theme(self):
         """Apply current theme to all components."""
