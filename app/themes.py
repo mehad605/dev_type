@@ -520,7 +520,6 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QFrame#LanguageCard:hover {{
         border-color: {scheme.accent_color};
         background-color: {scheme.bg_tertiary};
-        transform: translateY(-2px);
     }}
     
     /* Buttons */

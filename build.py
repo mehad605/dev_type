@@ -108,14 +108,8 @@ class Builder:
         icon_path = self.get_icon_path()
         version_file = self.root / "version_info.txt"
         
-        # Create a temporary entry point script
-        entry_script = self.root / "run_app.py"
-        entry_script.write_text("""#!/usr/bin/env python
-# Temporary entry point for PyInstaller build
-if __name__ == "__main__":
-    from app.ui_main import run_app
-    run_app()
-""")
+        # Use main.py as entry point (contains splash screen initialization)
+        entry_script = self.root / "main.py"
         
         # PyInstaller command
         cmd = [
@@ -145,6 +139,10 @@ if __name__ == "__main__":
             "--hidden-import=matplotlib",
             "--hidden-import=matplotlib.pyplot",
             "--hidden-import=matplotlib.backends.backend_agg",
+            "--hidden-import=_tkinter",
+            "--hidden-import=tkinter",
+            "--hidden-import=tkinter.font",
+            "--hidden-import=tkinter.ttk",
             "--hidden-import=app.portable_data",
             "--hidden-import=app.ghost_manager",
             "--hidden-import=app.stats_db",
@@ -185,17 +183,9 @@ if __name__ == "__main__":
             print("\n✅ Windows build complete!")
             print(f"   Executable: {self.dist_dir / 'dev_type.exe'}")
             
-            # Clean up temporary entry script
-            if entry_script.exists():
-                entry_script.unlink()
-            
             return True
         except subprocess.CalledProcessError as e:
             print(f"\n❌ Build failed with error code {e.returncode}")
-            
-            # Clean up temporary entry script
-            if entry_script.exists():
-                entry_script.unlink()
             
             return False
     

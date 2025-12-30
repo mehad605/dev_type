@@ -35,10 +35,24 @@ class InstantSplash:
         }
         
         try:
-            # Try to find and read the database
-            db_path = Path("Dev_Type_Data/typing_stats.db")
+            import sys
+            from pathlib import Path
+            
+            # Try to find the database using portable data manager logic
+            # First check if running from frozen executable
+            if getattr(sys, 'frozen', False):
+                # Running from PyInstaller bundle
+                exe_dir = Path(sys.executable).parent
+            else:
+                # Running from source
+                exe_dir = Path(__file__).parent.parent
+            
+            # Look for Dev_Type_Data next to executable/source
+            db_path = exe_dir / "Dev_Type_Data" / "typing_stats.db"
+            
             if not db_path.exists():
-                db_path = Path(__file__).parent.parent / "Dev_Type_Data" / "typing_stats.db"
+                # Fallback to current directory
+                db_path = Path("Dev_Type_Data/typing_stats.db")
             
             if not db_path.exists():
                 return colors
@@ -250,9 +264,10 @@ class InstantSplash:
             )
             self._status_label.pack(pady=(0, 30))
             
-            # Show window
+            # Show window and force update to display immediately
             self._root.deiconify()
             self._root.update()
+            self._root.update_idletasks()
             
             return True
             
@@ -279,6 +294,8 @@ class InstantSplash:
                     0, 0, fill_width, self._bar_height
                 )
             
+            # Force update to display changes immediately
+            self._root.update()
             self._root.update_idletasks()
         except:
             pass
