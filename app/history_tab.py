@@ -340,6 +340,6 @@ class HistoryTab(QWidget):
         if not value:
             return ""
         try:
-            return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
+            return datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M")
         except ValueError:
             return value

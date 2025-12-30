@@ -78,18 +78,32 @@ class InteractiveWPMGraph(QWidget):
         else:
             max_wpm = 100
         
-        # Round up to next 10
-        self.y_max = ((int(max_wpm) // 10) + 1) * 10
+        # Round up to next appropriate interval based on magnitude
+        if max_wpm <= 50:
+            self.y_max = ((int(max_wpm) // 10) + 1) * 10
+        elif max_wpm <= 200:
+            self.y_max = ((int(max_wpm) // 20) + 1) * 20
+        elif max_wpm <= 500:
+            self.y_max = ((int(max_wpm) // 50) + 1) * 50
+        else:
+            self.y_max = ((int(max_wpm) // 100) + 1) * 100
         
-        # Dynamic y-step based on range
+        # Dynamic y-step based on range - aim for 5-8 labels
         if self.y_max <= 50:
             self.y_step = 10
         elif self.y_max <= 100:
             self.y_step = 20
         elif self.y_max <= 200:
+            self.y_step = 40
+        elif self.y_max <= 400:
             self.y_step = 50
-        else:
+        elif self.y_max <= 600:
             self.y_step = 100
+        elif self.y_max <= 1000:
+            self.y_step = 150
+        else:
+            # For very high WPM, calculate step to have ~6 labels
+            self.y_step = max(200, (self.y_max // 6 // 50) * 50)
         
         # Calculate right Y-axis max (errors) - consider both user and ghost
         all_errors = [e for _, e in self.error_history] + [e for _, e in self.ghost_error_history]
@@ -98,7 +112,7 @@ class InteractiveWPMGraph(QWidget):
         else:
             max_errors = 0
         
-        # Calculate error axis max and step
+        # Calculate error axis max and step - aim for 5-8 labels
         if max_errors <= 0:
             self.error_max = 5  # Default if no errors
             self.error_step = 1
@@ -110,15 +124,23 @@ class InteractiveWPMGraph(QWidget):
             self.error_step = 2
         elif max_errors <= 20:
             self.error_max = 20
-            self.error_step = 5
+            self.error_step = 4
         elif max_errors <= 50:
             self.error_max = 50
             self.error_step = 10
+        elif max_errors <= 100:
+            self.error_max = 100
+            self.error_step = 20
+        elif max_errors <= 200:
+            self.error_max = 200
+            self.error_step = 40
         else:
-            self.error_max = ((int(max_errors) // 20) + 1) * 20
-            self.error_step = self.error_max // 5
+            # For very high error counts, calculate step to have ~6 labels
+            self.error_max = ((int(max_errors) // 50) + 1) * 50
+            self.error_step = max(50, self.error_max // 6)
         
-        # Calculate x-axis step dynamically
+        # Calculate x-axis step dynamically to avoid clutter
+        # Aim for approximately 6-10 labels on the x-axis
         duration = self.x_max - self.x_min
         if duration <= 5:
             self.x_step = 1
@@ -126,8 +148,21 @@ class InteractiveWPMGraph(QWidget):
             self.x_step = 2
         elif duration <= 30:
             self.x_step = 5
-        else:
+        elif duration <= 60:
             self.x_step = 10
+        elif duration <= 150:
+            self.x_step = 20
+        elif duration <= 300:
+            self.x_step = 30
+        elif duration <= 600:
+            self.x_step = 60  # 1 minute intervals
+        elif duration <= 1800:
+            self.x_step = 180  # 3 minute intervals
+        elif duration <= 3600:
+            self.x_step = 300  # 5 minute intervals
+        else:
+            # For very long sessions, calculate step to have ~8 labels
+            self.x_step = max(600, (duration // 8 // 60) * 60)  # Round to nearest minute
         
         self.setFixedSize(470, 235 if is_race else 215)  # Taller for race legend + bottom margin
         self.setStyleSheet("background: transparent;")

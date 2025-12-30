@@ -5,6 +5,24 @@ from app.settings import _db_file, _connect
 import app.settings as settings
 
 
+def _use_demo_mode() -> bool:
+    """Check if demo mode is enabled via --demo flag."""
+    try:
+        from app.demo_data import is_demo_mode
+        return is_demo_mode()
+    except ImportError:
+        return False
+
+
+def _connect_for_stats() -> sqlite3.Connection:
+    """Get database connection - uses demo DB if demo mode enabled, else normal DB."""
+    if _use_demo_mode():
+        from app.demo_data import connect_demo, ensure_demo_data
+        ensure_demo_data()
+        return connect_demo()
+    return _connect()
+
+
 def init_stats_tables():
     """Initialize database tables for typing statistics."""
     conn = _connect()
@@ -258,7 +276,7 @@ def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[D
 
 def list_history_languages() -> List[str]:
     """Return distinct languages present in the session history."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute(
         """
@@ -450,7 +468,7 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
         - most_chars_day: Most characters typed in a single day
         - most_sessions_day: Most sessions completed in a single day
     """
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Build WHERE clause for language filter
@@ -543,7 +561,7 @@ def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int
     Returns:
         List of dicts with 'range_label', 'min_wpm', 'max_wpm', 'count'
     """
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Build WHERE clause for language filter
@@ -604,7 +622,7 @@ def get_sessions_over_time(languages: Optional[List[str]] = None) -> List[Dict[s
     Returns:
         List of dicts with 'date', 'wpm', 'accuracy', 'file_path', 'correct', 'incorrect', 'total'
     """
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Build WHERE clause for language filter
@@ -727,7 +745,7 @@ def get_daily_metrics(
         - avg_wpm, highest_wpm, lowest_wpm,
         - avg_accuracy, highest_accuracy, lowest_accuracy
     """
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Build WHERE clauses
@@ -790,9 +808,162 @@ def get_first_session_date() -> Optional[str]:
     Returns:
         Date string in YYYY-MM-DD format, or None if no sessions.
     """
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute("SELECT MIN(DATE(recorded_at)) FROM session_history WHERE completed = 1")
     row = cur.fetchone()
     conn.close()
     return row[0] if row and row[0] else None
+
+
+def get_per_language_stats() -> List[Dict[str, Any]]:
+    """Get aggregated stats per programming language.
+    
+    Returns:
+        List of dicts with language, session_count, avg_wpm, avg_accuracy, total_chars
+    """
+    conn = _connect_for_stats()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT 
+            language,
+            COUNT(*) as session_count,
+            AVG(wpm) as avg_wpm,
+            AVG(accuracy) * 100 as avg_accuracy,
+            SUM(total_keystrokes) as total_chars,
+            MAX(wpm) as best_wpm
+        FROM session_history
+        WHERE completed = 1 AND language IS NOT NULL AND language != ''
+        GROUP BY language
+        ORDER BY session_count DESC
+    """)
+    
+    rows = cur.fetchall()
+    conn.close()
+    
+    result = []
+    for row in rows:
+        result.append({
+            "language": row[0],
+            "session_count": row[1],
+            "avg_wpm": row[2] if row[2] else 0,
+            "avg_accuracy": row[3] if row[3] else 0,
+            "total_chars": row[4] if row[4] else 0,
+            "best_wpm": row[5] if row[5] else 0,
+        })
+    
+    return result
+
+
+def get_current_streak() -> int:
+    """Calculate current practice streak (consecutive days with completed sessions).
+    
+    Returns:
+        Number of consecutive days with at least one completed session, ending today or yesterday.
+    """
+    conn = _connect_for_stats()
+    cur = conn.cursor()
+    
+    # Get all unique dates with completed sessions, ordered descending
+    cur.execute("""
+        SELECT DISTINCT DATE(recorded_at) as date
+        FROM session_history
+        WHERE completed = 1
+        ORDER BY date DESC
+    """)
+    
+    rows = cur.fetchall()
+    conn.close()
+    
+    if not rows:
+        return 0
+    
+    from datetime import datetime, timedelta
+    
+    dates = [datetime.strptime(row[0], "%Y-%m-%d").date() for row in rows]
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    
+    # Streak must start from today or yesterday
+    if dates[0] != today and dates[0] != yesterday:
+        return 0
+    
+    streak = 1
+    for i in range(1, len(dates)):
+        expected_date = dates[i-1] - timedelta(days=1)
+        if dates[i] == expected_date:
+            streak += 1
+        else:
+            break
+    
+    return streak
+
+
+def get_trend_comparison(days: int = 30, languages: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Compare recent performance vs previous period.
+    
+    Args:
+        days: Number of days for each period (default 30).
+        languages: Optional list of languages to filter by.
+        
+    Returns:
+        Dict with current period stats, previous period stats, and deltas.
+    """
+    conn = _connect_for_stats()
+    cur = conn.cursor()
+    
+    from datetime import datetime, timedelta
+    
+    today = datetime.now().date()
+    period1_end = today
+    period1_start = today - timedelta(days=days)
+    period2_end = period1_start - timedelta(days=1)
+    period2_start = period2_end - timedelta(days=days)
+    
+    # Build language filter clause
+    lang_clause = ""
+    lang_params: List[Any] = []
+    if languages:
+        placeholders = ",".join(["?"] * len(languages))
+        lang_clause = f"AND language IN ({placeholders})"
+        lang_params = list(languages)
+    
+    def get_period_stats(start_date, end_date):
+        params = [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")] + lang_params
+        cur.execute(f"""
+            SELECT 
+                COUNT(*) as sessions,
+                AVG(wpm) as avg_wpm,
+                AVG(accuracy) * 100 as avg_accuracy,
+                SUM(total_keystrokes) as total_chars
+            FROM session_history
+            WHERE completed = 1 
+              AND DATE(recorded_at) >= ? 
+              AND DATE(recorded_at) <= ?
+              {lang_clause}
+        """, params)
+        row = cur.fetchone()
+        return {
+            "sessions": row[0] or 0,
+            "avg_wpm": row[1] if row[1] else 0,
+            "avg_accuracy": row[2] if row[2] else 0,
+            "total_chars": row[3] or 0,
+        }
+    
+    current = get_period_stats(period1_start, period1_end)
+    previous = get_period_stats(period2_start, period2_end)
+    
+    conn.close()
+    
+    # Calculate deltas
+    wpm_delta = current["avg_wpm"] - previous["avg_wpm"] if previous["avg_wpm"] else 0
+    acc_delta = current["avg_accuracy"] - previous["avg_accuracy"] if previous["avg_accuracy"] else 0
+    
+    return {
+        "current": current,
+        "previous": previous,
+        "wpm_delta": wpm_delta,
+        "acc_delta": acc_delta,
+        "period_days": days,
+    }
