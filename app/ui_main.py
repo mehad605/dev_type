@@ -2336,98 +2336,84 @@ def create_splash_screen(app):
     return splash_widget, status, progress_bar
 
 
-def run_app():
+def run_app_with_splash(splash=None):
     """
-    Optimized application startup with proper splash screen timing.
+    Run the application with an optional pre-created splash screen.
     
-    Flow:
-    1. Show splash screen immediately
-    2. Load and initialize everything while splash is visible
-    3. Apply theme and warm up UI
-    4. Only THEN show main window and close splash
+    Args:
+        splash: An InstantSplash instance, or None for no splash.
     """
+    import time
+    start = time.time()
+    
     if DEBUG_STARTUP_TIMING:
-        import time
-        start = time.time()
         print("[STARTUP] Starting app initialization...")
     
-    # STEP 1: Create QApplication
+    def update(text: str, progress: int):
+        if splash:
+            try:
+                splash.update(text, progress)
+            except:
+                pass
+    
+    # Create QApplication
     if DEBUG_STARTUP_TIMING:
         t1 = time.time()
+    update("Initializing...", 25)
     app = QApplication(sys.argv)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
-    # STEP 1.5: Initialize database BEFORE splash screen (needed for settings)
+    # Initialize database
     if DEBUG_STARTUP_TIMING:
         t_db = time.time()
+    update("Loading settings...", 40)
     settings.init_db()
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Database initialized: {time.time() - t_db:.3f}s")
     
-    # STEP 2: Show splash screen immediately
-    if DEBUG_STARTUP_TIMING:
-        t_splash = time.time()
-    splash, status_label, progress_bar = create_splash_screen(app)
-    progress_bar.setValue(10)
-    if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Splash screen shown: {time.time() - t_splash:.3f}s")
-    
-    # STEP 3: Load main window (hidden)
+    # Create main window
     if DEBUG_STARTUP_TIMING:
         t2 = time.time()
-    status_label.setText("Loading application...")
-    progress_bar.setValue(30)
-    app.processEvents()
-    
+    update("Building interface...", 60)
     win = MainWindow()
-    progress_bar.setValue(60)
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] MainWindow created: {time.time() - t2:.3f}s")
     
-    # STEP 4: Apply theme BEFORE showing window
+    # Apply theme
     if DEBUG_STARTUP_TIMING:
         t_theme = time.time()
-    status_label.setText("Applying theme...")
-    progress_bar.setValue(80)
-    app.processEvents()
-    
+    update("Applying theme...", 85)
     win.apply_current_theme()
-    progress_bar.setValue(95)
-    # Don't call processEvents here - it's expensive!
-    
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Theme applied: {time.time() - t_theme:.3f}s")
     
-    # STEP 5: Everything is ready - show window and close splash
-    if DEBUG_STARTUP_TIMING:
-        t_final = time.time()
-    status_label.setText("Ready!")
-    progress_bar.setValue(100)
-    app.processEvents()
+    # Final update before showing
+    update("Ready!", 100)
     
-    # Ensure minimum splash display time (makes loading feel intentional, not glitchy)
-    elapsed = time.time() - start if DEBUG_STARTUP_TIMING else 0
-    minimum_splash_time = 1.2  # 1.2 seconds minimum for smooth UX
+    # Brief pause so user sees "Ready!"
+    time.sleep(0.15)
     
-    if elapsed < minimum_splash_time:
-        import time as time_module
-        remaining = minimum_splash_time - elapsed
-        time_module.sleep(remaining)
-        if DEBUG_STARTUP_TIMING:
-            print(f"[STARTUP] Waited {remaining:.3f}s for minimum splash time")
+    # Close splash and show main window
+    if splash:
+        try:
+            splash.close()
+        except:
+            pass
     
-    # Now show the window and close splash simultaneously
     win.show()
     win.raise_()
     win.activateWindow()
-    splash.close()
     
     if DEBUG_STARTUP_TIMING:
-        print(f"[STARTUP] Window shown & splash closed: {time.time() - t_final:.3f}s")
         print(f"[STARTUP] TOTAL TIME: {time.time() - start:.3f}s")
     
     sys.exit(app.exec())
+
+
+def run_app():
+    """Run the application without a splash screen."""
+    run_app_with_splash(None)
 
 
 if __name__ == "__main__":
