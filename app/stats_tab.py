@@ -99,12 +99,13 @@ class LanguageFilterChip(QFrame):
             self.setStyleSheet(f"""
                 QFrame#languageChip {{
                     background-color: {accent};
-                    border-radius: 14px;
-                    border: 1px solid {accent};
+                    border-radius: 16px;
+                    border: 2px solid {accent};
+                    padding: 0 4px;
                 }}
                 QLabel {{
                     color: #ffffff;
-                    font-weight: bold;
+                    font-weight: 600;
                     font-size: 12px;
                     background: transparent;
                     border: none;
@@ -118,16 +119,18 @@ class LanguageFilterChip(QFrame):
             self.setStyleSheet(f"""
                 QFrame#languageChip {{
                     background-color: {bg};
-                    border-radius: 14px;
-                    border: 1px solid {border};
+                    border-radius: 16px;
+                    border: 2px solid transparent;
+                    padding: 0 4px;
                 }}
                 QFrame#languageChip:hover {{
                     background-color: {bg_hover};
-                    border: 1px solid {colors["accent"].name()};
+                    border: 2px solid {colors["accent"].name()};
                 }}
                 QLabel {{
                     color: {text};
                     font-size: 12px;
+                    font-weight: 500;
                     background: transparent;
                     border: none;
                 }}

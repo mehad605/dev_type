@@ -470,36 +470,57 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         font-family: "Segoe UI", "Roboto", sans-serif;
     }}
     
-    /* Tabs */
+    /* Tabs - Minimal underline style */
     QTabWidget::pane {{
-        border: 1px solid {scheme.border_color};
+        border: none;
         background-color: {scheme.bg_primary};
-        border-radius: 6px;
-        top: -1px;
+        border-top: 2px solid {scheme.border_color};
     }}
-    
+
+    QTabBar {{
+        background-color: transparent;
+        border: none;
+    }}
+
     QTabBar::tab {{
-        background-color: {scheme.bg_secondary};
+        background-color: transparent;
         color: {scheme.text_secondary};
-        padding: 10px 20px 14px 20px;
-        border: 1px solid {scheme.border_color};
-        border-bottom: none;
-        border-top-left-radius: 6px;
-        border-top-right-radius: 6px;
-        margin-right: 2px;
+        padding: 12px 24px;
+        border: 2px solid transparent;
+        border-radius: 6px;
+        margin-right: 8px;
         font-weight: 500;
+        min-width: 80px;
     }}
-    
+
     QTabBar::tab:selected {{
-        background-color: {scheme.bg_primary};
+        color: {scheme.accent_color};
+        border: 2px solid {scheme.accent_color};
+        background-color: rgba(255, 255, 255, 0.03);
+        font-weight: 600;
+    }}
+
+    QTabBar::tab:hover:!selected {{
         color: {scheme.text_primary};
-        border-bottom: 2px solid {scheme.accent_color};
-        font-weight: bold;
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 2px solid {scheme.border_color};
+    }}
+
+    QTabBar::tab:focus {{
+        outline: none;
     }}
     
-    QTabBar::tab:hover {{
+    /* Language Cards - Modern card design */
+    QFrame#LanguageCard {{
+        background-color: {scheme.bg_secondary};
+        border: 1px solid {scheme.border_color};
+        border-radius: 12px;
+    }}
+    
+    QFrame#LanguageCard:hover {{
+        border-color: {scheme.accent_color};
         background-color: {scheme.bg_tertiary};
-        color: {scheme.text_primary};
+        transform: translateY(-2px);
     }}
     
     /* Buttons */

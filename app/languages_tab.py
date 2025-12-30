@@ -2,12 +2,14 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QScrollArea,
     QLabel,
     QFrame,
     QGridLayout,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool
+from PySide6.QtGui import QFont
 from typing import Callable, Dict, List, Optional, Tuple
 from app import settings, stats_db
 from app.language_cache import build_signature, load_cached_snapshot, save_snapshot
@@ -68,17 +70,19 @@ class LanguageCard(QFrame):
         super().__init__(parent)
         self.language = language
         self.files = files
-        self.setFrameStyle(QFrame.Box | QFrame.Raised)
-        self.setLineWidth(2)
-        self.setMinimumSize(200, 150)
-        self.setMaximumSize(250, 180)
+        self.setObjectName("LanguageCard")
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
+        self.setFixedSize(220, 200)
         self.setCursor(Qt.PointingHandCursor)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 24, 20, 20)
+        layout.setSpacing(10)
 
         # Language icon - try to get from icon manager, fallback to emoji
         icon_manager = _get_icon_manager()
-        icon_pixmap = icon_manager.get_icon(language, size=48)
+        icon_pixmap = icon_manager.get_icon(language, size=56)
         
         icon_label = QLabel()
         icon_label.setAlignment(Qt.AlignCenter)
@@ -90,24 +94,31 @@ class LanguageCard(QFrame):
             # Fallback to emoji
             emoji = icon_manager.get_emoji_fallback(language)
             icon_label.setText(emoji)
-            icon_label.setStyleSheet("font-size: 48px;")
+            icon_label.setStyleSheet("font-size: 56px;")
         
         layout.addWidget(icon_label)
         
         # Language name
         name_label = QLabel(language)
         name_label.setAlignment(Qt.AlignCenter)
-        name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        name_label.setStyleSheet("font-weight: 600; font-size: 16px; margin-top: 6px;")
         layout.addWidget(name_label)
 
-        # File count (completed/total)
+        # File count - simple text
         completed = max(0, completed_count)
         total = len(files)
-        count_label = QLabel(f"{completed}/{total} files")
+        if total > 0:
+            progress_pct = int((completed / total) * 100)
+            count_text = f"{completed}/{total} files • {progress_pct}% complete"
+        else:
+            count_text = f"{total} files"
+        
+        count_label = QLabel(count_text)
         count_label.setAlignment(Qt.AlignCenter)
+        count_label.setStyleSheet("color: gray; font-size: 12px; margin-top: 2px;")
         layout.addWidget(count_label)
 
-        # Avg WPM (placeholder)
+        # Avg WPM
         self.wpm_label = QLabel()
         self.wpm_label.setAlignment(Qt.AlignCenter)
         self._set_wpm_display(average_wpm, sample_size)
@@ -124,12 +135,11 @@ class LanguageCard(QFrame):
     def _set_wpm_display(self, average_wpm: Optional[float], sample_size: int):
         """Update the WPM label contents and styling."""
         if average_wpm is None or sample_size == 0:
-            self.wpm_label.setText("Avg WPM: --")
-            self.wpm_label.setStyleSheet("color: gray; font-size: 12px;")
+            self.wpm_label.setText("No sessions yet")
+            self.wpm_label.setStyleSheet("color: gray; font-size: 11px; font-style: italic;")
         else:
-            label = f"Avg WPM (last {sample_size}): {average_wpm:.1f}"
-            self.wpm_label.setText(label)
-            self.wpm_label.setStyleSheet("color: #88c0d0; font-size: 12px; font-weight: bold;")
+            self.wpm_label.setText(f"⚡ {average_wpm:.0f} WPM avg")
+            self.wpm_label.setStyleSheet("color: #88c0d0; font-size: 12px; font-weight: 600;")
 
 
 class LanguagesTab(QWidget):
@@ -163,21 +173,41 @@ class LanguagesTab(QWidget):
         if DEBUG_STARTUP_TIMING:
             print(f"    [LanguagesTab] Load cache: {time.time() - t:.3f}s")
         
-        # Header
-        header = QLabel("Languages detected in your folders")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
-        self.layout.addWidget(header)
+        # Header section
+        header_container = QHBoxLayout()
+        header_container.setContentsMargins(20, 16, 20, 12)
+        
+        header = QLabel("Languages")
+        header_font = QFont()
+        header_font.setPointSize(20)
+        header_font.setWeight(QFont.Bold)
+        header.setFont(header_font)
+        header_container.addWidget(header)
+        
+        header_container.addStretch()
+        
+        # Subtitle
+        subtitle = QLabel("Click a language to start typing")
+        subtitle.setStyleSheet("color: gray; font-size: 13px; padding-top: 6px;")
+        header_container.addWidget(subtitle)
+        
+        self.layout.addLayout(header_container)
         
         # Scroll area for cards
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
         
         # Container for cards
         self.card_container = QWidget()
+        self.card_container.setStyleSheet("background: transparent;")
         self.card_layout = QGridLayout(self.card_container)
         self.card_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.card_layout.setSpacing(16)
+        self.card_layout.setContentsMargins(20, 20, 20, 20)
         scroll.setWidget(self.card_container)
         
         self.layout.addWidget(scroll)
