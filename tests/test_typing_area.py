@@ -201,3 +201,102 @@ class TestTypingAreaInitialization:
         
         assert typing_area.engine is not None
         assert typing_area.engine.state.content == "hello world"
+
+
+class TestTabWidthSetting:
+    """Test configurable tab width setting."""
+    
+    @pytest.fixture
+    def typing_area(self):
+        """Create a TypingAreaWidget instance for testing."""
+        from PySide6.QtWidgets import QApplication
+        import sys
+        
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication(sys.argv)
+        
+        from app.typing_area import TypingAreaWidget
+        widget = TypingAreaWidget()
+        yield widget
+    
+    def test_default_tab_width(self, typing_area):
+        """Test that default tab width is 4."""
+        # Default from settings or fallback
+        assert typing_area.tab_width == 4
+    
+    def test_update_tab_width(self, typing_area):
+        """Test updating tab width dynamically."""
+        typing_area.update_tab_width(2)
+        assert typing_area.tab_width == 2
+        
+        typing_area.update_tab_width(8)
+        assert typing_area.tab_width == 8
+    
+    def test_tab_expansion_in_display_content(self, typing_area, tmp_path):
+        """Test that tabs are expanded to correct number of spaces."""
+        file_path = tmp_path / "test_tabs.txt"
+        file_path.write_text("a\tb\tc", encoding='utf-8')
+        
+        typing_area.tab_width = 4
+        typing_area.load_file(str(file_path))
+        
+        # Tab should be expanded to 4 space characters (·)
+        space_char = typing_area.space_char
+        expected_tab = space_char * 4
+        assert expected_tab in typing_area.display_content
+    
+    def test_tab_width_2_expansion(self, typing_area, tmp_path):
+        """Test tab expansion with width 2."""
+        file_path = tmp_path / "test_tabs2.txt"
+        file_path.write_text("x\ty", encoding='utf-8')
+        
+        typing_area.update_tab_width(2)
+        typing_area.load_file(str(file_path))
+        
+        space_char = typing_area.space_char
+        # With width 2, tab becomes 2 space chars
+        assert space_char * 2 in typing_area.display_content
+    
+    def test_tab_width_update_regenerates_display(self, typing_area, tmp_path):
+        """Test that changing tab width regenerates display content."""
+        file_path = tmp_path / "test_regen.txt"
+        file_path.write_text("a\tb", encoding='utf-8')
+        
+        typing_area.load_file(str(file_path))
+        space_char = typing_area.space_char
+        
+        # Initially 4 spaces
+        initial_display = typing_area.display_content
+        assert space_char * 4 in initial_display
+        
+        # Change to 2 spaces
+        typing_area.update_tab_width(2)
+        updated_display = typing_area.display_content
+        
+        # Should now have 2 spaces, not 4
+        assert space_char * 2 in updated_display
+        # The display should be different
+        assert initial_display != updated_display
+    
+    def test_display_char_for_tab(self, typing_area):
+        """Test _display_char_for returns correct tab representation."""
+        typing_area.tab_width = 4
+        space_char = typing_area.space_char
+        
+        result = typing_area._display_char_for('\t')
+        
+        assert result == space_char * 4
+        assert len(result) == 4
+    
+    def test_prepare_display_content_with_tabs(self, typing_area):
+        """Test _prepare_display_content handles tabs correctly."""
+        typing_area.tab_width = 4
+        space_char = typing_area.space_char
+        
+        content = "line1\n\tindented\n\t\tdouble"
+        result = typing_area._prepare_display_content(content)
+        
+        # Check tabs are replaced with space chars
+        assert space_char * 4 in result  # Single tab
+        assert space_char * 8 in result  # Double tab
