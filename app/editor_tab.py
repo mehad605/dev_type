@@ -107,6 +107,14 @@ class EditorTab(QWidget):
         
         # Instant Death mode toggle
         from app import settings
+        
+        # Crash recovery: If app crashed during a ghost race, restore original instant death mode
+        backup_mode = settings.get_setting("_race_instant_death_backup")
+        if backup_mode is not None:
+            # Crash happened during race - restore user's original preference
+            settings.set_setting("instant_death_mode", backup_mode)
+            settings.remove_setting("_race_instant_death_backup")
+        
         instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
         self.instant_death_btn = QPushButton("💀 Instant Death: Enabled" if instant_death_enabled else "💀 Instant Death: Disabled")
         self.instant_death_btn.setCheckable(True)
@@ -857,9 +865,15 @@ class EditorTab(QWidget):
         recorded_instant_death = ghost_data.get("instant_death_mode")
         self._instant_death_pre_race = self.instant_death_btn.isChecked()
         self._instant_death_tooltip_pre_race = self.instant_death_btn.toolTip()
+        
+        # Save backup to settings in case of crash during race
+        from app import settings
+        settings.set_setting("_race_instant_death_backup", "1" if self._instant_death_pre_race else "0")
+        
         if recorded_instant_death is not None:
-            # Temporarily update settings so instant death works during race
-            self._set_instant_death_mode(bool(recorded_instant_death), persist=True)
+            # Temporarily apply ghost's instant death mode WITHOUT persisting to disk
+            # This prevents corruption if app crashes during race
+            self._set_instant_death_mode(bool(recorded_instant_death), persist=False)
         self.instant_death_btn.setEnabled(False)
         self.instant_death_btn.setToolTip("Instant Death is locked during the race")
         
@@ -1075,13 +1089,18 @@ class EditorTab(QWidget):
         
         self.instant_death_btn.setEnabled(True)
         if self._instant_death_pre_race is not None:
-            self._set_instant_death_mode(self._instant_death_pre_race, persist=True)
+            # Restore UI/engine state - don't persist since original preference is already saved
+            self._set_instant_death_mode(self._instant_death_pre_race, persist=False)
         if self._instant_death_tooltip_pre_race is not None:
             self.instant_death_btn.setToolTip(self._instant_death_tooltip_pre_race)
         else:
             self.instant_death_btn.setToolTip("Reset to top on any mistake")
         self._instant_death_pre_race = None
         self._instant_death_tooltip_pre_race = None
+        
+        # Clear crash recovery backup - race completed normally
+        from app import settings
+        settings.remove_setting("_race_instant_death_backup")
         
         ghost_data = self._current_ghost_data
         user_stats = self.typing_area.get_stats()

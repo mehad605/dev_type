@@ -4,7 +4,7 @@ from PySide6.QtGui import (
     QTextCharFormat, QColor, QFont, QTextCursor,
     QKeyEvent, QPalette, QSyntaxHighlighter, QTextDocument, QPainter
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QRect, QPoint, QPropertyAnimation, QEasingCurve, QObject, Property
+from PySide6.QtCore import Qt, Signal, QTimer, QRect, QPoint
 from typing import Optional
 from app.typing_engine import TypingEngine
 from app import settings
@@ -121,6 +121,7 @@ class TypingAreaWidget(QTextEdit):
         
         # Load settings
         self.space_char = settings.get_setting("space_char", "␣")
+        self.tab_width = int(settings.get_setting("tab_width", "4"))
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
@@ -134,27 +135,6 @@ class TypingAreaWidget(QTextEdit):
         self._cursor_rect = QRect()
         self._cursor_timer = QTimer(self)
         self._cursor_timer.timeout.connect(self._toggle_cursor_visible)
-        
-        # Smooth cursor animation
-        self._target_cursor_rect = QRect()
-        self._animated_cursor_x = 0.0
-        self._animated_cursor_y = 0.0
-        
-        # --- MODIFIED FOR ULTRA-SMOOTH GLIDE (200ms duration) ---
-        
-        self._cursor_animation_x = QPropertyAnimation(self, b"_cursor_x_pos")
-        self._cursor_animation_x.setDuration(200)  # Increased duration for ultra-smooth glide (0.2 seconds)
-        self._cursor_animation_x.setEasingCurve(QEasingCurve.OutQuint)  # Uses a softer deceleration curve for a fluid stop
-        
-        self._cursor_animation_y = QPropertyAnimation(self, b"_cursor_y_pos")
-        self._cursor_animation_y.setDuration(200)  # Synchronize Y duration for consistent feel
-        self._cursor_animation_y.setEasingCurve(QEasingCurve.OutQuint)  # Consistent smooth easing
-        
-        # --- ORIGINAL CONFIGURATION RESUMES ---
-        
-        # Connect animation finished to resume blinking (or other cleanup)
-        self._cursor_animation_x.finished.connect(self._on_cursor_animation_finished)
-        self._is_cursor_animating = False  # Track if cursor is sliding
         
         # Configure widget
         self.setReadOnly(True)  # Prevent normal editing
@@ -190,46 +170,25 @@ class TypingAreaWidget(QTextEdit):
         # Ghost overlay state (race mode)
         self._ghost_display_limit = 0
     
-    # Property for smooth cursor animation
-    def _get_cursor_x_pos(self):
-        return self._animated_cursor_x
-    
-    def _set_cursor_x_pos(self, value):
-        self._animated_cursor_x = value
-        self._update_animated_cursor_rect()
-    
-    _cursor_x_pos = Property(float, _get_cursor_x_pos, _set_cursor_x_pos)
-    
-    def _get_cursor_y_pos(self):
-        return self._animated_cursor_y
-    
-    def _set_cursor_y_pos(self, value):
-        self._animated_cursor_y = value
-        self._update_animated_cursor_rect()
-    
-    _cursor_y_pos = Property(float, _get_cursor_y_pos, _set_cursor_y_pos)
-    
-    def _update_animated_cursor_rect(self):
-        """Update cursor rect based on animated position."""
-        if self._target_cursor_rect.isNull():
-            return
-        
-        # Create new rect at animated position
-        animated_rect = QRect(self._target_cursor_rect)
-        animated_rect.moveLeft(int(self._animated_cursor_x))
-        animated_rect.moveTop(int(self._animated_cursor_y))
-        
-        old_rect = QRect(self._cursor_rect)
-        self._cursor_rect = animated_rect
-        self._request_cursor_paint(old_rect)
-    
     def load_file(self, file_path: str):
         """Load a file for typing practice."""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                self.original_content = f.read()
-        except Exception as e:
-            self.original_content = f"Error loading file: {e}"
+        # Try multiple encodings in order of likelihood
+        encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1']
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    self.original_content = f.read()
+                break  # Success, stop trying
+            except UnicodeDecodeError:
+                continue  # Try next encoding
+            except Exception as e:
+                # Other errors (file not found, permission denied, etc.)
+                self.original_content = f"Error loading file: {e}"
+                break
+        else:
+            # All encodings failed
+            self.original_content = "Error: Could not decode file with any supported encoding (tried UTF-8, CP1252, Latin-1)"
         
         # Convert content for display (replace spaces, enters, tabs)
         self.display_content = self._prepare_display_content(self.original_content)
@@ -327,7 +286,7 @@ class TypingAreaWidget(QTextEdit):
         """Convert content for display with special characters."""
         result = content.replace(' ', self.space_char)
         result = result.replace('\n', self.enter_char + '\n')
-        result = result.replace('\t', self.space_char * 4)  # Tab = 4 spaces
+        result = result.replace('\t', self.space_char * self.tab_width)
         return result
     
     def _display_char_for(self, char: str) -> str:
@@ -337,7 +296,7 @@ class TypingAreaWidget(QTextEdit):
         if char == '\n':
             return self.enter_char
         if char == '\t':
-            return self.space_char * 4
+            return self.space_char * self.tab_width
         return char
 
     def _replace_display_char(self, position: int, new_char: str, length: int = 1):
@@ -514,7 +473,7 @@ class TypingAreaWidget(QTextEdit):
         self._update_cursor_geometry()
 
     def _update_cursor_geometry(self):
-        """Recalculate cursor rectangle based on style and animate to new position."""
+        """Recalculate cursor rectangle based on style - instant positioning."""
         rect = QRect(self.cursorRect())
 
         if self.cursor_style == "block":
@@ -531,58 +490,10 @@ class TypingAreaWidget(QTextEdit):
             width = max(2, self.logicalDpiX() // 180)
             rect = QRect(rect.left(), rect.top(), width, rect.height())
 
-        # Store target rectangle
-        self._target_cursor_rect = rect
-        
-        # ===== ANIMATION DISABLED - INSTANT CURSOR MOVEMENT =====
-        # Update cursor position immediately without animation
-        self._animated_cursor_x = float(rect.left())
-        self._animated_cursor_y = float(rect.top())
+        # Update cursor position immediately
+        old_rect = QRect(self._cursor_rect)
         self._cursor_rect = rect
-        self._request_cursor_paint()
-        
-        # If cursor was animating, mark it as finished
-        if self._is_cursor_animating:
-            self._is_cursor_animating = False
-            # Resume blinking if in blinking mode
-            if self.cursor_blink_mode == "blinking" and self.hasFocus():
-                self._update_blink_timer()
-        return
-        
-        # ===== ORIGINAL ANIMATION CODE (COMMENTED OUT) =====
-        # # If this is the first position or animation is disabled, jump immediately
-        # if self._cursor_rect.isNull() or not self.hasFocus():
-        #     self._animated_cursor_x = float(rect.left())
-        #     self._animated_cursor_y = float(rect.top())
-        #     self._cursor_rect = rect
-        #     self._request_cursor_paint()
-        #     return
-        # 
-        # # Stop any running animations
-        # self._cursor_animation_x.stop()
-        # self._cursor_animation_y.stop()
-        # 
-        # # Start sliding - pause blinking and keep cursor visible
-        # self._is_cursor_animating = True
-        # self._cursor_visible = True  # Keep cursor visible during slide
-        # if hasattr(self, '_cursor_timer'):
-        #     self._cursor_timer.stop()  # Pause blinking while sliding
-        # 
-        # # Animate smoothly to new position (sliding effect)
-        # self._cursor_animation_x.setStartValue(self._animated_cursor_x)
-        # self._cursor_animation_x.setEndValue(float(rect.left()))
-        # self._cursor_animation_y.setStartValue(self._animated_cursor_y)
-        # self._cursor_animation_y.setEndValue(float(rect.top()))
-        # 
-        # self._cursor_animation_x.start()
-        # self._cursor_animation_y.start()
-    
-    def _on_cursor_animation_finished(self):
-        """Called when cursor slide animation completes - resume blinking."""
-        self._is_cursor_animating = False
-        # Resume blinking if in blinking mode
-        if self.cursor_blink_mode == "blinking" and self.hasFocus():
-            self._update_blink_timer()
+        self._request_cursor_paint(old_rect)
 
     def _request_cursor_paint(self, old_rect: Optional[QRect] = None):
         """Schedule viewport update for cursor area."""
@@ -599,10 +510,6 @@ class TypingAreaWidget(QTextEdit):
 
     def _update_blink_timer(self):
         """Start or stop blink timer based on settings and focus."""
-        # Don't start blinking if cursor is currently sliding
-        if self._is_cursor_animating:
-            return
-            
         self._cursor_visible = True
         if self.cursor_blink_mode == "blinking" and self.hasFocus():
             flash_time = QApplication.instance().cursorFlashTime() if QApplication.instance() else 1000
@@ -873,29 +780,6 @@ class TypingAreaWidget(QTextEdit):
         self._has_emitted_first_key = False
         # Don't clear ghost progress - that's handled by the caller
     
-    def _calculate_current_accuracy(self) -> float:
-        """Calculate accuracy based on current text correctness rather than keystroke history."""
-        if not self.engine:
-            return 1.0
-
-        typed_entries = self.highlighter.typed_chars if self.highlighter else {}
-        total_positions = len(typed_entries)
-        correct_positions = 0
-
-        if total_positions:
-            correct_positions = sum(1 for info in typed_entries.values() if info.get("is_correct"))
-
-        cursor_pos = self.engine.state.cursor_position
-        if cursor_pos > total_positions:
-            gap = cursor_pos - total_positions
-            total_positions += gap
-            correct_positions += gap
-
-        if total_positions == 0:
-            return 1.0
-
-        return correct_positions / total_positions
-
     def get_stats(self) -> dict:
         """Get current typing statistics."""
         if not self.engine:
@@ -912,7 +796,7 @@ class TypingAreaWidget(QTextEdit):
         
         return {
             "wpm": self.engine.get_wpm(),
-            "accuracy": self._calculate_current_accuracy(),
+            "accuracy": self.engine.state.accuracy(),  # Use keystroke-based accuracy consistently
             "time": self.engine.get_elapsed_time(),
             "correct": self.engine.state.correct_keystrokes,
             "incorrect": self.engine.state.incorrect_keystrokes,
@@ -978,6 +862,27 @@ class TypingAreaWidget(QTextEdit):
         """Update space character display dynamically."""
         old_space_char = self.space_char
         self.space_char = space_char
+        
+        # If content is loaded, regenerate display content
+        if self.original_content:
+            self.display_content = self._prepare_display_content(self.original_content)
+            
+            # Save cursor position
+            cursor_pos = self.current_typing_position
+            
+            # Update text
+            self.setPlainText(self.display_content)
+            
+            # Restore cursor and highlighting
+            self.current_typing_position = cursor_pos
+            self._update_cursor_position()
+            if self.highlighter:
+                self.highlighter.rehighlight()
+                self._refresh_typed_display()
+    
+    def update_tab_width(self, width: int):
+        """Update tab width setting dynamically."""
+        self.tab_width = width
         
         # If content is loaded, regenerate display content
         if self.original_content:

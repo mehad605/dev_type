@@ -2,6 +2,8 @@
 import json
 import gzip
 import hashlib
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -89,9 +91,20 @@ class GhostManager:
             ghost_data["error_history"] = error_history
         
         try:
-            # Compress and save
-            with gzip.open(ghost_file, 'wt', encoding='utf-8') as f:
-                json.dump(ghost_data, f, separators=(',', ':'))  # No whitespace
+            # Atomic save: write to temp file first, then rename
+            ghost_file.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_path = tempfile.mkstemp(suffix='.tmp', dir=ghost_file.parent)
+            try:
+                with gzip.open(temp_path, 'wt', encoding='utf-8') as f:
+                    json.dump(ghost_data, f, separators=(',', ':'))  # No whitespace
+                os.close(fd)
+                # Atomic rename (same filesystem guarantees atomicity)
+                os.replace(temp_path, ghost_file)
+            except Exception:
+                os.close(fd) if not os.get_inheritable(fd) else None
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                raise
             
             print(f"[GhostManager] Saved ghost: {file_path} @ {wpm:.1f} WPM")
             return True

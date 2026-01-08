@@ -548,10 +548,6 @@ class FoldersTab(QWidget):
             
             c_layout.addWidget(body)
             
-            btn_layout.addWidget(cancel_btn)
-            btn_layout.addWidget(remove_btn)
-            c_layout.addLayout(btn_layout)
-            
             if dialog.exec() == QDialog.Accepted:
                 if cb.isChecked():
                     settings.set_setting("delete_confirm", "0")
@@ -607,6 +603,7 @@ class MainWindow(QMainWindow):
     colors_changed = Signal()
     cursor_changed = Signal(str, str)  # type, style
     space_char_changed = Signal(str)
+    tab_width_changed = Signal(int)
     pause_delay_changed = Signal(float)
     allow_continue_changed = Signal(bool)
     show_typed_changed = Signal(bool)
@@ -1272,6 +1269,15 @@ class MainWindow(QMainWindow):
         space_layout.addWidget(self.space_char_custom)
         typing_layout.addRow("Space char:", space_layout)
         
+        # Tab width
+        self.tab_width_spin = QSpinBox()
+        self.tab_width_spin.setRange(1, 8)
+        self.tab_width_spin.setSuffix(" spaces")
+        tab_width = int(settings.get_setting("tab_width", "4"))
+        self.tab_width_spin.setValue(tab_width)
+        self.tab_width_spin.valueChanged.connect(self.on_tab_width_changed)
+        typing_layout.addRow("Tab width:", self.tab_width_spin)
+        
         # Pause delay
         self.pause_delay_spin = QSpinBox()
         self.pause_delay_spin.setRange(1, 60)
@@ -1646,6 +1652,11 @@ class MainWindow(QMainWindow):
     def on_pause_delay_changed(self, delay: int):
         settings.set_setting("pause_delay", str(delay))
         self.pause_delay_changed.emit(float(delay))
+    
+    def on_tab_width_changed(self, width: int):
+        """Handle tab width change."""
+        settings.set_setting("tab_width", str(width))
+        self.tab_width_changed.emit(width)
     
     def _load_sound_profiles(self):
         """Load sound profiles into combo box."""
@@ -2071,6 +2082,7 @@ class MainWindow(QMainWindow):
             self.colors_changed.connect(self.editor_tab.typing_area.update_colors)
             self.cursor_changed.connect(self.editor_tab.typing_area.update_cursor)
             self.space_char_changed.connect(self.editor_tab.typing_area.update_space_char)
+            self.tab_width_changed.connect(self.editor_tab.typing_area.update_tab_width)
             self.pause_delay_changed.connect(self.editor_tab.typing_area.update_pause_delay)
             self.allow_continue_changed.connect(self.editor_tab.typing_area.update_allow_continue)
             self.show_typed_changed.connect(self.editor_tab.typing_area.update_show_typed_characters)

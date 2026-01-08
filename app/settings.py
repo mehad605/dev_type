@@ -29,6 +29,30 @@ _current_db_path: Optional[Path] = None
 _db_initialized: bool = False
 _settings_cache: Dict[str, Optional[str]] = {}
 _settings_cache_loaded: bool = False
+_db_error_shown: bool = False
+
+
+def _show_db_error(error: Exception):
+    """Show a user-friendly database error dialog (only once per session)."""
+    from PySide6.QtWidgets import QMessageBox, QApplication
+    
+    # Only show if there's an active application
+    app = QApplication.instance()
+    if app is None:
+        return
+    
+    msg = QMessageBox()
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setWindowTitle("Database Error")
+    msg.setText("Dev Type encountered a database error.")
+    msg.setInformativeText(
+        "Your settings and statistics may not be saved. "
+        "The app will continue to work, but changes may be lost.\n\n"
+        "Try restarting the application. If the problem persists, "
+        "check that you have write permissions to the data folder."
+    )
+    msg.setDetailedText(str(error))
+    msg.exec()
 
 
 def _reset_settings_cache():
@@ -145,6 +169,9 @@ def init_db(path: Optional[str] = None):
     # Space character setting
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("space_char", "␣"))
     
+    # Tab width setting
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("tab_width", "4"))
+    
     # Typing behavior setting
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "1"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "1"))
@@ -175,13 +202,20 @@ def init_db(path: Optional[str] = None):
 
 
 def _connect(path: Optional[str] = None):
-    conn = sqlite3.connect(_db_file(path))
-    # Apply pragmatic defaults tuned for interactive desktop apps.
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA cache_size=-64000")  # ~64MB cache, negative => KB units in memory
-    return conn
+    global _db_error_shown
+    try:
+        conn = sqlite3.connect(_db_file(path), timeout=10.0)
+        # Apply pragmatic defaults tuned for interactive desktop apps.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size=-64000")  # ~64MB cache, negative => KB units in memory
+        return conn
+    except sqlite3.Error as e:
+        if not _db_error_shown:
+            _db_error_shown = True
+            _show_db_error(e)
+        raise
 
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -206,6 +240,18 @@ def set_setting(key: str, value: str):
     conn.close()
 
     _settings_cache[key] = value
+
+
+def remove_setting(key: str):
+    """Remove a setting from the database and cache."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM settings WHERE key=?", (key,))
+    conn.commit()
+    conn.close()
+
+    if key in _settings_cache:
+        del _settings_cache[key]
 
 
 def get_folders() -> List[str]:
