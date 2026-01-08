@@ -369,6 +369,38 @@ def delete_session_history(record_ids: List[int]):
     conn.close()
 
 
+def cleanup_old_sessions(retention_days: Optional[int] = None) -> int:
+    """Delete session history older than specified days.
+    
+    Args:
+        retention_days: Number of days to retain. None or 0 means keep all.
+    
+    Returns:
+        Number of rows deleted.
+    """
+    if retention_days is None or retention_days <= 0:
+        return 0
+    
+    conn = _connect()
+    cur = conn.cursor()
+    
+    # Delete sessions older than retention_days
+    cur.execute("""
+        DELETE FROM session_history 
+        WHERE recorded_at < datetime('now', '-' || ? || ' days')
+    """, (retention_days,))
+    
+    rows_deleted = cur.rowcount
+    conn.commit()
+    
+    # VACUUM to reclaim space if significant deletions occurred
+    if rows_deleted > 100:
+        cur.execute("VACUUM")
+    
+    conn.close()
+    return rows_deleted
+
+
 def get_session_progress(file_path: str) -> Optional[Dict]:
     """Get saved progress for a file session."""
     conn = _connect()

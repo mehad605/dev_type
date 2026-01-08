@@ -160,3 +160,153 @@ def test_numeric_settings(tmp_path: Path):
     
     settings.set_setting("test_float", "3.14")
     assert settings.get_setting("test_float") == "3.14"
+
+
+def test_get_setting_int_default(tmp_path: Path):
+    """Test get_setting_int returns default for missing key."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    result = settings.get_setting_int("nonexistent_key_xyz", 42)
+    assert result == 42
+
+
+def test_get_setting_int_valid(tmp_path: Path):
+    """Test get_setting_int parses valid integer."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_int_key", "123")
+    result = settings.get_setting_int("test_int_key", 0)
+    assert result == 123
+
+
+def test_get_setting_int_invalid_returns_default(tmp_path: Path):
+    """Test get_setting_int returns default for invalid value."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_int_invalid", "not_a_number")
+    result = settings.get_setting_int("test_int_invalid", 99)
+    assert result == 99
+
+
+def test_get_setting_int_clamping(tmp_path: Path):
+    """Test get_setting_int clamps to min/max range."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_int_clamp", "200")
+    result = settings.get_setting_int("test_int_clamp", 50, min_val=0, max_val=100)
+    assert result == 100
+    
+    settings.set_setting("test_int_clamp", "-50")
+    result = settings.get_setting_int("test_int_clamp", 50, min_val=0, max_val=100)
+    assert result == 0
+
+
+def test_get_setting_float_default(tmp_path: Path):
+    """Test get_setting_float returns default for missing key."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    result = settings.get_setting_float("nonexistent_float_xyz", 3.14)
+    assert result == 3.14
+
+
+def test_get_setting_float_valid(tmp_path: Path):
+    """Test get_setting_float parses valid float."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_float_key", "7.5")
+    result = settings.get_setting_float("test_float_key", 0.0)
+    assert result == 7.5
+
+
+def test_get_setting_float_clamping(tmp_path: Path):
+    """Test get_setting_float clamps to min/max range."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_float_clamp", "100.0")
+    result = settings.get_setting_float("test_float_clamp", 5.0, min_val=0.0, max_val=60.0)
+    assert result == 60.0
+
+
+def test_get_setting_bool_true_values(tmp_path: Path):
+    """Test get_setting_bool recognizes true values."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    for val in ["true", "True", "TRUE", "1", "yes", "YES", "on", "ON"]:
+        settings.set_setting("test_bool_typed", val)
+        assert settings.get_setting_bool("test_bool_typed", False) is True
+
+
+def test_get_setting_bool_false_values(tmp_path: Path):
+    """Test get_setting_bool returns False for other values."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    for val in ["false", "False", "0", "no", "off", "random", ""]:
+        settings.set_setting("test_bool_typed", val)
+        assert settings.get_setting_bool("test_bool_typed", True) is False
+
+
+def test_get_setting_bool_missing_returns_default(tmp_path: Path):
+    """Test get_setting_bool returns default for missing key."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    assert settings.get_setting_bool("nonexistent_bool_xyz", True) is True
+    assert settings.get_setting_bool("nonexistent_bool_xyz", False) is False
+
+
+def test_get_setting_color_valid(tmp_path: Path):
+    """Test get_setting_color returns valid hex color."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_color", "#FF0000")
+    result = settings.get_setting_color("test_color", "#FFFFFF")
+    assert result == "#FF0000"
+
+
+def test_get_setting_color_valid_short(tmp_path: Path):
+    """Test get_setting_color accepts 3-char hex colors."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_color", "#F00")
+    result = settings.get_setting_color("test_color", "#FFFFFF")
+    assert result == "#F00"
+
+
+def test_get_setting_color_invalid_returns_default(tmp_path: Path):
+    """Test get_setting_color returns default for invalid color."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_color", "not-a-color")
+    result = settings.get_setting_color("test_color", "#00FF00")
+    assert result == "#00FF00"
+
+
+def test_get_setting_color_invalid_hex_returns_default(tmp_path: Path):
+    """Test get_setting_color returns default for invalid hex chars."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    settings.set_setting("test_color", "#GGGGGG")
+    result = settings.get_setting_color("test_color", "#0000FF")
+    assert result == "#0000FF"
+
+
+def test_get_setting_color_missing_returns_default(tmp_path: Path):
+    """Test get_setting_color returns default for missing key."""
+    db_file = tmp_path / "test.db"
+    settings.init_db(str(db_file))
+    
+    result = settings.get_setting_color("nonexistent_color_xyz", "#AABBCC")
+    assert result == "#AABBCC"

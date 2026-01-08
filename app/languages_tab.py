@@ -95,6 +95,11 @@ class LanguageCard(QFrame):
             emoji = icon_manager.get_emoji_fallback(language)
             icon_label.setText(emoji)
             icon_label.setStyleSheet("font-size: 56px;")
+            
+            # Show tooltip if download failed
+            error = icon_manager.get_download_error(language)
+            if error:
+                icon_label.setToolTip(f"Icon unavailable: {error}")
         
         layout.addWidget(icon_label)
         

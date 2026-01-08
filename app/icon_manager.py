@@ -3,6 +3,7 @@
 This module handles downloading language icons from the devicon.dev CDN,
 caching them locally, and providing fallback emoji for languages without icons.
 """
+import logging
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Optional, Dict
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtCore import QSize
 from app.settings import get_data_dir
+
+logger = logging.getLogger(__name__)
 
 
 # Mapping of language names to devicon icon names
@@ -105,6 +108,7 @@ class IconManager:
         self.icon_dir = get_data_dir() / "icons"
         self.icon_dir.mkdir(parents=True, exist_ok=True)
         self._icon_cache: Dict[str, Optional[QPixmap]] = {}
+        self._download_errors: Dict[str, str] = {}  # Track download failures for tooltips
     
     def get_icon_path(self, language: str) -> Optional[Path]:
         """Get the local path for a language icon.
@@ -158,21 +162,41 @@ class IconManager:
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     icon_path.write_bytes(response.read())
+                    logger.info(f"Downloaded icon for {language}")
+                    self._download_errors.pop(language, None)  # Clear any previous error
                     return True
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
-            # Try alternative URL (plain version)
-            try:
-                url = f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-plain.svg"
-                req = urllib.request.Request(
-                    url,
-                    headers={'User-Agent': 'Mozilla/5.0 (Dev Typing App)'}
-                )
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    if response.status == 200:
-                        icon_path.write_bytes(response.read())
-                        return True
-            except Exception:
-                pass  # Fail silently, will use fallback
+        except urllib.error.HTTPError as e:
+            error_msg = f"HTTP {e.code}: {e.reason}"
+            logger.warning(f"HTTP error downloading icon for {language}: {error_msg}")
+            self._download_errors[language] = error_msg
+        except urllib.error.URLError as e:
+            error_msg = "Network error: Unable to reach icon server"
+            logger.warning(f"Network error downloading icon for {language}: {e}")
+            self._download_errors[language] = error_msg
+        except TimeoutError:
+            error_msg = "Download timeout (check internet connection)"
+            logger.warning(f"Timeout downloading icon for {language}")
+            self._download_errors[language] = error_msg
+        except Exception as e:
+            error_msg = f"Error: {type(e).__name__}"
+            logger.warning(f"Unexpected error downloading icon for {language}: {e}")
+            self._download_errors[language] = error_msg
+        
+        # Try alternative URL (plain version)
+        try:
+            url = f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-plain.svg"
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'Mozilla/5.0 (Dev Typing App)'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    icon_path.write_bytes(response.read())
+                    logger.info(f"Downloaded icon (alt URL) for {language}")
+                    self._download_errors.pop(language, None)  # Clear error on success
+                    return True
+        except Exception as e2:
+            logger.debug(f"Alternative URL also failed for {language}: {e2}")
         
         return False
     
@@ -241,9 +265,21 @@ class IconManager:
             if language in DEVICON_MAP:
                 self.download_icon(language)
     
+    def get_download_error(self, language: str) -> Optional[str]:
+        """Get download error message for a language if icon failed to download.
+        
+        Args:
+            language: Language name
+            
+        Returns:
+            Error message if download failed, None if icon available or not attempted
+        """
+        return self._download_errors.get(language)
+    
     def clear_cache(self) -> None:
-        """Clear the in-memory icon cache."""
+        """Clear the in-memory icon cache and download errors."""
         self._icon_cache.clear()
+        self._download_errors.clear()
     
     def delete_all_icons(self) -> int:
         """Delete all downloaded icons from disk.
@@ -257,8 +293,8 @@ class IconManager:
                 try:
                     icon_file.unlink()
                     count += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to delete icon {icon_file}: {e}")
         self.clear_cache()
         return count
 

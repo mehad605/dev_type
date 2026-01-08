@@ -252,7 +252,10 @@ class InternalFileTree(QTreeWidget):
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, str(file_path))
-                file_item.setIcon(0, self._icon_for_language(language))
+                icon, icon_error = self._icon_for_language(language)
+                file_item.setIcon(0, icon)
+                if icon_error:
+                    file_item.setToolTip(0, f"Icon unavailable: {icon_error}")
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path)
@@ -310,7 +313,10 @@ class InternalFileTree(QTreeWidget):
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, file_path_str)
-                file_item.setIcon(0, self._icon_for_language(language))
+                icon, icon_error = self._icon_for_language(language)
+                file_item.setIcon(0, icon)
+                if icon_error:
+                    file_item.setToolTip(0, f"Icon unavailable: {icon_error}")
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path_str)
@@ -402,26 +408,36 @@ class InternalFileTree(QTreeWidget):
         
         return None
 
-    def _icon_for_language(self, language: Optional[str]) -> QIcon:
-        """Return an icon appropriate for the detected language."""
+    def _icon_for_language(self, language: Optional[str]) -> tuple[QIcon, Optional[str]]:
+        """Return an icon appropriate for the detected language.
+        
+        Returns:
+            Tuple of (QIcon, error_message) where error_message is None if icon loaded successfully
+        """
         if not language:
-            return self.generic_file_icon
+            return self.generic_file_icon, None
 
         cache_key = f"lang::{language}"
+        error_key = f"err::{language}"
         if cache_key in self._icon_cache:
-            return self._icon_cache[cache_key]
+            return self._icon_cache[cache_key], self._icon_cache.get(error_key)
 
         manager = _get_icon_manager()
         pixmap = manager.get_icon(language, size=24)
         if pixmap:
             icon = QIcon(pixmap)
             self._icon_cache[cache_key] = icon
-            return icon
+            return icon, None
 
         emoji = manager.get_emoji_fallback(language)
         icon = self._emoji_icon(emoji)
         self._icon_cache[cache_key] = icon
-        return icon
+        
+        # Store any download error for tooltip
+        error = manager.get_download_error(language)
+        if error:
+            self._icon_cache[error_key] = error
+        return icon, error
 
     def _emoji_icon(self, emoji: str) -> QIcon:
         cache_key = f"emoji::{emoji}"

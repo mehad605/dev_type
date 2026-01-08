@@ -1,5 +1,6 @@
 """Tests for icon manager module."""
 import pytest
+import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from app.icon_manager import (
@@ -145,11 +146,46 @@ def test_clear_cache(tmp_path):
         # Add some items to cache
         manager._icon_cache["Python_48"] = None
         manager._icon_cache["JavaScript_48"] = None
+        manager._download_errors["Python"] = "Test error"
         
         assert len(manager._icon_cache) == 2
+        assert len(manager._download_errors) == 1
         
         manager.clear_cache()
         assert len(manager._icon_cache) == 0
+        assert len(manager._download_errors) == 0
+
+
+def test_get_download_error(tmp_path):
+    """Test getting download error messages."""
+    with patch('app.icon_manager.get_data_dir', return_value=tmp_path):
+        manager = IconManager()
+        
+        # No error initially
+        assert manager.get_download_error("Python") is None
+        
+        # Set an error
+        manager._download_errors["Python"] = "Network error: timeout"
+        assert manager.get_download_error("Python") == "Network error: timeout"
+        
+        # Different language has no error
+        assert manager.get_download_error("JavaScript") is None
+
+
+def test_download_icon_logs_error_on_failure(tmp_path):
+    """Test that download failures are tracked for tooltip display."""
+    with patch('app.icon_manager.get_data_dir', return_value=tmp_path):
+        manager = IconManager()
+        
+        # Mock urllib to simulate network failure
+        with patch('urllib.request.urlopen', side_effect=urllib.error.URLError("Connection refused")):
+            result = manager.download_icon("Python")
+            
+            assert result is False
+            # Error should be stored
+            error = manager.get_download_error("Python")
+            assert error is not None
+            assert "Network error" in error
 
 
 def test_delete_all_icons(tmp_path):

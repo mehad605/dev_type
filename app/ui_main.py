@@ -869,6 +869,50 @@ class MainWindow(QMainWindow):
         general_group.setLayout(general_layout)
         s_layout.addWidget(general_group)
 
+        # History Retention settings group
+        history_group = QGroupBox("History Retention")
+        history_layout = QVBoxLayout()
+        
+        retention_label = QLabel("Session History Retention")
+        retention_label.setStyleSheet("font-weight: bold;")
+        history_layout.addWidget(retention_label)
+        
+        retention_desc = QLabel(
+            "Automatically clean up old session history to keep the database size manageable. "
+            "Sessions older than the selected period will be deleted on app startup."
+        )
+        retention_desc.setWordWrap(True)
+        retention_desc.setStyleSheet("color: #888888; font-size: 10pt;")
+        history_layout.addWidget(retention_desc)
+        
+        retention_row = QHBoxLayout()
+        retention_row.setSpacing(8)
+        
+        retention_row.addWidget(QLabel("Keep history for:"))
+        
+        self.retention_combo = QComboBox()
+        self.retention_combo.addItem("30 days", "30")
+        self.retention_combo.addItem("60 days", "60")
+        self.retention_combo.addItem("90 days", "90")
+        self.retention_combo.addItem("180 days", "180")
+        self.retention_combo.addItem("1 year", "365")
+        self.retention_combo.addItem("Forever", "0")
+        self.retention_combo.setMinimumWidth(120)
+        
+        current_retention = settings.get_setting("history_retention_days", "90")
+        index = self.retention_combo.findData(current_retention)
+        if index >= 0:
+            self.retention_combo.setCurrentIndex(index)
+        
+        self.retention_combo.currentIndexChanged.connect(self._handle_retention_changed)
+        retention_row.addWidget(self.retention_combo)
+        retention_row.addStretch()
+        
+        history_layout.addLayout(retention_row)
+        
+        history_group.setLayout(history_layout)
+        s_layout.addWidget(history_group)
+
         # Typing Behavior settings group
         typing_behavior_group = QGroupBox("Typing Behavior")
         typing_behavior_layout = QVBoxLayout()
@@ -1364,6 +1408,14 @@ class MainWindow(QMainWindow):
         index = self.sound_profile_combo.findData(current_profile)
         if index >= 0:
             self.sound_profile_combo.setCurrentIndex(index)
+        
+        # Check for sound loading errors and show tooltip
+        from app.sound_manager import get_sound_manager
+        sound_mgr = get_sound_manager()
+        error = sound_mgr.get_last_error()
+        if error:
+            self.sound_profile_combo.setToolTip(f"⚠️ {error}")
+        
         self.sound_profile_combo.currentIndexChanged.connect(self.on_sound_profile_changed)
         profile_layout.addWidget(self.sound_profile_combo)
         
@@ -1703,7 +1755,15 @@ class MainWindow(QMainWindow):
             settings.set_setting("sound_profile", profile_id)
             
             from app.sound_manager import get_sound_manager
-            get_sound_manager().set_profile(profile_id)
+            sound_mgr = get_sound_manager()
+            sound_mgr.set_profile(profile_id)
+            
+            # Check for loading errors and show tooltip
+            error = sound_mgr.get_last_error()
+            if error:
+                self.sound_profile_combo.setToolTip(f"⚠️ {error}")
+            else:
+                self.sound_profile_combo.setToolTip("")
     
     def on_manage_sound_profiles(self):
         """Open sound profile manager dialog."""
@@ -2181,6 +2241,14 @@ class MainWindow(QMainWindow):
             return
         settings.set_setting("delete_confirm", "1" if enabled else "0")
         self._update_confirm_del_buttons(enabled)
+    
+    def _handle_retention_changed(self):
+        """Handle changes to the history retention period."""
+        if not hasattr(self, 'retention_combo'):
+            return
+        days = self.retention_combo.currentData()
+        if days is not None:
+            settings.set_setting("history_retention_days", str(days))
 
     def _handle_allow_continue_button(self, enabled: bool):
         """Handle clicks on the allow-continue buttons."""
@@ -2383,6 +2451,22 @@ def run_app_with_splash(splash=None):
     settings.init_db()
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Database initialized: {time.time() - t_db:.3f}s")
+    
+    # Cleanup old session history (non-blocking, in background)
+    try:
+        retention_days = settings.get_setting("history_retention_days", "90")
+        retention_days = int(retention_days) if retention_days and retention_days != "0" else 0
+        if retention_days > 0:
+            import threading
+            def cleanup_history():
+                from app import stats_db
+                stats_db.cleanup_old_sessions(retention_days)
+            
+            cleanup_thread = threading.Thread(target=cleanup_history, daemon=True)
+            cleanup_thread.start()
+    except Exception as e:
+        if DEBUG_STARTUP_TIMING:
+            print(f"[STARTUP] History cleanup error: {e}")
     
     # Create main window
     if DEBUG_STARTUP_TIMING:

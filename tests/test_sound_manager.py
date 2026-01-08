@@ -105,3 +105,37 @@ def test_cannot_delete_builtin_profile(sound_manager):
     """Test that cannot delete built-in profile."""
     result = sound_manager.delete_custom_profile("none")
     assert result is False
+
+
+def test_get_last_error_initially_none(sound_manager):
+    """Test that last error is None initially."""
+    assert sound_manager.get_last_error() is None
+
+
+def test_get_last_error_after_missing_file(sound_manager, tmp_path):
+    """Test that last error is set when sound file is missing."""
+    # Create a custom profile with a non-existent file
+    sound_manager.custom_profiles["missing_sound"] = {
+        "name": "Missing Sound",
+        "builtin": False,
+        "file_path": str(tmp_path / "nonexistent.wav")
+    }
+    
+    # Try to load the profile
+    sound_manager._load_profile("missing_sound")
+    
+    # Should have an error now
+    error = sound_manager.get_last_error()
+    assert error is not None
+    assert "not found" in error.lower()
+
+
+def test_clear_error(sound_manager):
+    """Test clearing the error message."""
+    # Set an error manually
+    sound_manager._last_error = "Test error"
+    assert sound_manager.get_last_error() == "Test error"
+    
+    # Clear it
+    sound_manager.clear_error()
+    assert sound_manager.get_last_error() is None

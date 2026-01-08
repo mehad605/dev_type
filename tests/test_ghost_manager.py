@@ -353,3 +353,128 @@ def test_delete_nonexistent_ghost(ghost_manager, tmp_path):
     # Should return False, not raise exception
     result = ghost_manager.delete_ghost(fake_file)
     assert result is False
+
+
+def test_get_last_error_initially_none(ghost_manager):
+    """Test that get_last_error returns None initially."""
+    assert ghost_manager.get_last_error() is None
+
+
+def test_get_last_error_after_corrupted_load(ghost_manager, sample_file):
+    """Test that get_last_error returns error after loading corrupted ghost."""
+    keystrokes = [{"t": 100, "k": "a", "c": True}]
+    ghost_manager.save_ghost(sample_file, 60.0, 0.95, keystrokes)
+    
+    # Corrupt the ghost file
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    ghost_path.write_bytes(b"not valid gzip data")
+    
+    # Try to load it
+    result = ghost_manager.load_ghost(sample_file)
+    assert result is None
+    
+    # Should have an error message
+    error = ghost_manager.get_last_error()
+    assert error is not None
+    assert "corrupted" in error.lower() or "invalid" in error.lower()
+
+
+def test_clear_error(ghost_manager, sample_file):
+    """Test that clear_error clears the error state."""
+    # Corrupt file to create an error
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    ghost_path.parent.mkdir(parents=True, exist_ok=True)
+    ghost_path.write_bytes(b"not valid gzip data")
+    
+    ghost_manager.load_ghost(sample_file)
+    assert ghost_manager.get_last_error() is not None
+    
+    ghost_manager.clear_error()
+    assert ghost_manager.get_last_error() is None
+
+
+def test_successful_load_clears_error(ghost_manager, sample_file):
+    """Test that successful load clears any previous error."""
+    # Set up an error first
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    ghost_path.parent.mkdir(parents=True, exist_ok=True)
+    ghost_path.write_bytes(b"garbage")
+    
+    ghost_manager.load_ghost(sample_file)
+    assert ghost_manager.get_last_error() is not None
+    
+    # Now save a valid ghost and load it
+    keystrokes = [{"t": 100, "k": "a", "c": True}]
+    ghost_manager.save_ghost(sample_file, 60.0, 0.95, keystrokes)
+    
+    result = ghost_manager.load_ghost(sample_file)
+    assert result is not None
+    assert ghost_manager.get_last_error() is None
+
+
+def test_ghost_checksum_computed_on_save(ghost_manager, sample_file):
+    """Test that checksum is added when saving ghost."""
+    keystrokes = [{"t": 100, "k": "a", "c": True}]
+    ghost_manager.save_ghost(sample_file, 60.0, 0.95, keystrokes)
+    
+    # Load raw data to verify checksum exists
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    import gzip, json
+    with gzip.open(ghost_path, 'rt') as f:
+        data = json.load(f)
+    
+    assert "checksum" in data
+    assert len(data["checksum"]) == 8  # MD5 truncated to 8 chars
+
+
+def test_ghost_checksum_mismatch_detected(ghost_manager, sample_file):
+    """Test that checksum mismatch is detected on load."""
+    keystrokes = [{"t": 100, "k": "a", "c": True}]
+    ghost_manager.save_ghost(sample_file, 60.0, 0.95, keystrokes)
+    
+    # Corrupt the data without updating checksum
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    import gzip, json
+    
+    with gzip.open(ghost_path, 'rt') as f:
+        data = json.load(f)
+    
+    # Modify data but keep old checksum
+    data["wpm"] = 999.0
+    # Keep the old checksum (now invalid)
+    
+    with gzip.open(ghost_path, 'wt') as f:
+        json.dump(data, f)
+    
+    # Load should fail due to checksum mismatch
+    result = ghost_manager.load_ghost(sample_file)
+    assert result is None
+    
+    error = ghost_manager.get_last_error()
+    assert error is not None
+    assert "checksum" in error.lower()
+
+
+def test_ghost_without_checksum_still_loads(ghost_manager, sample_file):
+    """Test backwards compatibility - old ghosts without checksum still load."""
+    ghost_path = ghost_manager._get_ghost_path(sample_file)
+    ghost_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    import gzip, json
+    old_data = {
+        "file": sample_file,
+        "hash": ghost_manager._get_file_hash(sample_file),
+        "wpm": 50.0,
+        "acc": 95.0,
+        "keys": [{"t": 100, "k": "a", "c": True}]
+        # No checksum field - simulating old format
+    }
+    
+    with gzip.open(ghost_path, 'wt') as f:
+        json.dump(old_data, f)
+    
+    # Should load successfully (backwards compatible)
+    result = ghost_manager.load_ghost(sample_file)
+    assert result is not None
+    assert result["wpm"] == 50.0
+    assert ghost_manager.get_last_error() is None

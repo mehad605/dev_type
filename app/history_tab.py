@@ -1,4 +1,5 @@
 """History tab widget for reviewing and managing past typing sessions."""
+import csv
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 from pathlib import Path
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QMessageBox,
+    QFileDialog,
 )
 
 from app import stats_db
@@ -86,6 +88,10 @@ class HistoryTab(QWidget):
         self.edit_mode_btn.setCheckable(True)
         self.edit_mode_btn.clicked.connect(self.toggle_edit_mode)
         filter_row.addWidget(self.edit_mode_btn)
+        
+        self.export_btn = QPushButton("📥 Export CSV")
+        self.export_btn.clicked.connect(self.export_to_csv)
+        filter_row.addWidget(self.export_btn)
 
         layout.addLayout(filter_row)
 
@@ -343,3 +349,70 @@ class HistoryTab(QWidget):
             return datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M")
         except ValueError:
             return value
+    
+    def export_to_csv(self):
+        """Export current filtered session history to CSV file."""
+        filters = getattr(self, "current_filters", {})
+        history = stats_db.fetch_session_history(
+            language=filters.get("language"),
+            file_contains=filters.get("file_contains"),
+            min_wpm=filters.get("min_wpm"),
+            max_wpm=filters.get("max_wpm"),
+            min_duration=filters.get("min_duration"),
+            max_duration=filters.get("max_duration"),
+        )
+        
+        if not history:
+            QMessageBox.information(self, "No Data", "No session history to export.")
+            return
+        
+        # Ask user where to save the CSV
+        default_filename = f"session_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Session History",
+            default_filename,
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = [
+                    'Date', 'Language', 'File', 'WPM', 'Accuracy', 
+                    'Duration (s)', 'Correct', 'Incorrect'
+                ]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                
+                writer.writeheader()
+                for record in history:
+                    timestamp_value = record.get("recorded_at", "")
+                    formatted_date = self._format_timestamp(timestamp_value)
+                    file_path_val = record.get("file_path") or ""
+                    file_name = Path(file_path_val).name if file_path_val else ""
+                    accuracy = record.get("accuracy", 0.0)
+                    
+                    writer.writerow({
+                        'Date': formatted_date,
+                        'Language': record.get("language") or "Unknown",
+                        'File': file_name,
+                        'WPM': f"{record.get('wpm', 0.0):.1f}",
+                        'Accuracy': f"{accuracy * 100:.1f}%",
+                        'Duration (s)': f"{record.get('duration', 0.0):.1f}",
+                        'Correct': record.get("correct", 0),
+                        'Incorrect': record.get("incorrect", 0)
+                    })
+            
+            QMessageBox.information(
+                self, 
+                "Export Successful", 
+                f"Exported {len(history)} session(s) to:\n{file_path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Failed to export session history:\n{str(e)}"
+            )

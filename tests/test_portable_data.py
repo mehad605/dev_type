@@ -68,3 +68,12 @@ def test_subdirectories_created():
     assert (data_dir / "custom_sounds").exists()
     assert (data_dir / "settings").exists()
     assert (data_dir / "logs").exists()
+
+
+def test_get_last_error_initially_none():
+    """Test get_last_error returns None when no error."""
+    from app.portable_data import PortableDataManager
+    manager = PortableDataManager()
+    # After successful init, no error should be recorded
+    error = manager.get_last_error()
+    assert error is None

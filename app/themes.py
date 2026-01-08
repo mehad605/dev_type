@@ -3,11 +3,48 @@
 This module provides theme definitions and application logic for the typing app.
 Themes include complete color schemes for UI elements, text editor, and all widgets.
 """
+import logging
+import re
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
+logger = logging.getLogger(__name__)
+
 # Cache for generated stylesheets to avoid regeneration
 _stylesheet_cache: Dict[str, str] = {}
+
+# Regex pattern for validating hex colors (#RGB or #RRGGBB)
+_HEX_COLOR_PATTERN = re.compile(r'^#(?:[0-9a-fA-F]{3}){1,2}$')
+
+
+def is_valid_hex_color(color: str) -> bool:
+    """Check if a string is a valid hex color.
+    
+    Args:
+        color: String to validate
+        
+    Returns:
+        True if valid hex color (#RGB or #RRGGBB), False otherwise
+    """
+    if not isinstance(color, str):
+        return False
+    return bool(_HEX_COLOR_PATTERN.match(color))
+
+
+def validate_hex_color(color: str, default: str = "#FFFFFF") -> str:
+    """Validate and return a hex color, falling back to default if invalid.
+    
+    Args:
+        color: Color string to validate
+        default: Default color to return if invalid
+        
+    Returns:
+        Valid hex color string
+    """
+    if is_valid_hex_color(color):
+        return color
+    logger.warning(f"Invalid hex color '{color}', using default '{default}'")
+    return default
 
 
 @dataclass

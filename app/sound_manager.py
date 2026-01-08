@@ -1,10 +1,13 @@
 """Sound effects manager for typing feedback - keypress only."""
+import logging
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtCore import QUrl, QObject, Signal
 from pathlib import Path
 from typing import Dict, Optional
 import json
 import app.settings as settings
+
+logger = logging.getLogger(__name__)
 
 
 class SoundManager(QObject):
@@ -18,6 +21,7 @@ class SoundManager(QObject):
         self.sound_effect: Optional[QSoundEffect] = None
         self.enabled = True
         self.volume = 0.5
+        self._last_error: Optional[str] = None  # Track sound loading errors
         
         # Base sounds directory
         self.sounds_dir = Path(__file__).parent.parent / "assets" / "sounds"
@@ -69,7 +73,7 @@ class SoundManager(QObject):
         try:
             profiles = json.loads(profile_data)
         except Exception as e:
-            print(f"Error loading custom profiles from database: {e}")
+            logger.warning(f"Error loading custom profiles from database: {e}")
         
         return profiles
     
@@ -79,7 +83,7 @@ class SoundManager(QObject):
             profile_data = json.dumps(self.custom_profiles)
             settings.set_setting("custom_sound_profiles", profile_data)
         except Exception as e:
-            print(f"Error saving custom profiles to database: {e}")
+            logger.warning(f"Error saving custom profiles to database: {e}")
     
     def get_all_profiles(self) -> Dict:
         """Get both built-in and custom profiles."""
@@ -244,12 +248,13 @@ class SoundManager(QObject):
             self.sound_effect = QSoundEffect(self)  # Set parent to prevent premature deletion
             self.sound_effect.setSource(QUrl.fromLocalFile(str(sound_path)))
             self.sound_effect.setVolume(self.volume)
+            self._last_error = None  # Clear any previous error
             
-            # Debug: Print loading info
-            print(f"[SoundManager] Loaded '{profile}': {sound_path}")
-            print(f"[SoundManager] Volume: {self.volume}, Enabled: {self.enabled}")
+            logger.debug(f"Loaded sound profile '{profile}': {sound_path}")
         else:
-            print(f"[SoundManager] ERROR: File not found: {sound_path}")
+            error_msg = f"Sound file not found: {sound_path.name}"
+            logger.warning(f"Sound profile '{profile}': {error_msg}")
+            self._last_error = error_msg
             self.sound_effect = None
     
     def set_profile(self, profile: str):
@@ -267,7 +272,8 @@ class SoundManager(QObject):
             try:
                 self.sound_effect.setVolume(self.volume)
             except RuntimeError:
-                # Object already deleted
+                # Object already deleted by Qt
+                logger.debug("Sound effect deleted during volume change")
                 self.sound_effect = None
     
     def set_enabled(self, enabled: bool):
@@ -288,13 +294,15 @@ class SoundManager(QObject):
             if status == QSoundEffect.Ready:
                 self.sound_effect.play()
             elif status == QSoundEffect.Error:
-                print(f"[SoundManager] Error loading sound, reloading...")
+                error_msg = "Sound file failed to load (corrupted or unsupported format)"
+                logger.warning(f"Sound profile '{self.current_profile}': {error_msg}")
+                self._last_error = error_msg
                 self._load_profile(self.current_profile)
             else:
-                print(f"[SoundManager] Sound status: {status}")
+                logger.debug(f"Sound status: {status}")
         except RuntimeError:
-            # Object already deleted
-            print("[SoundManager] Sound effect was deleted")
+            # Object already deleted by Qt
+            logger.debug("Sound effect deleted during playback")
             self.sound_effect = None
     
     def get_profile_sound_file(self, profile_id: str) -> Optional[str]:
@@ -310,6 +318,18 @@ class SoundManager(QObject):
             path = self.custom_profiles_dir / profile_id / profile_data["file"]
         
         return str(path) if path.exists() else None
+    
+    def get_last_error(self) -> Optional[str]:
+        """Get the last sound loading error message.
+        
+        Returns:
+            Error message if there was a problem loading the current profile, None otherwise
+        """
+        return self._last_error
+    
+    def clear_error(self):
+        """Clear the last error message."""
+        self._last_error = None
 
 
 # Global instance

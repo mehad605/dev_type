@@ -188,6 +188,9 @@ def init_db(path: Optional[str] = None):
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_progress_bar_color", "#ff557f"))
     cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_text_color", "#ffaaff"))
     
+    # History retention setting
+    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("history_retention_days", "90"))
+    
     conn.commit()
     conn.close()
 
@@ -229,6 +232,104 @@ def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
         cached = _settings_cache[key]
         return cached if cached is not None else default
 
+    return default
+
+
+def get_setting_int(key: str, default: int, min_val: Optional[int] = None, max_val: Optional[int] = None) -> int:
+    """Get a setting as an integer with validation and clamping.
+    
+    Args:
+        key: The setting key
+        default: Default value if setting doesn't exist or is invalid
+        min_val: Optional minimum value (clamps if below)
+        max_val: Optional maximum value (clamps if above)
+    
+    Returns:
+        The setting value as an integer, or default if invalid
+    """
+    value = get_setting(key)
+    if value is None:
+        return default
+    
+    try:
+        result = int(value)
+        if min_val is not None:
+            result = max(min_val, result)
+        if max_val is not None:
+            result = min(max_val, result)
+        return result
+    except (ValueError, TypeError):
+        return default
+
+
+def get_setting_float(key: str, default: float, min_val: Optional[float] = None, max_val: Optional[float] = None) -> float:
+    """Get a setting as a float with validation and clamping.
+    
+    Args:
+        key: The setting key
+        default: Default value if setting doesn't exist or is invalid
+        min_val: Optional minimum value (clamps if below)
+        max_val: Optional maximum value (clamps if above)
+    
+    Returns:
+        The setting value as a float, or default if invalid
+    """
+    value = get_setting(key)
+    if value is None:
+        return default
+    
+    try:
+        result = float(value)
+        if min_val is not None:
+            result = max(min_val, result)
+        if max_val is not None:
+            result = min(max_val, result)
+        return result
+    except (ValueError, TypeError):
+        return default
+
+
+def get_setting_bool(key: str, default: bool) -> bool:
+    """Get a setting as a boolean.
+    
+    Interprets "true", "1", "yes", "on" as True (case-insensitive).
+    All other values return False, except None which returns default.
+    
+    Args:
+        key: The setting key
+        default: Default value if setting doesn't exist
+    
+    Returns:
+        The setting value as a boolean
+    """
+    value = get_setting(key)
+    if value is None:
+        return default
+    
+    return value.lower() in ("true", "1", "yes", "on")
+
+
+def get_setting_color(key: str, default: str = "#FFFFFF") -> str:
+    """Get a setting as a validated hex color.
+    
+    Args:
+        key: The setting key
+        default: Default color if setting doesn't exist or is invalid
+    
+    Returns:
+        A valid hex color string
+    """
+    import re
+    
+    value = get_setting(key)
+    if value is None:
+        return default
+    
+    # Validate hex color format (#RGB or #RRGGBB)
+    hex_pattern = re.compile(r'^#(?:[0-9a-fA-F]{3}){1,2}$')
+    if hex_pattern.match(value):
+        return value
+    
     return default
 
 

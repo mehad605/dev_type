@@ -144,3 +144,49 @@ def test_theme_accessibility():
     bg_lum = hex_to_luminance(LIGHT_THEME.bg_primary)
     text_lum = hex_to_luminance(LIGHT_THEME.text_primary)
     assert text_lum < bg_lum, "Light theme should have darker text than bg"
+
+
+def test_is_valid_hex_color_valid_6_char():
+    """Test valid 6-character hex colors."""
+    from app.themes import is_valid_hex_color
+    assert is_valid_hex_color("#FF0000") is True
+    assert is_valid_hex_color("#00ff00") is True
+    assert is_valid_hex_color("#aAbBcC") is True
+    assert is_valid_hex_color("#000000") is True
+    assert is_valid_hex_color("#FFFFFF") is True
+
+
+def test_is_valid_hex_color_valid_3_char():
+    """Test valid 3-character hex colors."""
+    from app.themes import is_valid_hex_color
+    assert is_valid_hex_color("#F00") is True
+    assert is_valid_hex_color("#abc") is True
+    assert is_valid_hex_color("#123") is True
+
+
+def test_is_valid_hex_color_invalid():
+    """Test invalid hex colors."""
+    from app.themes import is_valid_hex_color
+    assert is_valid_hex_color("FF0000") is False  # No #
+    assert is_valid_hex_color("#GGGGGG") is False  # Invalid chars
+    assert is_valid_hex_color("#FF00") is False  # Wrong length (4 chars)
+    assert is_valid_hex_color("#FF00000") is False  # Wrong length (7 chars)
+    assert is_valid_hex_color("red") is False  # Color name
+    assert is_valid_hex_color("") is False
+    assert is_valid_hex_color(None) is False
+    assert is_valid_hex_color(123) is False
+
+
+def test_validate_hex_color_returns_valid():
+    """Test validate_hex_color returns valid color."""
+    from app.themes import validate_hex_color
+    assert validate_hex_color("#FF0000", "#000000") == "#FF0000"
+    assert validate_hex_color("#abc", "#000000") == "#abc"
+
+
+def test_validate_hex_color_returns_default():
+    """Test validate_hex_color returns default for invalid."""
+    from app.themes import validate_hex_color
+    assert validate_hex_color("invalid", "#FFFFFF") == "#FFFFFF"
+    assert validate_hex_color("#GGGGGG", "#00FF00") == "#00FF00"
+    assert validate_hex_color("", "#0000FF") == "#0000FF"

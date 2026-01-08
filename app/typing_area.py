@@ -1,4 +1,6 @@
 """Typing area widget with character-by-character validation and color coding."""
+import logging
+from pathlib import Path
 from PySide6.QtWidgets import QTextEdit, QWidget, QVBoxLayout, QApplication
 from PySide6.QtGui import (
     QTextCharFormat, QColor, QFont, QTextCursor,
@@ -8,6 +10,12 @@ from PySide6.QtCore import Qt, Signal, QTimer, QRect, QPoint
 from typing import Optional
 from app.typing_engine import TypingEngine
 from app import settings
+
+logger = logging.getLogger(__name__)
+
+# File size limits
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB hard limit
+WARN_FILE_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB warning threshold
 
 
 class TypingHighlighter(QSyntaxHighlighter):
@@ -172,6 +180,29 @@ class TypingAreaWidget(QTextEdit):
     
     def load_file(self, file_path: str):
         """Load a file for typing practice."""
+        # Check file size before loading
+        try:
+            file_size = Path(file_path).stat().st_size
+            
+            if file_size > MAX_FILE_SIZE_BYTES:
+                size_mb = file_size / (1024 * 1024)
+                self.original_content = (
+                    f"Error: File too large ({size_mb:.1f} MB).\n\n"
+                    f"Maximum supported file size is {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB.\n"
+                    "Please select a smaller file for typing practice."
+                )
+                self._setup_error_display()
+                return
+            
+            if file_size > WARN_FILE_SIZE_BYTES:
+                size_mb = file_size / (1024 * 1024)
+                logger.warning(f"Loading large file ({size_mb:.1f} MB): {file_path}")
+                
+        except (OSError, PermissionError) as e:
+            self.original_content = f"Error: Cannot access file: {e}"
+            self._setup_error_display()
+            return
+        
         # Try multiple encodings in order of likelihood
         encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1']
         
@@ -244,6 +275,16 @@ class TypingAreaWidget(QTextEdit):
         if self.highlighter:
             self.highlighter.clear_ghost_progress()
         print("[GhostRecorder] Started recording")
+    
+    def _setup_error_display(self):
+        """Setup display for error messages (no typing engine)."""
+        self.display_content = self.original_content
+        self.engine = None
+        self.setPlainText(self.display_content)
+        self.highlighter = None
+        self.current_typing_position = 0
+        self.is_recording_ghost = False
+        self.ghost_keystrokes = []
     
     def stop_ghost_recording(self):
         """Stop recording keystrokes."""

@@ -24,11 +24,15 @@ Configuration File Locations:
     Windows: %APPDATA%\\DevType\\config.ini
     Linux:   ~/.config/devtype/config.conf
 """
+import logging
+import os
 import sys
 import platform
 import configparser
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class PortableDataManager:
@@ -52,6 +56,7 @@ class PortableDataManager:
         self._data_dir: Optional[Path] = None
         self._custom_data_dir: Optional[Path] = None  # User-specified location
         self._is_portable: bool = False
+        self._last_error: Optional[str] = None
         
         self._detect_and_setup()
         self._initialized = True
@@ -179,18 +184,78 @@ class PortableDataManager:
         except Exception as e:
             print(f"Error saving custom data directory to config: {e}")
     
-    def _ensure_directories(self):
-        """Create data directory structure if it doesn't exist."""
-        if not self._data_dir.exists():
-            print(f"Creating portable data directory: {self._data_dir}")
-            self._data_dir.mkdir(parents=True, exist_ok=True)
+    def _ensure_directories(self) -> bool:
+        """Create data directory structure if it doesn't exist.
         
-        # Create subdirectories
-        subdirs = ['ghosts', 'custom_sounds', 'settings', 'logs']
-        for subdir in subdirs:
-            subdir_path = self._data_dir / subdir
-            if not subdir_path.exists():
-                subdir_path.mkdir(parents=True, exist_ok=True)
+        Returns:
+            True if directories are ready, False if permission error
+        """
+        self._last_error = None
+        
+        try:
+            if not self._data_dir.exists():
+                logger.info(f"Creating portable data directory: {self._data_dir}")
+                self._data_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Verify we can write to the directory
+            if not os.access(self._data_dir, os.W_OK):
+                error_msg = f"No write permission for data directory: {self._data_dir}"
+                logger.error(error_msg)
+                self._last_error = error_msg
+                self._show_permission_error(error_msg)
+                return False
+            
+            # Create subdirectories
+            subdirs = ['ghosts', 'custom_sounds', 'settings', 'logs']
+            for subdir in subdirs:
+                subdir_path = self._data_dir / subdir
+                if not subdir_path.exists():
+                    subdir_path.mkdir(parents=True, exist_ok=True)
+                    logger.debug(f"Created subdirectory: {subdir_path}")
+            
+            return True
+            
+        except PermissionError as e:
+            error_msg = f"Permission denied creating data directory: {e}"
+            logger.error(error_msg)
+            self._last_error = error_msg
+            self._show_permission_error(error_msg)
+            return False
+        except OSError as e:
+            error_msg = f"Error creating data directories: {e}"
+            logger.error(error_msg)
+            self._last_error = error_msg
+            return False
+    
+    def _show_permission_error(self, message: str):
+        """Show a user-friendly error dialog for permission issues."""
+        try:
+            from PySide6.QtWidgets import QMessageBox, QApplication
+            
+            app = QApplication.instance()
+            if app is None:
+                print(f"ERROR: {message}")
+                return
+            
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Warning)
+            msg.setWindowTitle("Data Directory Error")
+            msg.setText("Cannot access data directory")
+            msg.setInformativeText(
+                "Dev Type cannot write to its data directory. "
+                "Your settings and progress may not be saved.\n\n"
+                "Try running the application from a different location, "
+                "or check folder permissions."
+            )
+            msg.setDetailedText(message)
+            msg.exec()
+        except Exception as e:
+            logger.warning(f"Could not show permission error dialog: {e}")
+            print(f"ERROR: {message}")
+    
+    def get_last_error(self) -> Optional[str]:
+        """Get the last error message, if any."""
+        return self._last_error
     
     def set_data_directory(self, new_path: Path) -> bool:
         """Set a custom data directory location.
