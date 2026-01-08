@@ -3,6 +3,7 @@
 APIs:
  - init_db(path=None)
  - get_setting(key, default=None)
+ - get_default(key) - Get the canonical default for a setting
  - set_setting(key, value)
  - get_folders()
  - add_folder(path)
@@ -15,7 +16,7 @@ from typing import Optional, List, Dict
 
 # Import portable data manager for exe/AppImage builds
 try:
-    from app.portable_data import get_database_path, is_portable
+    from app.portable_data import get_data_dir as get_portable_data_dir, get_database_path, is_portable
     _PORTABLE_MODE_AVAILABLE = True
 except ImportError:
     _PORTABLE_MODE_AVAILABLE = False
@@ -23,6 +24,81 @@ except ImportError:
         return None
     def is_portable():
         return False
+
+# =============================================================================
+# SINGLE SOURCE OF TRUTH FOR ALL SETTING DEFAULTS
+# =============================================================================
+# When adding a new setting, add it here first. All get_setting() calls should
+# use get_default() to retrieve the canonical default value.
+# =============================================================================
+SETTING_DEFAULTS: Dict[str, str] = {
+    # Theme settings
+    "theme": "dark",
+    "dark_scheme": "dracula",
+    "light_scheme": "default",
+    
+    # Confirmation dialogs
+    "delete_confirm": "1",
+    
+    # Typing behavior
+    "pause_delay": "7",
+    "allow_continue_mistakes": "0",
+    "show_typed_characters": "0",
+    "show_ghost_text": "1",
+    "instant_death_mode": "0",
+    
+    # Color settings (Dracula theme colors)
+    "color_untyped": "#6272a4",
+    "color_correct": "#50fa7b",
+    "color_incorrect": "#ff5555",
+    "color_paused_highlight": "#f1fa8c",
+    "color_cursor": "#8be9fd",
+    
+    # Cursor settings
+    "cursor_type": "static",
+    "cursor_style": "underscore",
+    
+    # Font settings
+    "font_family": "JetBrains Mono",
+    "font_size": "12",
+    "font_ligatures": "0",
+    
+    # Display characters
+    "space_char": "␣",
+    "tab_width": "4",
+    
+    # Sound settings
+    "sound_enabled": "1",
+    "sound_profile": "brick",
+    "sound_volume": "50",
+    "custom_sound_profiles": "{}",
+    
+    # Progress bar colors
+    "progress_bar_color": "#4CAF50",
+    "user_progress_bar_color": "#4CAF50",
+    "ghost_progress_bar_color": "#ff557f",
+    "ghost_text_color": "#ffaaff",
+    
+    # Stats settings
+    "best_wpm_min_accuracy": "0.9",
+    "stats_heatmap_metric": "total_chars",
+    
+    # History settings
+    "history_retention_days": "90",
+    
+    # State persistence (not user-configurable)
+    "expanded_folders": "[]",
+}
+
+
+def get_default(key: str) -> str:
+    """Get the canonical default value for a setting.
+    
+    This is the single source of truth for all setting defaults.
+    Use this instead of hardcoding defaults at call sites.
+    """
+    return SETTING_DEFAULTS.get(key, "")
+
 
 # Module-level variable to store the current DB path
 _current_db_path: Optional[Path] = None
@@ -144,52 +220,10 @@ def init_db(path: Optional[str] = None):
         )
         """
     )
-    # defaults
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("theme", "dark"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("dark_scheme", "dracula"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("delete_confirm", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("pause_delay", "4"))
     
-    # Color settings - Dracula theme colors
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_untyped", "#6272a4"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_correct", "#50fa7b"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_incorrect", "#ff5555"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_paused_highlight", "#f1fa8c"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("color_cursor", "#8be9fd"))
-    
-    # Cursor settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_type", "static"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("cursor_style", "underscore"))
-    
-    # Font settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_family", "JetBrains Mono"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_size", "12"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("font_ligatures", "0"))
-    
-    # Space character setting
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("space_char", "␣"))
-    
-    # Tab width setting
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("tab_width", "4"))
-    
-    # Typing behavior setting
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("allow_continue_mistakes", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("show_typed_characters", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("best_wpm_min_accuracy", "0.93"))
-    
-    # Sound settings
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_enabled", "1"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_profile", "brick"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("sound_volume", "50"))
-    
-    # Progress bar colors
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("progress_bar_color", "#4CAF50"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("user_progress_bar_color", "#4CAF50"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_progress_bar_color", "#ff557f"))
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("ghost_text_color", "#ffaaff"))
-    
-    # History retention setting
-    cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", ("history_retention_days", "90"))
+    # Insert all defaults from SETTING_DEFAULTS (single source of truth)
+    for key, value in SETTING_DEFAULTS.items():
+        cur.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?,?)", (key, value))
     
     conn.commit()
     conn.close()

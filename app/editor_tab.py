@@ -115,7 +115,7 @@ class EditorTab(QWidget):
             settings.set_setting("instant_death_mode", backup_mode)
             settings.remove_setting("_race_instant_death_backup")
         
-        instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+        instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
         self.instant_death_btn = QPushButton("💀 Instant Death: Enabled" if instant_death_enabled else "💀 Instant Death: Disabled")
         self.instant_death_btn.setCheckable(True)
         self.instant_death_btn.setChecked(instant_death_enabled)
@@ -193,13 +193,13 @@ class EditorTab(QWidget):
             from app import settings
             
             # Cursor
-            c_type = settings.get_setting("cursor_type", "static")
-            c_style = settings.get_setting("cursor_style", "block")
+            c_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
+            c_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
             self.typing_area.update_cursor(c_type, c_style)
             
             # Font
-            f_family = settings.get_setting("font_family", "JetBrains Mono")
-            f_size = int(settings.get_setting("font_size", "12"))
+            f_family = settings.get_setting("font_family", settings.get_default("font_family"))
+            f_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
             self.typing_area.update_font(f_family, f_size, False)
             
             # Colors
@@ -240,7 +240,8 @@ class EditorTab(QWidget):
         ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
         
         self.ghost_label = QLabel("Ghost:")
-        self.ghost_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
+        ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
+        self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
         self.ghost_label.setMinimumWidth(35)
         ghost_progress_layout.addWidget(self.ghost_label, stretch=0)
         
@@ -250,7 +251,7 @@ class EditorTab(QWidget):
         self.ghost_progress_label = QLabel("0%")
         self.ghost_progress_label.setMinimumWidth(45)
         self.ghost_progress_label.setAlignment(Qt.AlignCenter)
-        self.ghost_progress_label.setStyleSheet("color: #8AB4F8; font-weight: bold;")
+        self.ghost_progress_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
         ghost_progress_layout.addWidget(self.ghost_progress_label, stretch=0)
         
         self.ghost_progress_widget = ghost_progress_widget
@@ -331,6 +332,11 @@ class EditorTab(QWidget):
         self.typing_area.setFocus()
         self.file_tree.refresh_file_stats(file_path)
         self.file_tree.refresh_incomplete_sessions()
+        
+        # Reset progress bars to show 0% on new file load
+        self.user_progress_bar.reset()
+        self.user_progress_label.setText("0%")
+        self.ghost_progress_bar.reset()
         
         self._display_ghost_progress = False
         self._ghost_cursor_position = 0
@@ -457,7 +463,7 @@ class EditorTab(QWidget):
     def on_mistake_occurred(self):
         """Handle mistake in typing area - reset if instant death mode is enabled."""
         from app import settings
-        instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+        instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
         if instant_death_enabled:
             if self.is_racing or self._race_pending_start:
                 # During a race, reset cursor to beginning but keep stats running
@@ -530,8 +536,9 @@ class EditorTab(QWidget):
         self.file_tree.refresh_file_stats(self.current_file)
 
         parent_window = self.window()
-        if hasattr(parent_window, "refresh_languages_tab"):
-            parent_window.refresh_languages_tab()
+        # Refresh language card stats (not full rescan, just update the card)
+        if hasattr(parent_window, "refresh_language_stats"):
+            parent_window.refresh_language_stats(self.current_file)
         if hasattr(parent_window, "refresh_history_tab"):
             parent_window.refresh_history_tab()
         if hasattr(parent_window, "refresh_stats_tab"):
@@ -674,8 +681,8 @@ class EditorTab(QWidget):
         from app import settings
         from app.themes import get_color_scheme
         
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         # Apply background to bottom container
@@ -1287,8 +1294,8 @@ class EditorTab(QWidget):
         from app import settings
         
         # Get current theme settings
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula") if theme == "dark" else settings.get_setting("light_scheme", "default")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme")) if theme == "dark" else settings.get_setting("light_scheme", settings.get_default("light_scheme"))
         
         # Get the color scheme
         scheme = get_color_scheme(theme, scheme_name)

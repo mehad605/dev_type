@@ -18,8 +18,8 @@ class SoundVolumeWidget(QWidget):
         self.setCursor(Qt.PointingHandCursor)
         
         # Load initial state from settings
-        self.volume = int(settings.get_setting("sound_volume", "50"))
-        self.enabled = settings.get_setting("sound_enabled", "1") == "1"
+        self.volume = int(settings.get_setting("sound_volume", settings.get_default("sound_volume")))
+        self.enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
         
         # Visual properties
         self.hover = False

@@ -60,6 +60,7 @@ class FolderCardWidget(QFrame):
         self._list_item: Optional[QListWidgetItem] = None
         self._selected = False
         self._remove_mode = False
+        self._folder_exists = Path(folder_path).exists()
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         
@@ -68,8 +69,8 @@ class FolderCardWidget(QFrame):
         layout.setContentsMargins(16, 8, 16, 8)
         layout.setSpacing(12)
 
-        # Icon
-        self.icon_label = QLabel("📁")
+        # Icon - show warning if folder doesn't exist
+        self.icon_label = QLabel("📁" if self._folder_exists else "⚠️")
         self.icon_label.setObjectName("folderIcon")
         self.icon_label.setStyleSheet("font-size: 22px; background: transparent; border: none;")
         layout.addWidget(self.icon_label)
@@ -83,12 +84,23 @@ class FolderCardWidget(QFrame):
         self.name_label.setObjectName("folderName")
         self.name_label.setStyleSheet("background: transparent; border: none;")
         
-        self.path_label = QLabel(folder_path)
+        # Show path or error message
+        if self._folder_exists:
+            self.path_label = QLabel(folder_path)
+        else:
+            self.path_label = QLabel("⚠️ Folder not found - may have been moved or renamed. Please remove and re-add.")
+            self.path_label.setToolTip(f"Original path: {folder_path}")
         self.path_label.setObjectName("folderPath")
         self.path_label.setStyleSheet("background: transparent; border: none;")
         
+        # Stats row (file count, languages, sessions)
+        self.stats_label = QLabel("")
+        self.stats_label.setObjectName("folderStats")
+        self.stats_label.setStyleSheet("background: transparent; border: none;")
+        
         text_layout.addWidget(self.name_label)
         text_layout.addWidget(self.path_label)
+        text_layout.addWidget(self.stats_label)
         layout.addLayout(text_layout, stretch=1)
 
         # Remove button (Trash Can)
@@ -146,8 +158,8 @@ class FolderCardWidget(QFrame):
     def _apply_style(self):
         # Get current theme colors
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         # Default state
@@ -155,6 +167,11 @@ class FolderCardWidget(QFrame):
         border_color = scheme.border_color
         text_primary = scheme.text_primary
         text_secondary = scheme.text_secondary
+        
+        # Warning state for missing folders
+        if not self._folder_exists:
+            border_color = scheme.warning_color
+            text_secondary = scheme.warning_color
         
         if self._selected:
             base_color = scheme.bg_tertiary
@@ -170,6 +187,7 @@ class FolderCardWidget(QFrame):
             f"QFrame#folderCard:hover {{ border-color: {scheme.accent_color}; }}"
             f"QLabel#folderName {{ color: {text_primary}; font-weight: 600; font-size: 14px; }}"
             f"QLabel#folderPath {{ color: {text_secondary}; font-size: 11px; }}"
+            f"QLabel#folderStats {{ color: {scheme.text_secondary}; font-size: 10px; }}"
         )
 
     def mousePressEvent(self, event):
@@ -183,6 +201,29 @@ class FolderCardWidget(QFrame):
         if event.button() == Qt.LeftButton and self._list_widget and self._list_item:
             self._list_widget.setCurrentItem(self._list_item)
             self._list_widget.itemDoubleClicked.emit(self._list_item)
+    
+    def update_stats(self, file_count: int, language_count: int, session_count: int):
+        """Update the statistics display for this folder."""
+        if not self._folder_exists:
+            self.stats_label.setText("")
+            return
+        
+        parts = []
+        if file_count > 0:
+            parts.append(f"📄 {file_count} files")
+        if language_count > 0:
+            parts.append(f"💻 {language_count} languages")
+        if session_count > 0:
+            parts.append(f"⌨️ {session_count} sessions")
+        
+        if parts:
+            self.stats_label.setText("  •  ".join(parts))
+        else:
+            self.stats_label.setText("No files scanned yet")
+    
+    def folder_exists(self) -> bool:
+        """Check if the folder path exists."""
+        return self._folder_exists
 
 
 class FoldersTab(QWidget):
@@ -223,8 +264,8 @@ class FoldersTab(QWidget):
         
         # Get theme colors for buttons
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         self.add_btn = QPushButton("➕ Add Folder")
@@ -294,6 +335,13 @@ class FoldersTab(QWidget):
             }
         """)
         self.layout.addWidget(self.list)
+        
+        # Loading indicator (hidden by default)
+        self.loading_label = QLabel("⏳ Scanning folders...")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        self.loading_label.setStyleSheet("color: #888888; font-size: 12pt; padding: 20px;")
+        self.loading_label.hide()
+        self.layout.addWidget(self.loading_label)
 
         self.add_btn.clicked.connect(self.on_add)
         self.edit_btn.toggled.connect(self.on_edit_toggled)
@@ -327,6 +375,10 @@ class FoldersTab(QWidget):
         folders = settings.get_folders()
         is_remove_mode = hasattr(self, 'edit_btn') and self.edit_btn.isChecked()
         
+        # Collect folder stats from file scanner and session history
+        from app.file_scanner import scan_folders as scan_folder_files
+        from app import stats_db
+        
         for i, path_str in enumerate(folders):
             # Create widget
             card = FolderCardWidget(path_str)
@@ -341,6 +393,28 @@ class FoldersTab(QWidget):
             # Attach widget to item
             card.attach(self.list, item)
             self.list.setItemWidget(item, card)
+            
+            # Compute stats if folder exists
+            if card.folder_exists():
+                try:
+                    # Scan for files (quick since already cached in most cases)
+                    language_files = scan_folder_files([path_str])
+                    file_count = sum(len(files) for files in language_files.values())
+                    language_count = len(language_files)
+                    
+                    # Count sessions for files in this folder
+                    session_count = 0
+                    try:
+                        all_sessions = stats_db.fetch_session_history(limit=10000)
+                        for session in all_sessions:
+                            if session.get('file_path', '').startswith(path_str):
+                                session_count += 1
+                    except Exception:
+                        pass
+                    
+                    card.update_stats(file_count, language_count, session_count)
+                except Exception:
+                    card.update_stats(0, 0, 0)
 
         if DEBUG_STARTUP_TIMING:
             t3 = time.time()
@@ -352,10 +426,23 @@ class FoldersTab(QWidget):
         dlg.setOption(QFileDialog.ShowDirsOnly, True)
         if dlg.exec():
             selected = dlg.selectedFiles()
+            
+            # Show loading indicator
+            self.loading_label.setText(f"⏳ Adding {len(selected)} folder(s)...")
+            self.loading_label.show()
+            self.list.hide()
+            QApplication.processEvents()  # Force UI update
+            
             for p in selected:
                 settings.add_folder(p)
-        # reload
-        self.load_folders()
+            
+            # Reload folders (this will update stats)
+            self.load_folders()
+            
+            # Hide loading indicator
+            self.loading_label.hide()
+            self.list.show()
+        
         # Notify parent to refresh languages tab
         parent_window = self.window()
         if hasattr(parent_window, 'refresh_languages_tab'):
@@ -374,7 +461,7 @@ class FoldersTab(QWidget):
 
     def _maybe_remove_item(self, folder_path: str):
         """Handle folder removal with optional confirmation."""
-        delete_confirm = settings.get_setting("delete_confirm", "1")
+        delete_confirm = settings.get_setting("delete_confirm", settings.get_default("delete_confirm"))
         should_confirm = (delete_confirm == "1")
         
         should_remove = True
@@ -387,8 +474,8 @@ class FoldersTab(QWidget):
             
             # Get theme colors
             from app.themes import get_color_scheme
-            theme = settings.get_setting("theme", "dark")
-            scheme_name = settings.get_setting("dark_scheme", "dracula")
+            theme = settings.get_setting("theme", settings.get_default("theme"))
+            scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
             scheme = get_color_scheme(theme, scheme_name)
             
             # Layout
@@ -632,9 +719,9 @@ class MainWindow(QMainWindow):
             t = time.time()
         from app.sound_manager import get_sound_manager
         sound_mgr = get_sound_manager()
-        sound_enabled = settings.get_setting("sound_enabled", "1") == "1"
-        sound_profile = settings.get_setting("sound_profile", "none")
-        sound_volume = int(settings.get_setting("sound_volume", "50")) / 100.0
+        sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+        sound_profile = settings.get_setting("sound_profile", settings.get_default("sound_profile"))
+        sound_volume = int(settings.get_setting("sound_volume", settings.get_default("sound_volume"))) / 100.0
         sound_mgr.set_enabled(sound_enabled)
         sound_mgr.set_profile(sound_profile)
         sound_mgr.set_volume(sound_volume)
@@ -863,7 +950,7 @@ class MainWindow(QMainWindow):
         confirm_del_row.addStretch()
         general_layout.addLayout(confirm_del_row)
         
-        confirm_del = settings.get_setting("delete_confirm", "1") == "1"
+        confirm_del = settings.get_setting("delete_confirm", settings.get_default("delete_confirm")) == "1"
         self._update_confirm_del_buttons(confirm_del)
         
         general_group.setLayout(general_layout)
@@ -899,7 +986,7 @@ class MainWindow(QMainWindow):
         self.retention_combo.addItem("Forever", "0")
         self.retention_combo.setMinimumWidth(120)
         
-        current_retention = settings.get_setting("history_retention_days", "90")
+        current_retention = settings.get_setting("history_retention_days", settings.get_default("history_retention_days"))
         index = self.retention_combo.findData(current_retention)
         if index >= 0:
             self.retention_combo.setCurrentIndex(index)
@@ -946,7 +1033,7 @@ class MainWindow(QMainWindow):
         button_row.addStretch()
         typing_behavior_layout.addLayout(button_row)
 
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self._update_allow_continue_buttons(allow_continue)
 
         # Show typed characters option
@@ -979,7 +1066,7 @@ class MainWindow(QMainWindow):
         show_button_row.addStretch()
         typing_behavior_layout.addLayout(show_button_row)
 
-        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        show_typed = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         self._update_show_typed_buttons(show_typed)
         
         # Show ghost text option
@@ -1012,7 +1099,7 @@ class MainWindow(QMainWindow):
         show_ghost_button_row.addStretch()
         typing_behavior_layout.addLayout(show_ghost_button_row)
 
-        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
@@ -1078,7 +1165,7 @@ class MainWindow(QMainWindow):
         
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["dark", "light"])
-        cur_theme = settings.get_setting("theme", "dark")
+        cur_theme = settings.get_setting("theme", settings.get_default("theme"))
         self.theme_combo.setCurrentText(cur_theme)
         self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
         theme_layout.addRow("Theme:", self.theme_combo)
@@ -1087,7 +1174,7 @@ class MainWindow(QMainWindow):
         # Initial population based on current theme
         self._populate_scheme_combo(cur_theme)
         
-        cur_scheme = settings.get_setting("dark_scheme", "dracula")
+        cur_scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         # If we switched themes, this setting might not match, but on_theme_changed handles that
         index = self.scheme_combo.findText(cur_scheme)
         if index >= 0:
@@ -1248,10 +1335,10 @@ class MainWindow(QMainWindow):
         s_layout.addWidget(cursor_group)
         
         # Initialize cursor buttons state
-        current_type = settings.get_setting("cursor_type", "static")
+        current_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
         self._update_cursor_type_buttons(current_type)
         
-        current_style = settings.get_setting("cursor_style", "underscore")
+        current_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self._update_cursor_style_buttons(current_style)
         
         # Setup blink timer for previews
@@ -1271,14 +1358,14 @@ class MainWindow(QMainWindow):
             "DejaVu Sans Mono", "Liberation Mono", "Fira Code",
             "JetBrains Mono", "Source Code Pro"
         ])
-        font_family = settings.get_setting("font_family", "JetBrains Mono")
+        font_family = settings.get_setting("font_family", settings.get_default("font_family"))
         self.font_family_combo.setCurrentText(font_family)
         self.font_family_combo.currentTextChanged.connect(self.on_font_family_changed)
         font_layout.addRow("Family:", self.font_family_combo)
         
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
-        font_size = int(settings.get_setting("font_size", "12"))
+        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
         self.font_size_spin.setValue(font_size)
         self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
         font_layout.addRow("Size:", self.font_size_spin)
@@ -1293,7 +1380,7 @@ class MainWindow(QMainWindow):
         # Space character
         self.space_char_combo = QComboBox()
         self.space_char_combo.addItems(["␣", "·", " ", "custom"])
-        space_char = settings.get_setting("space_char", "␣")
+        space_char = settings.get_setting("space_char", settings.get_default("space_char"))
         if space_char in ["␣", "·", " "]:
             self.space_char_combo.setCurrentText(space_char)
         else:
@@ -1317,7 +1404,7 @@ class MainWindow(QMainWindow):
         self.tab_width_spin = QSpinBox()
         self.tab_width_spin.setRange(1, 8)
         self.tab_width_spin.setSuffix(" spaces")
-        tab_width = int(settings.get_setting("tab_width", "4"))
+        tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
         self.tab_width_spin.setValue(tab_width)
         self.tab_width_spin.valueChanged.connect(self.on_tab_width_changed)
         typing_layout.addRow("Tab width:", self.tab_width_spin)
@@ -1326,10 +1413,10 @@ class MainWindow(QMainWindow):
         self.pause_delay_spin = QSpinBox()
         self.pause_delay_spin.setRange(1, 60)
         self.pause_delay_spin.setSuffix(" seconds")
-        pause_delay = int(float(settings.get_setting("pause_delay", "7")))
+        pause_delay = int(settings.get_setting_float("pause_delay", 7.0, min_val=1.0, max_val=60.0))
         self.pause_delay_spin.setValue(pause_delay)
 
-        best_wpm_min = settings.get_setting("best_wpm_min_accuracy", "0.9")
+        best_wpm_min = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
         try:
             best_wpm_percent = int(round(float(best_wpm_min) * 100)) if best_wpm_min is not None else 90
         except (TypeError, ValueError):
@@ -1344,7 +1431,7 @@ class MainWindow(QMainWindow):
         self.best_wpm_accuracy_spin.setRange(0, 100)
         self.best_wpm_accuracy_spin.setSuffix(" %")
         try:
-            best_wpm_acc_raw = settings.get_setting("best_wpm_min_accuracy", "0.9")
+            best_wpm_acc_raw = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
             best_wpm_percent = int(round(float(best_wpm_acc_raw) * 100)) if best_wpm_acc_raw is not None else 90
         except (TypeError, ValueError):
             best_wpm_percent = 90
@@ -1389,7 +1476,7 @@ class MainWindow(QMainWindow):
         sound_button_row.addStretch()
         sound_layout.addLayout(sound_button_row)
         
-        sound_enabled = settings.get_setting("sound_enabled", "1") == "1"
+        sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
         self._update_sound_enabled_buttons(sound_enabled)
         
         # Profile selector (No Sound, Brick, and custom profiles)
@@ -1404,7 +1491,7 @@ class MainWindow(QMainWindow):
         # Load all available profiles
         self._load_sound_profiles()
         
-        current_profile = settings.get_setting("sound_profile", "none")
+        current_profile = settings.get_setting("sound_profile", settings.get_default("sound_profile"))
         index = self.sound_profile_combo.findData(current_profile)
         if index >= 0:
             self.sound_profile_combo.setCurrentIndex(index)
@@ -1515,6 +1602,11 @@ class MainWindow(QMainWindow):
         self.languages_tab.mark_dirty()
         if self.tabs.currentWidget() is self.languages_tab:
             self.languages_tab.ensure_loaded(force=True)
+    
+    def refresh_language_stats(self, file_path: str = None):
+        """Refresh language card stats after session completion (without full rescan)."""
+        if hasattr(self.languages_tab, 'refresh_language_stats'):
+            self.languages_tab.refresh_language_stats(file_path)
 
     def refresh_history_tab(self):
         """Refresh the session history tab."""
@@ -1595,7 +1687,7 @@ class MainWindow(QMainWindow):
     
     def _handle_cursor_type_button(self, type_str: str):
         """Handle cursor type button click."""
-        current = settings.get_setting("cursor_type", "static")
+        current = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
         if current == type_str:
             self._update_cursor_type_buttons(type_str)
             return
@@ -1612,7 +1704,7 @@ class MainWindow(QMainWindow):
             for _, widget in self.cursor_preview_widgets:
                 widget.setVisible(True)
                 
-        cursor_style = settings.get_setting("cursor_style", "underscore")
+        cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self.cursor_changed.emit(type_str, cursor_style)
 
     def _update_cursor_type_buttons(self, type_str: str):
@@ -1634,7 +1726,7 @@ class MainWindow(QMainWindow):
 
     def _handle_cursor_style_button(self, style_str: str):
         """Handle cursor style button click."""
-        current = settings.get_setting("cursor_style", "underscore")
+        current = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         if current == style_str:
             self._update_cursor_style_buttons(style_str)
             return
@@ -1642,7 +1734,7 @@ class MainWindow(QMainWindow):
         settings.set_setting("cursor_style", style_str)
         self._update_cursor_style_buttons(style_str)
         
-        cursor_type = settings.get_setting("cursor_type", "static")
+        cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
         self.cursor_changed.emit(cursor_type, style_str)
 
     def _update_cursor_style_buttons(self, style_str: str):
@@ -1679,8 +1771,8 @@ class MainWindow(QMainWindow):
     
     def _emit_font_changed(self):
         """Helper to emit font_changed signal with current font settings."""
-        family = settings.get_setting("font_family", "JetBrains Mono")
-        size = int(settings.get_setting("font_size", "12"))
+        family = settings.get_setting("font_family", settings.get_default("font_family"))
+        size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
         self.font_changed.emit(family, size, False)  # Ligatures removed, always False
     
     def on_space_char_changed(self, char_option: str):
@@ -1961,8 +2053,8 @@ class MainWindow(QMainWindow):
         from app.themes import get_color_scheme, apply_theme_to_app
         
         # Get current theme settings
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         
         # Get the color scheme
         scheme = get_color_scheme(theme, scheme_name)
@@ -2013,8 +2105,8 @@ class MainWindow(QMainWindow):
         from app.themes import get_color_scheme
         
         # Get current theme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         # Update color buttons if they exist
@@ -2051,46 +2143,46 @@ class MainWindow(QMainWindow):
     def _refresh_all_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
         # Theme settings
-        theme = settings.get_setting("theme", "dark")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
         self.theme_combo.setCurrentText(theme)
         
-        scheme = settings.get_setting("dark_scheme", "dracula")
+        scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         self.scheme_combo.setCurrentText(scheme)
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "static")
+        cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
         self._update_cursor_type_buttons(cursor_type)
         
-        cursor_style = settings.get_setting("cursor_style", "underscore")
+        cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self._update_cursor_style_buttons(cursor_style)
         
         # Font settings
-        font_family = settings.get_setting("font_family", "JetBrains Mono")
+        font_family = settings.get_setting("font_family", settings.get_default("font_family"))
         self.font_family_combo.setCurrentText(font_family)
         
-        font_size = int(settings.get_setting("font_size", "12"))
+        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
         self.font_size_spin.setValue(font_size)
         
         # Typing settings
-        space_char = settings.get_setting("space_char", "␣")
+        space_char = settings.get_setting("space_char", settings.get_default("space_char"))
         if space_char in ["␣", "·", " "]:
             self.space_char_combo.setCurrentText(space_char)
         else:
             self.space_char_combo.setCurrentText("custom")
             self.space_char_custom.setText(space_char)
         
-        pause_delay = int(float(settings.get_setting("pause_delay", "7")))
+        pause_delay = int(float(settings.get_setting("pause_delay", settings.get_default("pause_delay"))))
         self.pause_delay_spin.setValue(pause_delay)
         
         # Typing behavior
-        confirm_del = settings.get_setting("delete_confirm", "1")
+        confirm_del = settings.get_setting("delete_confirm", settings.get_default("delete_confirm"))
         self._update_confirm_del_buttons(confirm_del == "1")
         
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0")
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes"))
         self._update_allow_continue_buttons(allow_continue == "1")
-        show_typed_state = settings.get_setting("show_typed_characters", "0") == "1"
+        show_typed_state = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         self._update_show_typed_buttons(show_typed_state)
-        show_ghost_state = settings.get_setting("show_ghost_text", "1") == "1"
+        show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost_state)
         
         # File Explorer settings
@@ -2108,28 +2200,28 @@ class MainWindow(QMainWindow):
         self.colors_changed.emit()
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "static")
-        cursor_style = settings.get_setting("cursor_style", "underscore")
+        cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
+        cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self.cursor_changed.emit(cursor_type, cursor_style)
         
         # Space character
-        space_char = settings.get_setting("space_char", "␣")
+        space_char = settings.get_setting("space_char", settings.get_default("space_char"))
         self.space_char_changed.emit(space_char)
         
         # Pause delay
-        pause_delay = float(settings.get_setting("pause_delay", "7"))
+        pause_delay = float(settings.get_setting("pause_delay", settings.get_default("pause_delay")))
         self.pause_delay_changed.emit(pause_delay)
         
         # Allow continue with mistakes
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self.allow_continue_changed.emit(allow_continue)
 
         # Show typed characters
-        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        show_typed = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         self.show_typed_changed.emit(show_typed)
 
         # Show ghost text
-        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self.show_ghost_text_changed.emit(show_ghost)
         
         # Ignored patterns
@@ -2155,16 +2247,16 @@ class MainWindow(QMainWindow):
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""
         # Font settings
-        family = settings.get_setting("font_family", "JetBrains Mono")
-        size = int(settings.get_setting("font_size", "12"))
+        family = settings.get_setting("font_family", settings.get_default("font_family"))
+        size = int(settings.get_setting("font_size", settings.get_default("font_size")))
         self.font_changed.emit(family, size, False)  # Ligatures removed, always False
         
         # Color settings
         self.colors_changed.emit()
         
         # Cursor settings
-        cursor_type = settings.get_setting("cursor_type", "static")
-        cursor_style = settings.get_setting("cursor_style", "underscore")
+        cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
+        cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self.cursor_changed.emit(cursor_type, cursor_style)
         
         # Update preview timer state
@@ -2179,25 +2271,25 @@ class MainWindow(QMainWindow):
                         widget.setVisible(True)
         
         # Space character
-        space_char = settings.get_setting("space_char", "␣")
+        space_char = settings.get_setting("space_char", settings.get_default("space_char"))
         self.space_char_changed.emit(space_char)
         
         # Pause delay
-        pause_delay = float(settings.get_setting("pause_delay", "7"))
+        pause_delay = float(settings.get_setting("pause_delay", settings.get_default("pause_delay")))
         self.pause_delay_changed.emit(pause_delay)
         
         # Allow continue with mistakes
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self._update_allow_continue_buttons(allow_continue)
         self.allow_continue_changed.emit(allow_continue)
 
         # Show typed characters
-        show_typed = settings.get_setting("show_typed_characters", "0") == "1"
+        show_typed = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         self._update_show_typed_buttons(show_typed)
         self.show_typed_changed.emit(show_typed)
 
         # Show ghost text
-        show_ghost = settings.get_setting("show_ghost_text", "1") == "1"
+        show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
         self.show_ghost_text_changed.emit(show_ghost)
 
@@ -2235,7 +2327,7 @@ class MainWindow(QMainWindow):
 
     def _handle_confirm_del_button(self, enabled: bool):
         """Handle clicks on the confirm-deletion buttons."""
-        current = settings.get_setting("delete_confirm", "1") == "1"
+        current = settings.get_setting("delete_confirm", settings.get_default("delete_confirm")) == "1"
         if current == enabled:
             self._update_confirm_del_buttons(enabled)
             return
@@ -2252,7 +2344,7 @@ class MainWindow(QMainWindow):
 
     def _handle_allow_continue_button(self, enabled: bool):
         """Handle clicks on the allow-continue buttons."""
-        current = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        current = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         if current == enabled:
             # Still ensure buttons reflect state
             self._update_allow_continue_buttons(enabled)
@@ -2279,7 +2371,7 @@ class MainWindow(QMainWindow):
 
     def _handle_show_typed_button(self, enabled: bool):
         """Handle clicks on the show-typed buttons."""
-        current = settings.get_setting("show_typed_characters", "0") == "1"
+        current = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         if current == enabled:
             self._update_show_typed_buttons(enabled)
             return
@@ -2305,7 +2397,7 @@ class MainWindow(QMainWindow):
 
     def _handle_show_ghost_text_button(self, enabled: bool):
         """Handle clicks on the show-ghost-text buttons."""
-        current = settings.get_setting("show_ghost_text", "1") == "1"
+        current = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         if current == enabled:
             self._update_show_ghost_text_buttons(enabled)
             return
@@ -2331,8 +2423,8 @@ def create_splash_screen(app):
     from app.themes import get_color_scheme
     
     # Get current theme for splash
-    theme = settings.get_setting("theme", "dark")
-    scheme_name = settings.get_setting("dark_scheme", "dracula")
+    theme = settings.get_setting("theme", settings.get_default("theme"))
+    scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
     scheme = get_color_scheme(theme, scheme_name)
     
     # Create a simple splash widget
@@ -2454,7 +2546,7 @@ def run_app_with_splash(splash=None):
     
     # Cleanup old session history (non-blocking, in background)
     try:
-        retention_days = settings.get_setting("history_retention_days", "90")
+        retention_days = settings.get_setting("history_retention_days", settings.get_default("history_retention_days"))
         retention_days = int(retention_days) if retention_days and retention_days != "0" else 0
         if retention_days > 0:
             import threading

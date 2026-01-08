@@ -43,10 +43,10 @@ def format_date_display(date_str: str, short: bool = False) -> str:
 def get_theme_colors() -> Dict[str, QColor]:
     """Get current theme colors for charts."""
     from app.themes import get_color_scheme
-    theme = settings.get_setting("theme", "dark")
-    scheme_name = settings.get_setting("dark_scheme", "dracula")
+    theme = settings.get_setting("theme", settings.get_default("theme"))
+    scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
     if theme == "light":
-        scheme_name = settings.get_setting("light_scheme", "default")
+        scheme_name = settings.get_setting("light_scheme", settings.get_default("light_scheme"))
     scheme = get_color_scheme(theme, scheme_name)
     
     return {
@@ -2286,7 +2286,7 @@ class StatsTab(QWidget):
     def _load_stats_preferences(self):
         """Load persisted stats page preferences."""
         # Heatmap metric
-        heatmap_metric = settings.get_setting("stats_heatmap_metric", "total_chars")
+        heatmap_metric = settings.get_setting("stats_heatmap_metric", settings.get_default("stats_heatmap_metric"))
         metric_keys = [m[0] for m in CalendarHeatmap.METRIC_OPTIONS]
         if heatmap_metric in metric_keys:
             self.heatmap_metric_combo.setCurrentIndex(metric_keys.index(heatmap_metric))

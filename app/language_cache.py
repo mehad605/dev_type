@@ -20,11 +20,18 @@ def build_signature(folders: Iterable[str]) -> str:
         path = os.path.abspath(raw_path)
         try:
             stat = os.stat(path)
+            # Count files in folder for better invalidation detection
+            # (catches file additions/deletions that may not change folder mtime)
+            try:
+                file_count = sum(1 for _ in Path(path).rglob('*') if _.is_file())
+            except (OSError, PermissionError):
+                file_count = -1
             entries.append(
                 {
                     "path": path,
                     "mtime": stat.st_mtime_ns,
                     "size": stat.st_size,
+                    "file_count": file_count,
                 }
             )
         except FileNotFoundError:

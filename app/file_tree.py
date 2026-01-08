@@ -255,7 +255,9 @@ class InternalFileTree(QTreeWidget):
                 icon, icon_error = self._icon_for_language(language)
                 file_item.setIcon(0, icon)
                 if icon_error:
-                    file_item.setToolTip(0, f"Icon unavailable: {icon_error}")
+                    file_item.setToolTip(0, f"{file_path}\n(Icon unavailable: {icon_error})")
+                else:
+                    file_item.setToolTip(0, str(file_path))
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path)
@@ -316,7 +318,9 @@ class InternalFileTree(QTreeWidget):
                 icon, icon_error = self._icon_for_language(language)
                 file_item.setIcon(0, icon)
                 if icon_error:
-                    file_item.setToolTip(0, f"Icon unavailable: {icon_error}")
+                    file_item.setToolTip(0, f"{file_path_str}\n(Icon unavailable: {icon_error})")
+                else:
+                    file_item.setToolTip(0, file_path_str)
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path_str)
@@ -330,7 +334,7 @@ class InternalFileTree(QTreeWidget):
     def _get_incomplete_highlight_color(self) -> QColor:
         """Get the highlight color for incomplete files from theme settings."""
         from app import settings
-        paused_color = settings.get_setting("color_paused_highlight", "#ffaa00")
+        paused_color = settings.get_setting("color_paused_highlight", settings.get_default("color_paused_highlight"))
         # Make it slightly transparent for better visibility
         color = QColor(paused_color)
         color.setAlpha(80)  # 30% opacity
@@ -478,9 +482,34 @@ class InternalFileTree(QTreeWidget):
         
         return file_items
     
+    def get_visible_file_items(self) -> List[QTreeWidgetItem]:
+        """Get all visible (not hidden by filter) file items from the tree."""
+        file_items = []
+        
+        def collect_visible_files(item: QTreeWidgetItem):
+            # Skip hidden items
+            if item.isHidden():
+                return
+            
+            file_path = item.data(0, Qt.UserRole)
+            # Check if it's a file (not a folder)
+            if file_path and Path(file_path).is_file():
+                file_items.append(item)
+            
+            # Recursively collect from children
+            for i in range(item.childCount()):
+                collect_visible_files(item.child(i))
+        
+        # Collect from all top-level items
+        for i in range(self.topLevelItemCount()):
+            collect_visible_files(self.topLevelItem(i))
+        
+        return file_items
+    
     def open_random_file(self):
-        """Select and open a random file from the tree."""
-        file_items = self.get_all_file_items()
+        """Select and open a random file from the tree (respects search filter)."""
+        # Use visible items to respect the current search filter
+        file_items = self.get_visible_file_items()
         
         if not file_items:
             return  # No files available
@@ -491,8 +520,9 @@ class InternalFileTree(QTreeWidget):
         # Ensure the item is visible (expand parents if needed)
         self._ensure_item_visible(random_item)
         
-        # Select the item
+        # Select the item and scroll to ensure it's visible
         self.setCurrentItem(random_item)
+        self.scrollToItem(random_item)
         
         # Emit the file_selected signal (simulating double-click)
         file_path = random_item.data(0, Qt.UserRole)

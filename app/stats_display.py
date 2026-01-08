@@ -139,8 +139,8 @@ class StatsBox(QFrame):
     def apply_theme(self):
         """Apply current theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         bg_color = scheme.bg_secondary
@@ -286,8 +286,8 @@ class KeystrokeBox(QFrame):
     def apply_theme(self):
         """Apply current theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         bg_color = scheme.bg_secondary
@@ -385,8 +385,8 @@ class InteractiveStatusBox(QFrame):
     def apply_theme(self):
         """Apply theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         bg_color = scheme.bg_secondary
@@ -556,8 +556,8 @@ class StatsDisplayWidget(QWidget):
     def apply_theme(self):
         """Apply current theme to all components."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", "dark")
-        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        theme = settings.get_setting("theme", settings.get_default("theme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme(theme, scheme_name)
         
         self.setStyleSheet(f"""

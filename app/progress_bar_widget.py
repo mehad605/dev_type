@@ -26,31 +26,26 @@ class ProgressBarWidget(QWidget):
         self.current_pos = max(0, current_pos)
         self.total_chars = max(0, total_chars)
 
+        # User progress
         if self.total_chars > 0:
             self.progress = min(1.0, self.current_pos / self.total_chars)
         else:
             self.progress = 0.0
 
-        if ghost_pos is not None and self.total_chars > 0:
+        # Ghost progress - clean 3-branch logic
+        if ghost_pos is not None:
+            # Explicit ghost position provided - enable and update
             self.display_ghost = True
-            self.ghost_pos = max(0, min(ghost_pos, self.total_chars))
-            self.ghost_progress = self.ghost_pos / self.total_chars
-        elif ghost_pos is None and not self.display_ghost:
-            self.ghost_pos = 0
-            self.ghost_progress = 0.0
-
-        if ghost_pos is None and self.display_ghost and self.total_chars == 0:
-            self.ghost_pos = 0
-            self.ghost_progress = 0.0
-
-        if ghost_pos is None and not self.display_ghost:
-            self.ghost_pos = 0
-            self.ghost_progress = 0.0
-
-        if ghost_pos is None and self.display_ghost and self.total_chars > 0:
-            # Maintain ghost progress when display_ghost is already True
+            self.ghost_pos = max(0, min(ghost_pos, self.total_chars)) if self.total_chars > 0 else 0
+            self.ghost_progress = self.ghost_pos / self.total_chars if self.total_chars > 0 else 0.0
+        elif self.display_ghost and self.total_chars > 0:
+            # Ghost enabled but no new position - maintain current (clamp to valid range)
             self.ghost_pos = min(self.ghost_pos, self.total_chars)
-            self.ghost_progress = self.ghost_pos / self.total_chars if self.total_chars else 0.0
+            self.ghost_progress = self.ghost_pos / self.total_chars
+        else:
+            # Ghost disabled or no content - reset
+            self.ghost_pos = 0
+            self.ghost_progress = 0.0
 
         self.update()
 
@@ -88,12 +83,12 @@ class ProgressBarWidget(QWidget):
         # Determine colors
         if self.bar_type == "ghost":
             # Ghost bar uses ghost color
-            base_color_hex = settings.get_setting("ghost_progress_bar_color", "#8AB4F8")
+            base_color_hex = settings.get_setting("ghost_progress_bar_color", settings.get_default("ghost_progress_bar_color"))
         else:
             # User bar uses user/progress color
             base_color_hex = settings.get_setting("user_progress_bar_color", None)
             if not base_color_hex:
-                base_color_hex = settings.get_setting("progress_bar_color", "#4CAF50")
+                base_color_hex = settings.get_setting("progress_bar_color", settings.get_default("progress_bar_color"))
 
         base_color = QColor(base_color_hex)
         

@@ -27,22 +27,22 @@ class TypingHighlighter(QSyntaxHighlighter):
         
         # Color formats - load from settings
         self.untyped_format = QTextCharFormat()
-        untyped_color = settings.get_setting("color_untyped", "#555555")
+        untyped_color = settings.get_setting("color_untyped", settings.get_default("color_untyped"))
         self.untyped_format.setForeground(QColor(untyped_color))
         
         self.correct_format = QTextCharFormat()
-        correct_color = settings.get_setting("color_correct", "#00ff00")
+        correct_color = settings.get_setting("color_correct", settings.get_default("color_correct"))
         self.correct_format.setForeground(QColor(correct_color))
         
         self.incorrect_format = QTextCharFormat()
-        incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
+        incorrect_color = settings.get_setting("color_incorrect", settings.get_default("color_incorrect"))
         self.incorrect_format.setForeground(QColor(incorrect_color))
 
         self.ghost_format = QTextCharFormat()
-        ghost_color = settings.get_setting("ghost_text_color", "#8AB4F8")
+        ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
         self.ghost_format.setForeground(QColor(ghost_color))
         
-        self.show_ghost_text = settings.get_setting("show_ghost_text", "1") == "1"
+        self.show_ghost_text = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         
         self.typed_chars = {}  # position -> {typed, expected, is_correct}
         self.ghost_display_limit = 0
@@ -128,17 +128,17 @@ class TypingAreaWidget(QTextEdit):
         self.highlighter: Optional[TypingHighlighter] = None
         
         # Load settings
-        self.space_char = settings.get_setting("space_char", "␣")
-        self.tab_width = int(settings.get_setting("tab_width", "4"))
+        self.space_char = settings.get_setting("space_char", settings.get_default("space_char"))
+        self.tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
-        self.show_typed_characters = settings.get_setting("show_typed_characters", "0") == "1"
+        self.show_typed_characters = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
 
         # Custom cursor state
-        self.cursor_color = QColor(settings.get_setting("color_cursor", "#ffffff"))
-        self.cursor_style = settings.get_setting("cursor_style", "block").lower()
-        self.cursor_blink_mode = settings.get_setting("cursor_type", "blinking").lower()
+        self.cursor_color = QColor(settings.get_setting("color_cursor", settings.get_default("color_cursor")))
+        self.cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style")).lower()
+        self.cursor_blink_mode = settings.get_setting("cursor_type", settings.get_default("cursor_type")).lower()
         self._cursor_visible = True
         self._cursor_rect = QRect()
         self._cursor_timer = QTimer(self)
@@ -149,16 +149,16 @@ class TypingAreaWidget(QTextEdit):
         self.setTabChangesFocus(False)
         
         # Load font from settings
-        font_family = settings.get_setting("font_family", "Consolas")
-        font_size = int(settings.get_setting("font_size", "12"))
+        font_family = settings.get_setting("font_family", settings.get_default("font_family"))
+        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
         self.setFont(QFont(font_family, font_size))
 
         # Track cursor position changes for custom drawing
         self.cursorPositionChanged.connect(self._on_qt_cursor_changed)
         
         # Load cursor settings
-        cursor_type = settings.get_setting("cursor_type", "blinking")
-        cursor_style = settings.get_setting("cursor_style", "block")
+        cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
+        cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self.update_cursor(cursor_type, cursor_style)
         
         # Auto-pause timer
@@ -225,8 +225,8 @@ class TypingAreaWidget(QTextEdit):
         self.display_content = self._prepare_display_content(self.original_content)
         
         # Initialize engine
-        pause_delay = float(settings.get_setting("pause_delay", "7"))
-        allow_continue = settings.get_setting("allow_continue_mistakes", "0") == "1"
+        pause_delay = settings.get_setting_float("pause_delay", 7.0, min_val=0.0, max_val=60.0)
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self.engine = TypingEngine(self.original_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
         
         # Set display content
@@ -412,7 +412,7 @@ class TypingAreaWidget(QTextEdit):
             if ch == '\n':
                 step = enter_len + 1
             elif ch == '\t':
-                step = space_len * 4
+                step = space_len * self.tab_width
             elif ch == ' ':
                 step = space_len
             else:
@@ -475,7 +475,7 @@ class TypingAreaWidget(QTextEdit):
             if ch == '\n':
                 display_pos += enter_len + 1  # symbol plus newline character
             elif ch == '\t':
-                display_pos += space_len * 4
+                display_pos += space_len * self.tab_width
             elif ch == ' ':
                 display_pos += space_len
             else:
@@ -737,7 +737,7 @@ class TypingAreaWidget(QTextEdit):
             # Check for instant death mode BEFORE displaying the mistake
             if not is_correct:
                 from app import settings
-                instant_death_enabled = settings.get_setting("instant_death_mode", "0") == "1"
+                instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
                 if instant_death_enabled:
                     # Emit signal and immediately reset without displaying the mistake
                     self.mistake_occurred.emit()
@@ -858,22 +858,22 @@ class TypingAreaWidget(QTextEdit):
         """Update color settings dynamically."""
         if self.highlighter:
             # Reload colors from settings
-            untyped_color = settings.get_setting("color_untyped", "#555555")
+            untyped_color = settings.get_setting("color_untyped", settings.get_default("color_untyped"))
             self.highlighter.untyped_format.setForeground(QColor(untyped_color))
             
-            correct_color = settings.get_setting("color_correct", "#00ff00")
+            correct_color = settings.get_setting("color_correct", settings.get_default("color_correct"))
             self.highlighter.correct_format.setForeground(QColor(correct_color))
             
-            incorrect_color = settings.get_setting("color_incorrect", "#ff0000")
+            incorrect_color = settings.get_setting("color_incorrect", settings.get_default("color_incorrect"))
             self.highlighter.incorrect_format.setForeground(QColor(incorrect_color))
 
-            ghost_color = settings.get_setting("ghost_text_color", "#8AB4F8")
+            ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
             self.highlighter.set_ghost_color(ghost_color)
             
             # Trigger rehighlight to apply changes
             self.highlighter.rehighlight()
 
-        cursor_color_value = settings.get_setting("color_cursor", "#ffffff")
+        cursor_color_value = settings.get_setting("color_cursor", settings.get_default("color_cursor"))
         self.cursor_color = QColor(cursor_color_value)
         self._request_cursor_paint()
     

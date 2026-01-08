@@ -559,6 +559,11 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         background-color: {scheme.bg_tertiary};
     }}
     
+    QFrame#LanguageCard:focus {{
+        border-color: {scheme.accent_color};
+        border-width: 2px;
+    }}
+    
     /* Buttons */
     QPushButton {{
         background-color: {scheme.button_bg};

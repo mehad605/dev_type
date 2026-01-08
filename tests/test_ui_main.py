@@ -45,15 +45,28 @@ class TestFolderCardWidget:
         assert hasattr(widget, 'name_label')
         assert widget.name_label.text() == "project"
     
-    def test_widget_has_path_label(self, app):
+    def test_widget_has_path_label(self, app, tmp_path):
         """Test widget has path label."""
         from app.ui_main import FolderCardWidget
         
-        path = "/home/user/project"
+        # Use a real existing path so it doesn't show "not found" message
+        path = str(tmp_path)
         widget = FolderCardWidget(path)
         
         assert hasattr(widget, 'path_label')
         assert widget.path_label.text() == path
+    
+    def test_widget_shows_not_found_for_missing_folder(self, app):
+        """Test widget shows 'not found' message for missing folders."""
+        from app.ui_main import FolderCardWidget
+        
+        path = "/nonexistent/folder/path"
+        widget = FolderCardWidget(path)
+        
+        assert hasattr(widget, 'path_label')
+        assert "not found" in widget.path_label.text().lower()
+        assert widget.icon_label.text() == "⚠️"
+        assert widget._folder_exists is False
     
     def test_initial_selected_state(self, app):
         """Test initial selected state is False."""

@@ -34,6 +34,7 @@ def _get_folder_scanner():
 
 class _LanguageScanSignals(QObject):
     completed = Signal(dict, tuple)
+    progress = Signal(int)  # file count found so far
 
 
 class _LanguageScanTask(QRunnable):
@@ -48,6 +49,9 @@ class _LanguageScanTask(QRunnable):
     def run(self):
         try:
             result = self._scanner(list(self.folders_snapshot))
+            # Emit final count
+            total_files = sum(len(files) for files in result.values())
+            self.signals.progress.emit(total_files)
         except Exception:
             result = {}
         self.signals.completed.emit(result, self.folders_snapshot)
@@ -130,12 +134,30 @@ class LanguageCard(QFrame):
         layout.addWidget(self.wpm_label)
         
         layout.addStretch()
+        
+        # Store original style for click feedback
+        self._pressed = False
     
     def mousePressEvent(self, event):
-        """Handle card click."""
+        """Handle card click with visual feedback."""
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.language, self.files)
+            self._pressed = True
+            # Visual feedback: slightly darken the card
+            self.setStyleSheet(self.styleSheet() + """
+                QFrame#LanguageCard { 
+                    background-color: rgba(0, 0, 0, 0.15); 
+                }
+            """)
         super().mousePressEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        """Reset visual feedback and emit click signal."""
+        if event.button() == Qt.LeftButton and self._pressed:
+            self._pressed = False
+            # Reset style (theme will reapply on next update)
+            self.setStyleSheet("")
+            self.clicked.emit(self.language, self.files)
+        super().mouseReleaseEvent(event)
 
     def _set_wpm_display(self, average_wpm: Optional[float], sample_size: int):
         """Update the WPM label contents and styling."""
@@ -247,6 +269,9 @@ class LanguagesTab(QWidget):
         max_cols = 4
         all_files = [path for paths in language_files.values() for path in paths]
         stats_map = stats_db.get_file_stats_for_files(all_files)
+        
+        # Store card references for later updates
+        self._language_cards: Dict[str, LanguageCard] = {}
 
         for lang, files in sorted(language_files.items()):
             recent = stats_db.get_recent_wpm_average(files, limit=10)
@@ -261,6 +286,7 @@ class LanguagesTab(QWidget):
             card = LanguageCard(lang, files, avg_wpm, sample_size, completed_count)
             card.clicked.connect(self.on_language_clicked)
             self.card_layout.addWidget(card, row, col)
+            self._language_cards[lang] = card
 
             col += 1
             if col >= max_cols:
@@ -304,13 +330,19 @@ class LanguagesTab(QWidget):
         self._loading = True
         self._pending_snapshot = snapshot
         self._pending_signature = signature
-        self._show_message("Scanning folders…")
+        self._show_message("Scanning folders… (0 files found)")
 
         scanner = _get_folder_scanner()
         task = _LanguageScanTask(snapshot, scanner)
         task.signals.completed.connect(self._on_scan_finished)
+        task.signals.progress.connect(self._on_scan_progress)
         self._active_task = task
         self._thread_pool.start(task)
+    
+    def _on_scan_progress(self, file_count: int):
+        """Update scanning message with current file count."""
+        if self._status_label and self._loading:
+            self._status_label.setText(f"Scanning folders… ({file_count} files found)")
 
     def _on_scan_finished(self, language_files: Dict[str, List[str]], snapshot: Tuple[str, ...]):
         if snapshot != self._pending_snapshot:
@@ -351,3 +383,57 @@ class LanguagesTab(QWidget):
         parent_window = self.window()
         if hasattr(parent_window, 'open_typing_tab_for_language'):
             parent_window.open_typing_tab_for_language(language, files)
+    
+    def refresh_language_stats(self, file_path: Optional[str] = None):
+        """Refresh stats for language cards after a session completes.
+        
+        Args:
+            file_path: Optional path to determine which language to refresh.
+                      If None, refreshes all cards.
+        """
+        if not hasattr(self, '_language_cards'):
+            return
+        
+        # Determine which language the file belongs to
+        target_language = None
+        if file_path:
+            for lang, files in self._cached_language_files.items():
+                if file_path in files:
+                    target_language = lang
+                    break
+        
+        # Refresh relevant cards
+        for lang, card in self._language_cards.items():
+            if target_language and lang != target_language:
+                continue
+            
+            files = self._cached_language_files.get(lang, [])
+            if not files:
+                continue
+            
+            # Recalculate stats
+            stats_map = stats_db.get_file_stats_for_files(files)
+            recent = stats_db.get_recent_wpm_average(files, limit=10)
+            avg_wpm = recent.get("average") if recent else None
+            sample_size = recent.get("count", 0) if recent else 0
+            completed_count = sum(
+                1 for path in files if stats_map.get(path, {}).get("completed")
+            )
+            
+            # Update card display
+            card._set_wpm_display(avg_wpm, sample_size)
+            
+            # Update file count label (find and update the count label)
+            total = len(files)
+            if total > 0:
+                progress_pct = int((completed_count / total) * 100)
+                count_text = f"{completed_count}/{total} files • {progress_pct}% complete"
+            else:
+                count_text = f"{total} files"
+            
+            # Find the count label (third label in the layout)
+            layout = card.layout()
+            if layout and layout.count() >= 4:
+                count_label = layout.itemAt(3).widget()
+                if isinstance(count_label, QLabel):
+                    count_label.setText(count_text)

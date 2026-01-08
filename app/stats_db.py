@@ -162,7 +162,7 @@ def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bo
     
     # Minimum accuracy required to update best WPM
     try:
-        min_accuracy_raw = settings.get_setting("best_wpm_min_accuracy", "0.9")
+        min_accuracy_raw = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
         min_accuracy = float(min_accuracy_raw) if min_accuracy_raw is not None else 0.9
     except (TypeError, ValueError):
         min_accuracy = 0.9

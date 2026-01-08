@@ -69,7 +69,7 @@ class SoundManager(QObject):
         profiles = {}
         
         # Get custom profiles from settings database
-        profile_data = settings.get_setting("custom_sound_profiles", "{}")
+        profile_data = settings.get_setting("custom_sound_profiles", settings.get_default("custom_sound_profiles"))
         try:
             profiles = json.loads(profile_data)
         except Exception as e:
