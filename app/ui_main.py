@@ -38,9 +38,10 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QTextEdit,
     QRadioButton,
-
+    QGridLayout,
+    QInputDialog,
 )
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QColor
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
 import sys
 from pathlib import Path
@@ -171,8 +172,8 @@ class FolderCardWidget(QFrame):
         scheme = get_color_scheme(theme, scheme_name)
         
         # Default state
-        base_color = "transparent"
-        border_color = scheme.border_color
+        base_color = scheme.card_bg
+        border_color = scheme.card_border
         text_primary = scheme.text_primary
         text_secondary = scheme.text_secondary
         
@@ -890,7 +891,35 @@ class MainWindow(QMainWindow):
             old_widget.deleteLater()
 
     def _on_tab_changed(self, index: int):
-        """Persist typing progress whenever we leave the typing tab."""
+        """Handle tab change logic, including unsaved changes warnings."""
+        # Check if we are LEAVING settings tab with unsaved color changes
+        if (hasattr(self, 'settings_tab') and not isinstance(self.settings_tab, QLabel)):
+            settings_index = self.tabs.indexOf(self.settings_tab)
+            if (hasattr(self, '_colors_dirty') and self._colors_dirty and 
+                self._last_tab_index == settings_index and index != settings_index):
+                
+                scheme_name = settings.get_setting("dark_scheme", "dracula")
+                reply = QMessageBox.question(
+                    self, "Unsaved Changes",
+                    f"You have unsaved color changes for theme '{scheme_name}'.\n\nDo you want to save them?",
+                    QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel
+                )
+                
+                if reply == QMessageBox.Save:
+                    self.on_save_theme()
+                elif reply == QMessageBox.Cancel:
+                    # Block signals to prevent recursion and go back
+                    self.tabs.blockSignals(True)
+                    self.tabs.setCurrentIndex(settings_index)
+                    self.tabs.blockSignals(False)
+                    return # Important: skip updating _last_tab_index
+                else: # Discard
+                    self._colors_dirty = False
+                    # Revert live preview
+                    self.apply_current_theme()
+                    self.update_color_buttons_from_theme()
+
+        # Existing persistence logic for editor
         typing_index = self.tabs.indexOf(self.editor_tab)
         if typing_index != -1 and self._last_tab_index == typing_index and index != typing_index:
             self.editor_tab.save_active_progress()
@@ -898,6 +927,7 @@ class MainWindow(QMainWindow):
         languages_index = self.tabs.indexOf(self.languages_tab)
         if index == languages_index and languages_index != -1:
             self.languages_tab.ensure_loaded()
+            
         self._last_tab_index = index
 
     def closeEvent(self, event):
@@ -1249,45 +1279,185 @@ class MainWindow(QMainWindow):
         theme_group.setLayout(theme_layout)
         s_layout.addWidget(theme_group)
         
-        # Color settings group
-        colors_group = QGroupBox("Colors")
-        colors_layout = QFormLayout()
+        # Theme Customization Section (Redesigned per reference image)
+        colors_group = QGroupBox("Theme Customization")
+        colors_layout = QVBoxLayout()
+        colors_layout.setSpacing(0) # Tighter spacing for table look
         
-        # Helper function to create color button
-        def create_color_button(setting_key: str, default: str, label: str):
-            color_val = settings.get_setting(setting_key, default)
-            btn = QPushButton()
-            btn.setFixedSize(80, 30)
-            btn.setStyleSheet(f"background-color: {color_val}; border: 1px solid #666;")
-            btn.clicked.connect(lambda: self.on_color_pick(setting_key, btn, label))
-            
-            row_layout = QHBoxLayout()
-            row_layout.addWidget(btn)
-            reset_btn = QPushButton("Reset")
-            reset_btn.clicked.connect(lambda: self.on_color_reset(setting_key, default, btn))
-            row_layout.addWidget(reset_btn)
-            row_layout.addStretch()
-            
-            colors_layout.addRow(f"{label}:", row_layout)
-            return btn
+        # 1. Section Title
+        self.theme_settings_title = QLabel("THEME SETTINGS: DRACULA")
+        self.theme_settings_title.setStyleSheet("font-weight: bold; font-size: 11pt; padding: 5px;")
+        colors_layout.addWidget(self.theme_settings_title)
         
-        self.color_untyped_btn = create_color_button("color_untyped", "#555555", "Untyped text")
-        self.color_correct_btn = create_color_button("color_correct", "#00ff00", "Correct text")
-        self.color_incorrect_btn = create_color_button("color_incorrect", "#ff0000", "Incorrect text")
-        self.color_paused_btn = create_color_button("color_paused_highlight", "#ffaa00", "Paused files")
-        self.color_cursor_btn = create_color_button("color_cursor", "#ffffff", "Cursor")
-        self.color_user_progress_btn = create_color_button(
-            "user_progress_bar_color", "#4CAF50", "Your progress bar"
-        )
-        self.color_ghost_progress_btn = create_color_button(
-            "ghost_progress_bar_color", "#9C27B0", "Ghost progress bar"
-        )
-        self.color_ghost_text_btn = create_color_button(
-            "ghost_text_color", "#8AB4F8", "Ghost text"
-        )
+        # 3. Dynamic Grid for Colors
+        # We use a grid to keep columns aligned but wrap it in a container
+        grid_container = QWidget()
+        self.color_grid = QGridLayout(grid_container)
+        self.color_grid.setContentsMargins(15, 0, 15, 15)
+        self.color_grid.setSpacing(10)
+        self.color_grid.setColumnStretch(1, 1) # Space between name and color
+        
+        # Add Header row directly into the grid for perfect alignment
+        header_bg = QFrame()
+        header_bg.setStyleSheet("background-color: rgba(255, 255, 255, 0.05); border-top: 1px solid #444; border-bottom: 1px solid #444;")
+        header_bg.setFixedHeight(35)
+        self.color_grid.addWidget(header_bg, 0, 0, 1, 3) # Span across columns 0, 1, and 2
+        
+        prop_header = QLabel("  PROPERTY")
+        prop_header.setStyleSheet("font-weight: bold; color: #888; font-size: 8pt; background: transparent;")
+        self.color_grid.addWidget(prop_header, 0, 0, Qt.AlignVCenter)
+        
+        val_header = QLabel("COLOR & VALUE  ")
+        val_header.setStyleSheet("font-weight: bold; color: #888; font-size: 8pt; background: transparent;")
+        self.color_grid.addWidget(val_header, 0, 2, Qt.AlignRight | Qt.AlignVCenter)
+
+        self.color_buttons = {}
+        self.color_hex_labels = {}
+        
+        categories = [
+            ("CORE PALETTE", [
+                ("bg_primary", "Main Background", "Used for the main window and typing area background."),
+                ("bg_secondary", "Secondary Background", "Used for sidebars, headers, and secondary UI panels."),
+                ("bg_tertiary", "Selection/Hover", "Used for hovered items and selected list entries."),
+                ("accent_color", "Accent Color", "Used for focus indicators, selection highlights, and active elements."),
+            ]),
+            ("TYPOGRAPHY", [
+                ("text_primary", "Main Text", "Used for the most important text like filenames and titles."),
+                ("text_secondary", "Secondary Text", "Used for paths, stats, and less prominent information."),
+                ("text_disabled", "Disabled Text", "Used for labels or buttons that are currently inactive."),
+            ]),
+            ("FOLDER & CARDS", [
+                ("card_bg", "Card Background", "Specific background for Folder rows and Language cards."),
+                ("card_border", "Card Border", "Specific border color for Folder rows and Language cards."),
+            ]),
+            ("TYPING STATES", [
+                ("text_untyped", "Untyped Text", "The color of characters in the editor that haven't been typed yet."),
+                ("text_correct", "Correct Text", "The color of characters that you have typed correctly."),
+                ("text_incorrect", "Incorrect Text", "The color of characters that you have typed incorrectly."),
+                ("text_paused", "Paused Text", "The highlight color for the code block you was previously typing (if session paused)."),
+                ("cursor_color", "Cursor Color", "The color of the typing cursor in the editor."),
+            ]),
+            ("UI COMPONENTS", [
+                ("border_color", "Borders", "Generic border color used for main divides and standard widgets."),
+                ("button_bg", "Button Background", "The default background color for all standard buttons."),
+                ("button_hover", "Button Hover", "The background color when hovering over a button."),
+            ]),
+            ("STATUS COLORS", [
+                ("success_color", "Success", "Used for positive messages, 100% accuracy, and completions."),
+                ("warning_color", "Warning", "Used for alerts and warnings (e.g. missing folder)."),
+                ("error_color", "Error", "Used for critical errors and failure states."),
+                ("info_color", "Info", "Used for informational notifications and tips."),
+            ]),
+        ]
+        
+        row = 1
+        for cat_name, items in categories:
+            # Category Row
+            cat_label = QLabel(cat_name)
+            cat_label.setStyleSheet("""
+                background-color: rgba(255, 255, 255, 0.03);
+                color: #aaa;
+                font-weight: bold;
+                font-size: 8pt;
+                padding: 4px 10px;
+                margin-top: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            """)
+            self.color_grid.addWidget(cat_label, row, 0, 1, 3)
+            row += 1
+            
+            for item in items:
+                key, label = item[0], item[1]
+                tooltip = item[2] if len(item) > 2 else ""
+                
+                # Name Label
+                name_lbl = QLabel(label)
+                name_lbl.setStyleSheet("color: #ccc; padding-left: 5px;")
+                if tooltip:
+                    name_lbl.setToolTip(tooltip)
+                self.color_grid.addWidget(name_lbl, row, 0)
+                
+                # Color swatch + Hex Label
+                swatch_container = QWidget()
+                swatch_layout = QHBoxLayout(swatch_container)
+                swatch_layout.setContentsMargins(0, 0, 0, 0)
+                swatch_layout.setSpacing(8)
+                
+                # Circular swatch (button)
+                btn = QPushButton()
+                btn.setFixedSize(22, 22)
+                btn.setCursor(Qt.PointingHandCursor)
+                if tooltip:
+                    btn.setToolTip(tooltip)
+                # Perfect circle styling: radius should be exactly half of width/height
+                # Using a slightly darker border for better definition on light colors
+                btn.setStyleSheet("""
+                    QPushButton {
+                        border-radius: 11px;
+                        border: 1px solid rgba(255, 255, 255, 0.15);
+                        background-color: #000;
+                    }
+                    QPushButton:hover {
+                        border: 1px solid rgba(255, 255, 255, 0.4);
+                    }
+                """)
+                btn.clicked.connect(lambda checked=False, k=key: self.on_unified_color_pick(k))
+                self.color_buttons[key] = btn
+                
+                # Hex string label - using a clearer weight and letter spacing to avoid blurriness
+                hex_lbl = QLabel("#000000")
+                hex_lbl.setStyleSheet("""
+                    color: #999; 
+                    font-family: 'JetBrains Mono', 'Cascadia Code', monospace; 
+                    font-size: 10pt;
+                    font-weight: 500;
+                """)
+                self.color_hex_labels[key] = hex_lbl
+                
+                swatch_layout.addStretch()
+                swatch_layout.addWidget(btn)
+                swatch_layout.addWidget(hex_lbl)
+                swatch_container.setMinimumWidth(130)
+                
+                self.color_grid.addWidget(swatch_container, row, 2)
+                row += 1
+        
+        colors_layout.addWidget(grid_container)
+        
+        # 4. Action Buttons Footer
+        footer_widget = QWidget()
+        footer_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.1); border-top: 1px solid #444;")
+        footer_layout = QHBoxLayout(footer_widget)
+        footer_layout.setContentsMargins(15, 12, 15, 12)
+        
+        self.btn_reset_theme = QPushButton("Reset Defaults")
+        self.btn_reset_theme.clicked.connect(self.on_reset_theme)
+        self.btn_reset_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_reset_theme.setMinimumWidth(100)
+        footer_layout.addWidget(self.btn_reset_theme)
+        
+        footer_layout.addStretch()
+        
+        self.btn_save_theme = QPushButton("Save Theme")
+        self.btn_save_theme.clicked.connect(self.on_save_theme)
+        self.btn_save_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_save_theme.setStyleSheet("background-color: #6272a4; color: white; border: none; padding: 8px 20px;")
+        footer_layout.addWidget(self.btn_save_theme)
+        
+        self.btn_new_theme = QPushButton("+ New Theme")
+        self.btn_new_theme.clicked.connect(self.on_new_theme)
+        self.btn_new_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_new_theme.setStyleSheet("background-color: #5e81ac; color: white; border: none; padding: 8px 20px;")
+        footer_layout.addWidget(self.btn_new_theme)
+        
+        colors_layout.addWidget(footer_widget)
         
         colors_group.setLayout(colors_layout)
         s_layout.addWidget(colors_group)
+        
+        # Initialize working scheme state
+        self._colors_dirty = False
+        self.update_color_buttons_from_theme()
         
         # Cursor settings group
         cursor_group = QGroupBox("Cursor")
@@ -1896,23 +2066,20 @@ class MainWindow(QMainWindow):
         self.scheme_combo.blockSignals(True)
         self.scheme_combo.clear()
         
-        if theme_type == "light":
-            self.scheme_combo.addItems([
-                "default",
-                "rose_pine_dawn",
-                "solarized_light",
-                "catppuccin_latte"
-            ])
-        else:
-            self.scheme_combo.addItems([
-                "nord", 
-                "catppuccin", 
-                "dracula", 
-                "cyberpunk", 
-                "monokai_pro", 
-                "gruvbox", 
-                "solarized_dark"
-            ])
+        from app.themes import THEMES, _get_custom_themes
+        
+        # Built-in themes
+        items = list(THEMES.get(theme_type, {}).keys())
+        
+        # Custom themes
+        customs = _get_custom_themes()
+        if theme_type in customs:
+            items.extend(list(customs[theme_type].keys()))
+            
+        # Deduplicate and sort
+        items = sorted(list(set(items)))
+        
+        self.scheme_combo.addItems(items)
         self.scheme_combo.blockSignals(False)
 
     def on_theme_changed(self, theme: str):
@@ -2380,44 +2547,54 @@ class MainWindow(QMainWindow):
             typing_area.highlighter.rehighlight()
     
     def update_color_buttons_from_theme(self):
-        """Update color picker button displays to reflect theme colors."""
-        from app.themes import get_color_scheme
+        """Update color picker button displays and labels to reflect theme colors."""
+        if not hasattr(self, 'color_buttons'):
+            return
+            
+        from app.themes import get_color_scheme, is_builtin_theme
         
-        # Get current theme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
+        # Get current theme settings
+        theme_type = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
         
-        # Update color buttons if they exist
-        if hasattr(self, 'color_untyped_btn'):
-            settings.set_setting("color_untyped", scheme.text_untyped)
-            self.color_untyped_btn.setStyleSheet(
-                f"background-color: {scheme.text_untyped}; border: 1px solid #666;"
-            )
+        # Update Section Title
+        if hasattr(self, 'theme_settings_title'):
+            self.theme_settings_title.setText(f"THEME SETTINGS: {scheme_name.upper()}")
         
-        if hasattr(self, 'color_correct_btn'):
-            settings.set_setting("color_correct", scheme.text_correct)
-            self.color_correct_btn.setStyleSheet(
-                f"background-color: {scheme.text_correct}; border: 1px solid #666;"
-            )
+        # Get scheme object
+        self.working_scheme = get_color_scheme(theme_type, scheme_name)
         
-        if hasattr(self, 'color_incorrect_btn'):
-            settings.set_setting("color_incorrect", scheme.text_incorrect)
-            self.color_incorrect_btn.setStyleSheet(
-                f"background-color: {scheme.text_incorrect}; border: 1px solid #666;"
-            )
+        # Update swatches and text labels
+        for key, btn in self.color_buttons.items():
+            if hasattr(self.working_scheme, key):
+                col = getattr(self.working_scheme, key)
+                # Update circular swatch style
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {col};
+                        border-radius: 11px;
+                        border: 1px solid rgba(255, 255, 255, 0.15);
+                    }}
+                    QPushButton:hover {{
+                        border: 1px solid rgba(255, 255, 255, 0.4);
+                    }}
+                """)
+                # Update hex label text
+                if key in self.color_hex_labels:
+                    self.color_hex_labels[key].setText(col.upper())
         
-        if hasattr(self, 'color_paused_btn'):
-            settings.set_setting("color_paused_highlight", scheme.text_paused)
-            self.color_paused_btn.setStyleSheet(
-                f"background-color: {scheme.text_paused}; border: 1px solid #666;"
-            )
-        
-        if hasattr(self, 'color_cursor_btn'):
-            settings.set_setting("color_cursor", scheme.cursor_color)
-            self.color_cursor_btn.setStyleSheet(
-                f"background-color: {scheme.cursor_color}; border: 1px solid #666;"
-            )
+        # Update Reset Button State
+        is_builtin = is_builtin_theme(theme_type, scheme_name)
+        if is_builtin:
+             self.btn_reset_theme.setEnabled(False)
+             self.btn_reset_theme.setToolTip("Current theme is at default values.")
+        else:
+             self.btn_reset_theme.setEnabled(True)
+             self.btn_reset_theme.setToolTip("Delete custom modifications for this theme.")
+             
+        # Update Save Button
+        self.btn_save_theme.setStyleSheet("background-color: #44475a; color: white; border: none; padding: 8px 20px;")
+        self._colors_dirty = False
     
     def refresh_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
@@ -2696,6 +2873,133 @@ class MainWindow(QMainWindow):
         self.ignored_patterns_changed.emit()
 
 
+
+
+    # =========================================================================
+    # Theme Management Methods
+    # =========================================================================
+
+    def on_unified_color_pick(self, key):
+        """Handle color picking for the unified theme editor."""
+        from PySide6.QtWidgets import QColorDialog
+        
+        if not hasattr(self, 'working_scheme'):
+            return
+
+        current_color = getattr(self.working_scheme, key, "#FFFFFF")
+        
+        color = QColorDialog.getColor(QColor(current_color), self, f"Select Color for {key}")
+        if color.isValid():
+            hex_color = color.name()
+            # Update working scheme
+            setattr(self.working_scheme, key, hex_color)
+            
+            # Update button
+            if key in self.color_buttons:
+                self.color_buttons[key].setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {hex_color};
+                        border-radius: 11px;
+                        border: 1px solid rgba(255, 255, 255, 0.3);
+                    }}
+                    QPushButton:hover {{
+                        border: 1px solid rgba(255, 255, 255, 0.5);
+                    }}
+                """)
+            
+            # Update hex label
+            if key in self.color_hex_labels:
+                self.color_hex_labels[key].setText(hex_color.upper())
+                
+            # Apply live preview
+            from app.themes import apply_theme_to_app
+            app = QApplication.instance()
+            apply_theme_to_app(app, self.working_scheme)
+            
+            # Update editor colors specifically
+            self.update_typing_colors(self.working_scheme)
+            
+            # Mark dirty
+            self._colors_dirty = True
+            
+            # Enable Save Highlights
+            self.btn_save_theme.setStyleSheet("background-color: #bd93f9; color: white; border: none; padding: 8px 20px; font-weight: bold;")
+
+    def on_save_theme(self):
+        """Save current colors to the current theme name (overwrite)."""
+        from app.themes import save_custom_theme
+        
+        theme_type = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        
+        save_custom_theme(scheme_name, self.working_scheme, theme_type)
+        
+        self._colors_dirty = False
+        self.btn_save_theme.setStyleSheet("") # Reset style
+        QMessageBox.information(self, "Theme Saved", f"Theme '{scheme_name}' has been updated.")
+        
+        # Refresh UI to show Reset button enabled
+        self.update_color_buttons_from_theme()
+
+    def on_new_theme(self):
+        """Save current colors as a NEW theme."""
+        from PySide6.QtWidgets import QInputDialog
+        from app.themes import save_custom_theme, THEMES
+        
+        name, ok = QInputDialog.getText(self, "New Theme", "Enter name for new theme:")
+        if ok and name:
+            # Clean name
+            clean_name = name.lower().replace(" ", "_")
+            if not clean_name:
+                return
+            
+            theme_type = settings.get_setting("theme", "dark")
+            
+            # Save
+            save_custom_theme(clean_name, self.working_scheme, theme_type)
+            
+            # Switch to new theme in settings
+            if theme_type == "dark":
+                settings.set_setting("dark_scheme", clean_name)
+            else:
+                settings.set_setting("light_scheme", clean_name)
+            
+            # Refresh combination box
+            self._populate_scheme_combo(theme_type)
+            # Select the new item
+            index = self.scheme_combo.findText(clean_name)
+            if index >= 0:
+                self.scheme_combo.setCurrentIndex(index)
+            
+            self._colors_dirty = False
+            QMessageBox.information(self, "Theme Created", f"Theme '{name}' created and selected.")
+
+    def on_reset_theme(self):
+        """Reset the current theme to its built-in default (deletes custom override)."""
+        from app.themes import delete_custom_theme, is_builtin_theme, get_color_scheme
+        from app.themes import apply_theme_to_app
+        
+        theme_type = settings.get_setting("theme", "dark")
+        scheme_name = settings.get_setting("dark_scheme", "dracula")
+        
+        if is_builtin_theme(theme_type, scheme_name):
+            return
+            
+        reply = QMessageBox.question(
+            self, "Reset Theme", 
+            f"Are you sure you want to reset '{scheme_name}' to defaults? This will delete your custom changes.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            delete_custom_theme(scheme_name, theme_type)
+            
+            # Refresh everything
+            self.apply_current_theme()
+            self.update_color_buttons_from_theme()
+            
+            self._colors_dirty = False
+            QMessageBox.information(self, "Reset", f"Theme '{scheme_name}' reset to defaults.")
 
 
 def create_splash_screen(app):

@@ -5,8 +5,10 @@ Themes include complete color schemes for UI elements, text editor, and all widg
 """
 import logging
 import re
+import json
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import app.settings as settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,27 @@ class ColorScheme:
     error_color: str  # Error messages
     info_color: str  # Info messages
 
+    # Card/List specific
+    card_bg: str  # Background for folders/language cards
+    card_border: str  # Border for folders/language cards
+
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dictionary."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, str]) -> 'ColorScheme':
+        """Create from dictionary."""
+        # Filter out unknown keys to be safe
+        known_keys = cls.__annotations__.keys()
+        filtered_data = {k: v for k, v in data.items() if k in known_keys}
+        # Provide defaults for missing keys (fallback to Dracula-ish)
+        defaults = DRACULA_DARK.to_dict() if 'DRACULA_DARK' in globals() else {}
+        for k in known_keys:
+            if k not in filtered_data:
+                filtered_data[k] = defaults.get(k, "#FF0000")
+        return cls(**filtered_data)
+
 
 # Nord Theme (Arctic, north-bluish color palette)
 NORD_DARK = ColorScheme(
@@ -110,6 +133,10 @@ NORD_DARK = ColorScheme(
     warning_color="#ebcb8b",  # nord13 - yellow
     error_color="#bf616a",  # nord11 - red
     info_color="#81a1c1",  # nord9 - light blue
+    
+    # Card/List specific
+    card_bg="#3b4252",
+    card_border="#4c566a",
 )
 
 
@@ -143,6 +170,10 @@ CATPPUCCIN_DARK = ColorScheme(
     warning_color="#f9e2af",  # yellow
     error_color="#f38ba8",  # red
     info_color="#74c7ec",  # sapphire
+    
+    # Card/List specific
+    card_bg="#181825",
+    card_border="#45475a",
 )
 
 
@@ -176,6 +207,10 @@ DRACULA_DARK = ColorScheme(
     warning_color="#f1fa8c",  # yellow
     error_color="#ff5555",  # red
     info_color="#8be9fd",  # cyan
+    
+    # Card/List specific
+    card_bg="#21222c",
+    card_border="#44475a",
 )
 
 
@@ -209,6 +244,10 @@ LIGHT_THEME = ColorScheme(
     warning_color="#f57c00",
     error_color="#c62828",
     info_color="#0288d1",
+    
+    # Card/List specific
+    card_bg="#f8f9fa",
+    card_border="#e9ecef",
 )
 
 
@@ -242,6 +281,10 @@ CYBERPUNK_DARK = ColorScheme(
     warning_color="#fcee0a",
     error_color="#ff003c",
     info_color="#00b8ff",
+    
+    # Card/List specific
+    card_bg="#161822",
+    card_border="#2a2d3e",
 )
 
 
@@ -275,6 +318,10 @@ MONOKAI_PRO = ColorScheme(
     warning_color="#FFD866",
     error_color="#FF6188",
     info_color="#78DCE8",
+    
+    # Card/List specific
+    card_bg="#403E41",
+    card_border="#5B595C",
 )
 
 
@@ -308,6 +355,10 @@ GRUVBOX_DARK = ColorScheme(
     warning_color="#fabd2f",
     error_color="#fb4934",
     info_color="#83a598",
+    
+    # Card/List specific
+    card_bg="#3c3836",
+    card_border="#504945",
 )
 
 
@@ -341,6 +392,10 @@ SOLARIZED_DARK = ColorScheme(
     warning_color="#b58900",
     error_color="#dc322f",
     info_color="#268bd2",
+    
+    # Card/List specific
+    card_bg="#073642",
+    card_border="#586e75",
 )
 
 
@@ -374,6 +429,10 @@ ROSE_PINE_DAWN = ColorScheme(
     warning_color="#ea9d34",
     error_color="#b4637a",
     info_color="#56949f",
+    
+    # Card/List specific
+    card_bg="#fffaf3",
+    card_border="#dfdad9",
 )
 
 
@@ -407,6 +466,10 @@ SOLARIZED_LIGHT = ColorScheme(
     warning_color="#b58900",
     error_color="#dc322f",
     info_color="#268bd2",
+    
+    # Card/List specific
+    card_bg="#eee8d5",
+    card_border="#d3d0c8",
 )
 
 
@@ -440,6 +503,10 @@ CATPPUCCIN_LATTE = ColorScheme(
     warning_color="#df8e1d",
     error_color="#d20f39",
     info_color="#1e66f5",
+    
+    # Card/List specific
+    card_bg="#e6e9ef",
+    card_border="#ccd0da",
 )
 
 
@@ -463,21 +530,66 @@ THEMES: Dict[str, Dict[str, ColorScheme]] = {
 }
 
 
+def _get_custom_themes() -> Dict[str, Dict]:
+    """Load custom themes from settings."""
+    try:
+        data = settings.get_setting("custom_themes", "{}")
+        return json.loads(data)
+    except Exception as e:
+        logger.error(f"Failed to load custom themes: {e}")
+        return {}
+
+def save_custom_theme(name: str, scheme: ColorScheme, type: str = "dark"):
+    """Save a custom theme."""
+    customs = _get_custom_themes()
+    if type not in customs:
+        customs[type] = {}
+    
+    customs[type][name] = scheme.to_dict()
+    settings.set_setting("custom_themes", json.dumps(customs))
+    
+    # Reload logic (optional, but good for consistency)
+    pass
+
+def delete_custom_theme(name: str, type: str = "dark"):
+    """Delete a custom theme."""
+    customs = _get_custom_themes()
+    if type in customs and name in customs[type]:
+        del customs[type][name]
+        settings.set_setting("custom_themes", json.dumps(customs))
+
 def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
     """Get a color scheme by theme and scheme name.
     
-    Args:
-        theme: Theme type ("dark" or "light")
-        scheme: Scheme name ("nord", "catppuccin", "dracula", etc.)
-        
-    Returns:
-        ColorScheme object with all colors
+    Checks custom themes first, then built-in.
     """
-    if theme == "light":
-        return THEMES["light"].get(scheme, LIGHT_THEME)
+    # Check custom themes first
+    customs = _get_custom_themes()
+    if theme in customs and scheme in customs[theme]:
+        return ColorScheme.from_dict(customs[theme][scheme])
     
-    # Default to nord if scheme not found
-    return THEMES["dark"].get(scheme, NORD_DARK)
+    # Check built-in
+    if theme == "light":
+        scheme_obj = THEMES["light"].get(scheme, LIGHT_THEME)
+    else:
+        scheme_obj = THEMES["dark"].get(scheme, NORD_DARK)
+        
+    # Return a copy to prevent accidental mutation of global defaults
+    return ColorScheme.from_dict(scheme_obj.to_dict())
+
+def is_builtin_theme(theme: str, scheme: str) -> bool:
+    """Check if a theme is built-in (and unmodified)."""
+    # Simply check if it exists in the hardcoded list
+    # Note: If a custom theme exists with same name, this returns True 
+    # for the NAME, but effectively it's overridden.
+    # The logic for "Reset" depends on whether a custom entry exists.
+    customs = _get_custom_themes()
+    if theme in customs and scheme in customs[theme]:
+        return False # It is overridden by a custom theme
+    
+    if theme == "light":
+        return scheme in THEMES["light"]
+    return scheme in THEMES["dark"]
 
 
 def generate_app_stylesheet(scheme: ColorScheme) -> str:
@@ -491,8 +603,8 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     Returns:
         Complete Qt stylesheet string
     """
-    # Create cache key from scheme colors
-    cache_key = f"{scheme.bg_primary}_{scheme.text_primary}_{scheme.accent_color}_v2"
+    # Create cache key from all scheme colors to ensure updates when any color changes
+    cache_key = "|".join(f"{k}:{v}" for k, v in sorted(scheme.to_dict().items()))
     
     # Return cached stylesheet if available
     if cache_key in _stylesheet_cache:
@@ -549,9 +661,15 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     
     /* Language Cards - Modern card design */
     QFrame#LanguageCard {{
-        background-color: {scheme.bg_secondary};
-        border: 1px solid {scheme.border_color};
+        background-color: {scheme.card_bg};
+        border: 1px solid {scheme.card_border};
         border-radius: 12px;
+    }}
+    
+    QFrame#folderCard {{
+        background-color: {scheme.card_bg};
+        border: 1px solid {scheme.card_border};
+        border-radius: 8px;
     }}
     
     QFrame#LanguageCard:hover {{

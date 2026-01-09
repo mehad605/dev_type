@@ -36,6 +36,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "theme": "dark",
     "dark_scheme": "dracula",
     "light_scheme": "default",
+    "custom_themes": "{}",
     
     # Confirmation dialogs
     "delete_confirm": "1",
