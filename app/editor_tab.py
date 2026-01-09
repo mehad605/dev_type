@@ -538,6 +538,10 @@ class EditorTab(QWidget):
             language=get_language_for_file(self.current_file),
             key_confusions=stats.get("key_confusions", {})
         )
+        stats_db.update_error_type_stats(
+            language=get_language_for_file(self.current_file),
+            errors=stats.get("error_types", {})
+        )
 
         # Check and save ghost if this is a new best
         is_new_best = self._check_and_save_ghost(stats)
@@ -1072,6 +1076,10 @@ class EditorTab(QWidget):
                 stats_db.update_key_confusions(
                     language=lang,
                     key_confusions=self.typing_area.engine.state.key_confusions
+                )
+                stats_db.update_error_type_stats(
+                    language=lang,
+                    errors=self.typing_area.engine.state.error_types
                 )
 
             # Check and save new ghost if this beat the old one

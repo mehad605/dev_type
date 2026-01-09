@@ -169,6 +169,30 @@ def init_stats_tables():
             PRIMARY KEY (expected_char, actual_char, language)
         )
     """)
+
+    # Error type statistics (Missed, Extra, Swapped)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS error_type_stats (
+            language TEXT PRIMARY KEY,
+            omissions INTEGER DEFAULT 0,
+            insertions INTEGER DEFAULT 0,
+            transpositions INTEGER DEFAULT 0,
+            substitutions INTEGER DEFAULT 0
+        )
+    """)
+
+    # Bigram performance table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bigram_stats (
+            char1 TEXT,
+            char2 TEXT,
+            language TEXT,
+            total_time REAL DEFAULT 0,
+            correct_count INTEGER DEFAULT 0,
+            error_count INTEGER DEFAULT 0,
+            PRIMARY KEY (char1, char2, language)
+        )
+    """)
     
     conn.commit()
     conn.close()
@@ -328,52 +352,109 @@ def record_session_history(
 
 
 def update_key_stats(language: str, key_hits: Dict[str, int], key_misses: Dict[str, int]):
-    """Update language-specific key statistics."""
+    """Update language-specific key statistics using batch operations."""
     conn = _connect()
     cur = conn.cursor()
     lang = language or ""
     
-    # Process hits
-    for char, count in key_hits.items():
-        cur.execute("""
+    # Batch hits
+    hits_data = [(char, lang, count) for char, count in key_hits.items()]
+    if hits_data:
+        cur.executemany("""
             INSERT INTO key_stats (char, language, correct_count) 
             VALUES (?, ?, ?)
             ON CONFLICT(char, language) DO UPDATE SET 
                 correct_count = correct_count + excluded.correct_count,
                 last_updated = CURRENT_TIMESTAMP
-        """, (char, lang, count))
+        """, hits_data)
         
-    # Process misses
-    for char, count in key_misses.items():
-        cur.execute("""
+    # Batch misses
+    misses_data = [(char, lang, count) for char, count in key_misses.items()]
+    if misses_data:
+        cur.executemany("""
             INSERT INTO key_stats (char, language, error_count) 
             VALUES (?, ?, ?)
             ON CONFLICT(char, language) DO UPDATE SET 
                 error_count = error_count + excluded.error_count,
                 last_updated = CURRENT_TIMESTAMP
-        """, (char, lang, count))
+        """, misses_data)
         
     conn.commit()
     conn.close()
 
 
 def update_key_confusions(language: str, key_confusions: Dict[str, Dict[str, int]]):
-    """Update language-specific key confusion statistics."""
+    """Update language-specific key confusion statistics using batch operations."""
     conn = _connect()
     cur = conn.cursor()
     lang = language or ""
     
+    conf_data = []
     for expected, actuals in key_confusions.items():
         for actual, count in actuals.items():
-            cur.execute("""
-                INSERT INTO key_confusions (expected_char, actual_char, language, count) 
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(expected_char, actual_char, language) DO UPDATE SET 
-                    count = count + excluded.count
-            """, (expected, actual, lang, count))
+            conf_data.append((expected, actual, lang, count))
+            
+    if conf_data:
+        cur.executemany("""
+            INSERT INTO key_confusions (expected_char, actual_char, language, count) 
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(expected_char, actual_char, language) DO UPDATE SET 
+                count = count + excluded.count
+        """, conf_data)
             
     conn.commit()
     conn.close()
+
+
+def update_error_type_stats(language: str, errors: Dict[str, int]):
+    """Update language-specific error type statistics."""
+    conn = _connect()
+    cur = conn.cursor()
+    lang = language or ""
+    
+    cur.execute("""
+        INSERT INTO error_type_stats (language, omissions, insertions, transpositions, substitutions)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(language) DO UPDATE SET
+            omissions = omissions + excluded.omissions,
+            insertions = insertions + excluded.insertions,
+            transpositions = transpositions + excluded.transpositions,
+            substitutions = substitutions + excluded.substitutions
+    """, (lang, errors.get('omission', 0), errors.get('insertion', 0), 
+          errors.get('transposition', 0), errors.get('substitution', 0)))
+            
+    conn.commit()
+    conn.close()
+
+
+def get_error_type_stats(languages: Optional[List[str]] = None) -> Dict[str, int]:
+    """Get aggregated error type statistics."""
+    conn = _connect()
+    cur = conn.cursor()
+    
+    query = "SELECT SUM(omissions), SUM(insertions), SUM(transpositions), SUM(substitutions) FROM error_type_stats"
+    params = []
+    if languages:
+        placeholders = ",".join(["?"] * len(languages))
+        query += f" WHERE language IN ({placeholders})"
+        params = languages
+        
+    cur.execute(query, params)
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row or row[0] is None:
+        return {'omission': 0, 'insertion': 0, 'transposition': 0, 'substitution': 0}
+        
+    return {
+        'omission': row[0],
+        'insertion': row[1],
+        'transposition': row[2],
+        'substitution': row[3]
+    }
+
+
+
 
 
 def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:

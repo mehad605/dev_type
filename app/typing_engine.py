@@ -25,11 +25,13 @@ class TypingState:
     key_hits: dict = None  # Lazy init in __post_init__ or process_keystroke
     key_misses: dict = None
     key_confusions: dict = None  # Maps expected char -> {actual_char: count}
+    error_types: dict = None  # Maps 'omission', 'insertion', 'transposition', 'substitution' -> count
     
     def __post_init__(self):
         if self.key_hits is None: self.key_hits = {}
         if self.key_misses is None: self.key_misses = {}
         if self.key_confusions is None: self.key_confusions = {}
+        if self.error_types is None: self.error_types = {'omission': 0, 'insertion': 0, 'transposition': 0, 'substitution': 0}
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -132,15 +134,15 @@ class TypingEngine:
         if self.state.cursor_position >= len(self.state.content):
             return False, ""
         
+        expected_char = self.state.content[self.state.cursor_position]
+        is_correct = typed_char == expected_char
+        
         # If there's a mistake and we're not allowing continuation, block input
         if self.mistake_at is not None and not self.allow_continue_mistakes:
             # Count as incorrect keystroke but don't advance
             self.state.incorrect_keystrokes += 1
-            return False, ""
+            return False, expected_char
             
-        expected_char = self.state.content[self.state.cursor_position]
-        is_correct = typed_char == expected_char
-        
         if is_correct:
             self.state.correct_keystrokes += 1
             self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
@@ -157,6 +159,19 @@ class TypingEngine:
         else:
             self.state.incorrect_keystrokes += 1
             self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
+            
+            # Categorize Error Type (Heuristics)
+            # 1. Swapped: User typed the next character
+            next_char = self.state.content[self.state.cursor_position + 1] if self.state.cursor_position + 1 < len(self.state.content) else None
+            # 2. Missed: User typed the character after next
+            next_next_char = self.state.content[self.state.cursor_position + 2] if self.state.cursor_position + 2 < len(self.state.content) else None
+            
+            if typed_char == next_char:
+                self.state.error_types['transposition'] += 1
+            elif typed_char == next_next_char:
+                self.state.error_types['omission'] += 1
+            else:
+                self.state.error_types['insertion'] += 1 # Default to insertion if not transposition or omission
             
             # Record what was typed instead
             if expected_char not in self.state.key_confusions:
