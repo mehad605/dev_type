@@ -1193,9 +1193,9 @@ class MainWindow(QMainWindow):
         explorer_layout = QVBoxLayout()
         
         explorer_desc = QLabel(
-            "Configure files and folders to ignore globally. "
-            "Hidden items won't appear in folder counts, language cards, or statistics. "
-            "Use standard glob patterns (e.g. *.exe, *.pyc) or exact names."
+            "Exclude files and folders globally using standard glob patterns. "
+            "To ignore a file type, use <b>*.extension</b> (e.g. *.exe). "
+            "Exact filenames or paths also work. Hidden items are removed from all counts and statistics."
         )
         explorer_desc.setWordWrap(True)
         explorer_desc.setStyleSheet("color: #888888; font-size: 9pt;")
@@ -1217,7 +1217,7 @@ class MainWindow(QMainWindow):
         # Ignored Files
         explorer_layout.addWidget(QLabel("Ignored Files/Patterns (one per line):"))
         self.ignored_files_edit = QTextEdit()
-        self.ignored_files_edit.setPlaceholderText("*.exe\n*.pyc\n__pycache__\n\"Test.py\"")
+        self.ignored_files_edit.setPlaceholderText("*.exe\n*.zip\n*.pyc\nconfig.json\n\"CaseSensitiveName.py\"")
         self.ignored_files_edit.setMaximumHeight(100)
         self.ignored_files_edit.setStyleSheet(input_style)
         self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
@@ -1226,7 +1226,7 @@ class MainWindow(QMainWindow):
         # Ignored Folders
         explorer_layout.addWidget(QLabel("Ignored Folders (one per line):"))
         self.ignored_folders_edit = QTextEdit()
-        self.ignored_folders_edit.setPlaceholderText(".git\nnode_modules\n\"Build\"")
+        self.ignored_folders_edit.setPlaceholderText(".git\nnode_modules\nvenv\nbuild\n\"ExactFolderName\"")
         self.ignored_folders_edit.setMaximumHeight(100)
         self.ignored_folders_edit.setStyleSheet(input_style)
         self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))

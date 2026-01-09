@@ -91,8 +91,24 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "expanded_folders": "[]",
     
     # Global Exclusions (user-configurable)
-    "ignored_files": "*.exe\n*.dll\n*.so\n*.dylib\n*.bin\n*.obj\n*.o\n*.pyc\n*.class\n*.jar\n*.zip\n*.tar\n*.gz\n*.7z\n*.rar\n*.pdf\n*.doc\n*.docx\n*.xls\n*.xlsx\n*.ppt\n*.pptx",
-    "ignored_folders": ".git\nnode_modules\n__pycache__\n.venv\nvenv\nbuild\ndist\nbin\nobj",
+    "ignored_files": (
+        # Binaries & Executables
+        "*.exe\n*.dll\n*.so\n*.dylib\n*.bin\n*.obj\n*.o\n*.a\n*.lib\n"
+        # Caches & Temp files
+        "*.pyc\n*.pyo\n*.pyd\n*.class\n*.log\n*.tmp\n"
+        # Archives
+        "*.zip\n*.tar\n*.gz\n*.7z\n*.rar\n*.iso\n"
+        # Media & Documents
+        "*.pdf\n*.png\n*.jpg\n*.jpeg\n*.gif\n*.svg\n*.ico\n*.mp3\n*.mp4\n"
+        "*.doc\n*.docx\n*.xls\n*.xlsx\n*.ppt\n*.pptx"
+    ),
+    "ignored_folders": (
+        ".git\n.github\n.vscode\n.idea\n"
+        "node_modules\n__pycache__\n"
+        ".venv\nvenv\nenv\n"
+        "build\ndist\ntarget\nout\n"
+        "bin\nobj\n.pytest_cache\n.mypy_cache"
+    ),
 }
 
 

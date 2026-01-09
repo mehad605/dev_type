@@ -29,6 +29,30 @@ def _get_icon_manager():
     return get_icon_manager()
 
 
+class FileTreeItem(QTreeWidgetItem):
+    """Custom QTreeWidgetItem that sorts folders before files."""
+    def __lt__(self, other):
+        if not isinstance(other, QTreeWidgetItem):
+            return super().__lt__(other)
+
+        tree = self.treeWidget()
+        # Only apply custom sorting for the first column (Name)
+        if tree is not None and tree.sortColumn() == 0:
+            role = Qt.UserRole + 1
+            # Sort folders (0) before files (1)
+            v1 = 0 if self.data(0, role) == "folder" else 1
+            v2 = 0 if other.data(0, role) == "folder" else 1
+            
+            if v1 != v2:
+                # Return True if self should come BEFORE other in Ascending (v1 < v2)
+                return v1 < v2
+                
+            # Both are same type, sort by text (case-insensitive)
+            return self.text(0).lower() < other.text(0).lower()
+            
+        return super().__lt__(other)
+
+
 class InternalFileTree(QTreeWidget):
     """Tree widget displaying files with best/last WPM columns."""
     
@@ -141,29 +165,36 @@ class InternalFileTree(QTreeWidget):
         """Load a single folder and display its file tree."""
         self._last_load_args = ("load_folder", (folder_path,), {})
         self.refresh_incomplete_sessions()
+        self.setSortingEnabled(False)
         self.clear()
         root_path = Path(folder_path)
         if not root_path.exists():
+            self.setSortingEnabled(True)
             return
         
-        root_item = QTreeWidgetItem(self, [root_path.name, "", ""])
+        root_item = FileTreeItem(self, [root_path.name, "", ""])
         root_item.setData(0, Qt.UserRole, str(root_path))
+        root_item.setData(0, Qt.UserRole + 1, "folder")
         root_item.setIcon(0, self.folder_icon)
         self._populate_tree(root_item, root_path)
         root_item.setExpanded(True)
+        self.setSortingEnabled(True)
+        self.sortByColumn(0, Qt.AscendingOrder)
     
     def load_folders(self, folder_paths: List[str]):
         """Load multiple folders and display them as separate tree roots."""
         self._last_load_args = ("load_folders", (folder_paths,), {})
         self.refresh_incomplete_sessions()
+        self.setSortingEnabled(False)
         self.clear()
         for folder_path in folder_paths:
             root_path = Path(folder_path)
             if not root_path.exists():
                 continue
             
-            root_item = QTreeWidgetItem(self, [root_path.name, "", ""])
+            root_item = FileTreeItem(self, [root_path.name, "", ""])
             root_item.setData(0, Qt.UserRole, str(root_path))
+            root_item.setData(0, Qt.UserRole + 1, "folder")
             root_item.setIcon(0, self.folder_icon)
             self._populate_tree(root_item, root_path)
             # Check persistence for root items in multi-folder view
@@ -171,11 +202,14 @@ class InternalFileTree(QTreeWidget):
                 root_item.setExpanded(True)
             else:
                 root_item.setExpanded(False)
+        self.setSortingEnabled(True)
+        self.sortByColumn(0, Qt.AscendingOrder)
     
     def load_language_files(self, language: str, files: List[str]):
         """Load files grouped by their parent folders for a specific language."""
         self._last_load_args = ("load_language_files", (language, files), {})
         self.refresh_incomplete_sessions()
+        self.setSortingEnabled(False)
         self.clear()
         
         # Group files by their parent folder
@@ -191,8 +225,9 @@ class InternalFileTree(QTreeWidget):
         # Create tree items for each folder
         for folder, file_list in sorted(folder_files.items()):
             folder_path = Path(folder)
-            folder_item = QTreeWidgetItem(self, [folder_path.name, "", ""])
+            folder_item = FileTreeItem(self, [folder_path.name, "", ""])
             folder_item.setData(0, Qt.UserRole, folder)
+            folder_item.setData(0, Qt.UserRole + 1, "folder")
             folder_item.setIcon(0, self.folder_icon)
             
             for file_path in sorted(file_list):
@@ -203,12 +238,13 @@ class InternalFileTree(QTreeWidget):
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
                 language = LANGUAGE_MAP.get(file_path_obj.suffix.lower())
                 
-                file_item = QTreeWidgetItem(folder_item, [
+                file_item = FileTreeItem(folder_item, [
                     file_path_obj.name,
                     best_wpm,
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, str(file_path))
+                file_item.setData(0, Qt.UserRole + 1, "file")
                 icon, icon_error = self._icon_for_language(language)
                 file_item.setIcon(0, icon)
                 if icon_error:
@@ -224,8 +260,10 @@ class InternalFileTree(QTreeWidget):
                 folder_item.setExpanded(True)
             else:
                 folder_item.setExpanded(False)
+        self.setSortingEnabled(True)
+        self.sortByColumn(0, Qt.AscendingOrder)
     
-    def _populate_tree(self, parent_item: QTreeWidgetItem, path: Path):
+    def _populate_tree(self, parent_item: FileTreeItem, path: Path):
         """Recursively populate tree with files and folders."""
         try:
             items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
@@ -246,8 +284,9 @@ class InternalFileTree(QTreeWidget):
                 continue
             
             if item.is_dir():
-                folder_item = QTreeWidgetItem(parent_item, [item.name, "", ""])
+                folder_item = FileTreeItem(parent_item, [item.name, " ", " "])
                 folder_item.setData(0, Qt.UserRole, str(item))
+                folder_item.setData(0, Qt.UserRole + 1, "folder")
                 folder_item.setIcon(0, self.folder_icon)
                 self._populate_tree(folder_item, item)
                 
@@ -266,12 +305,13 @@ class InternalFileTree(QTreeWidget):
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
                 language = LANGUAGE_MAP.get(item.suffix.lower())
                 
-                file_item = QTreeWidgetItem(parent_item, [
+                file_item = FileTreeItem(parent_item, [
                     item.name,
                     best_wpm,
                     last_wpm
                 ])
                 file_item.setData(0, Qt.UserRole, file_path_str)
+                file_item.setData(0, Qt.UserRole + 1, "file")
                 icon, icon_error = self._icon_for_language(language)
                 file_item.setIcon(0, icon)
                 if icon_error:

@@ -39,11 +39,6 @@ def _get_global_ignore_sql() -> str:
         # Remove quotes used for case-insensitivity in the UI
         p = pattern[1:-1] if pattern.startswith('"') and pattern.endswith('"') else pattern
         
-        # If it looks like an extension (starts with .), treat it as suffix match
-        if p.startswith('.') and '*' not in p and '?' not in p:
-            clauses.append(f"file_path NOT LIKE '%{p}'")
-            continue
-
         # If it's a simple name, match it anywhere in the path or as a suffix
         if '/' not in p and '\\' not in p:
             clauses.append(f"file_path NOT GLOB '*/{p}'")
