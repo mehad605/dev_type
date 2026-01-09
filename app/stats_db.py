@@ -160,36 +160,41 @@ def get_file_stats(file_path: str) -> Optional[Dict]:
 
 
 def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-    """Fetch stats for multiple files with a single query."""
+    """Fetch stats for multiple files with a single query, chunked to avoid SQLite limits."""
     paths = list({path for path in file_paths if path})
     if not paths:
         return {}
 
     conn = _connect()
     cur = conn.cursor()
-    placeholders = ",".join(["?"] * len(paths))
-    cur.execute(
-        f"""
-        SELECT file_path, best_wpm, last_wpm, best_accuracy, last_accuracy,
-               times_practiced, completed
-        FROM file_stats
-        WHERE file_path IN ({placeholders})
-        """,
-        paths,
-    )
-    rows = cur.fetchall()
-    conn.close()
-
     stats_map: Dict[str, Dict[str, Any]] = {}
-    for row in rows:
-        stats_map[row[0]] = {
-            "best_wpm": row[1],
-            "last_wpm": row[2],
-            "best_accuracy": row[3],
-            "last_accuracy": row[4],
-            "times_practiced": row[5],
-            "completed": row[6],
-        }
+    
+    # SQLite parameter limit is usually 999. Use 500 for safety.
+    CHUNK_SIZE = 500
+    for i in range(0, len(paths), CHUNK_SIZE):
+        chunk = paths[i:i + CHUNK_SIZE]
+        placeholders = ",".join(["?"] * len(chunk))
+        cur.execute(
+            f"""
+            SELECT file_path, best_wpm, last_wpm, best_accuracy, last_accuracy,
+                   times_practiced, completed
+            FROM file_stats
+            WHERE file_path IN ({placeholders})
+            """,
+            chunk,
+        )
+        rows = cur.fetchall()
+        for row in rows:
+            stats_map[row[0]] = {
+                "best_wpm": row[1],
+                "last_wpm": row[2],
+                "best_accuracy": row[3],
+                "last_accuracy": row[4],
+                "times_practiced": row[5],
+                "completed": row[6],
+            }
+            
+    conn.close()
     return stats_map
 
 
@@ -310,6 +315,78 @@ def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[D
 
     avg = sum(wpms) / len(wpms)
     return {"average": avg, "count": len(wpms)}
+
+
+def get_bulk_recent_wpm_averages(languages: List[str], limit_per_lang: int = 10) -> Dict[str, Dict[str, Any]]:
+    """Fetch recent WPM averages for multiple languages in a single efficient query."""
+    if not languages:
+        return {}
+
+    conn = _connect()
+    cur = conn.cursor()
+    
+    # We use a window function to get the top N rows per language in one go
+    # This is much faster than running 10-100 separate queries.
+    placeholders = ",".join(["?"] * len(languages))
+    query = f"""
+        SELECT language, wpm
+        FROM (
+            SELECT language, wpm,
+                   ROW_NUMBER() OVER (PARTITION BY language ORDER BY recorded_at DESC) as rank
+            FROM session_history
+            WHERE completed = 1 AND language IN ({placeholders})
+        )
+        WHERE rank <= ?
+    """
+    
+    try:
+        cur.execute(query, (*languages, limit_per_lang))
+        rows = cur.fetchall()
+    except sqlite3.OperationalError:
+        # Fallback if window functions are not supported by the current SQLite version
+        conn.close()
+        results = {}
+        for lang in languages:
+            one = get_recent_wpm_average_by_language(lang, limit_per_lang)
+            if one: results[lang] = one
+        return results
+        
+    conn.close()
+
+    # Group results by language
+    lang_wpms = {}
+    for lang, wpm in rows:
+        if lang not in lang_wpms:
+            lang_wpms[lang] = []
+        lang_wpms[lang].append(wpm)
+
+    results = {}
+    for lang, wpms in lang_wpms.items():
+        if wpms:
+            results[lang] = {
+                "average": sum(wpms) / len(wpms),
+                "count": len(wpms)
+            }
+    return results
+
+
+def get_recent_wpm_average_by_language(language: str, limit: int = 10) -> Optional[Dict[str, float]]:
+    """Return average WPM for the most recent sessions for a specific language."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT wpm FROM session_history
+        WHERE completed = 1 AND language = ?
+        ORDER BY recorded_at DESC
+        LIMIT ?
+    """, (language, limit))
+    rows = cur.fetchall()
+    conn.close()
+    
+    if not rows: return None
+    wpms = [r[0] for r in rows if r[0] is not None]
+    if not wpms: return None
+    return {"average": sum(wpms)/len(wpms), "count": len(wpms)}
 
 
 def list_history_languages() -> List[str]:

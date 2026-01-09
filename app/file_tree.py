@@ -91,8 +91,6 @@ class InternalFileTree(QTreeWidget):
         self.itemCollapsed.connect(self._on_item_collapsed)
         
         # Ignore settings
-        self.ignored_files = []
-        self.ignored_folders = []
         self._load_ignore_settings()
         
         # State for reloading
@@ -133,11 +131,9 @@ class InternalFileTree(QTreeWidget):
     
     def _load_ignore_settings(self):
         """Load global ignore settings."""
-        raw_files = settings.get_setting("ignored_files", settings.get_default("ignored_files"))
-        raw_folders = settings.get_setting("ignored_folders", settings.get_default("ignored_folders"))
-        
-        self.ignored_files = [p.strip() for p in raw_files.split('\n') if p.strip()]
-        self.ignored_folders = [p.strip() for p in raw_folders.split('\n') if p.strip()]
+        from app.file_scanner import get_global_ignore_settings, IgnoreManager
+        f_patterns, d_patterns = get_global_ignore_settings()
+        self.ignore_manager = IgnoreManager(f_patterns, d_patterns)
 
     def update_ignore_settings(self):
         """Reload ignore settings and refresh the tree."""
@@ -156,9 +152,9 @@ class InternalFileTree(QTreeWidget):
     def _is_ignored(self, path: Path) -> bool:
         """Check if a file or folder should be ignored using global logic."""
         if path.is_dir():
-            return should_ignore_folder(path, self.ignored_folders)
+            return self.ignore_manager.should_ignore_folder(path)
         elif path.is_file():
-            return should_ignore_file(path, self.ignored_files)
+            return self.ignore_manager.should_ignore_file(path)
         return False
 
     def load_folder(self, folder_path: str):

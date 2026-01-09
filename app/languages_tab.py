@@ -247,7 +247,14 @@ class LanguagesTab(QWidget):
         scroll.setWidget(self.card_container)
         
         self.layout.addWidget(scroll)
-        self._show_message("Languages load when needed. Switch to this tab to scan your folders.")
+
+        # Initial loading state from cache
+        if self._cached_language_files:
+            self._populate_cards(self._cached_language_files)
+            # We don't mark as _loaded=True here yet because we still want to verify 
+            # with ensure_loaded(), but at least the UI is not empty.
+        else:
+            self._show_message("Languages load when needed. Switch to this tab to scan your folders.")
         
         if DEBUG_STARTUP_TIMING:
             print(f"    [LanguagesTab] TOTAL: {time.time() - t_start:.3f}s")
@@ -279,11 +286,15 @@ class LanguagesTab(QWidget):
         all_files = [path for paths in language_files.values() for path in paths]
         stats_map = stats_db.get_file_stats_for_files(all_files)
         
+        # Batch fetch WPM averages for all languages at once
+        all_langs = list(language_files.keys())
+        bulk_averages = stats_db.get_bulk_recent_wpm_averages(all_langs, limit_per_lang=10)
+        
         # Store card references for later updates
         self._language_cards: Dict[str, LanguageCard] = {}
 
         for lang, files in sorted(language_files.items()):
-            recent = stats_db.get_recent_wpm_average(files, limit=10)
+            recent = bulk_averages.get(lang)
             avg_wpm = None
             sample_size = 0
             if recent:

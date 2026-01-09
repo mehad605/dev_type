@@ -173,6 +173,100 @@ def validate_file_path(file_path: str, root_folder: Optional[str] = None) -> Tup
     return True, None
 
 
+class IgnoreManager:
+    """Optimized manager for checking if paths should be ignored."""
+    
+    def __init__(self, ignored_files: List[str], ignored_folders: List[str]):
+        # Files/Patterns
+        self.file_exts: Set[str] = set()
+        self.file_names: Set[str] = set()
+        self.file_paths: Set[str] = set()
+        self.file_globs: List[Tuple[str, bool, bool]] = [] # (pattern, is_path, is_case_insensitive)
+        
+        # Folders
+        self.folder_names: Set[str] = set()
+        self.folder_paths: Set[str] = set()
+        self.folder_globs: List[Tuple[str, bool, bool]] = []
+        
+        for p in ignored_files:
+            self._add_pattern(p, is_folder=False)
+        for p in ignored_folders:
+            self._add_pattern(p, is_folder=True)
+
+    def _add_pattern(self, pattern: str, is_folder: bool):
+        is_case_insensitive = pattern.startswith('"') and pattern.endswith('"')
+        orig_p = pattern[1:-1] if is_case_insensitive else pattern
+        p = orig_p.lower() if is_case_insensitive else orig_p
+        
+        is_path = "\\" in orig_p or "/" in orig_p
+        has_wildcard = '*' in orig_p or '?' in orig_p
+        
+        # 1. Optimized Extension Check: *.exe (no other wildcards)
+        if not is_folder and p.startswith("*.") and not is_path:
+            rest = p[2:]
+            if '*' not in rest and '?' not in rest:
+                self.file_exts.add(p[1:]) # .exe
+                return
+
+        # 2. Exact Match (No Wildcards)
+        if not has_wildcard:
+            if is_path:
+                if is_folder: self.folder_paths.add(p)
+                else: self.file_paths.add(p)
+            else:
+                if is_folder: self.folder_names.add(p)
+                else: self.file_names.add(p)
+            return
+
+        # 3. Glob Match (fallback)
+        if is_folder:
+            self.folder_globs.append((p, is_path, is_case_insensitive))
+        else:
+            self.file_globs.append((p, is_path, is_case_insensitive))
+
+    def should_ignore_file(self, path: Path) -> bool:
+        name = path.name
+        ext = path.suffix.lower()
+        if ext in self.file_exts:
+            return True
+            
+        name_lower = name.lower()
+        if name in self.file_names or name_lower in self.file_names:
+            return True
+            
+        str_path = str(path)
+        str_path_lower = str_path.lower()
+        if str_path in self.file_paths or str_path_lower in self.file_paths:
+            return True
+            
+        for p, is_path, is_ci in self.file_globs:
+            to_check = (str_path_lower if is_ci else str_path) if is_path else (name_lower if is_ci else name)
+            if is_ci:
+                if fnmatch.fnmatch(to_check, p): return True
+            else:
+                if fnmatch.fnmatchcase(to_check, p): return True
+        return False
+
+    def should_ignore_folder(self, path: Path) -> bool:
+        name = path.name
+        name_lower = name.lower()
+        if name in self.folder_names or name_lower in self.folder_names:
+            return True
+            
+        str_path = str(path)
+        str_path_lower = str_path.lower()
+        if str_path in self.folder_paths or str_path_lower in self.folder_paths:
+            return True
+            
+        for p, is_path, is_ci in self.folder_globs:
+            to_check = (str_path_lower if is_ci else str_path) if is_path else (name_lower if is_ci else name)
+            if is_ci:
+                if fnmatch.fnmatch(to_check, p): return True
+            else:
+                if fnmatch.fnmatchcase(to_check, p): return True
+        return False
+
+
 def get_global_ignore_settings() -> Tuple[List[str], List[str]]:
     """Return (ignored_files, ignored_folders) from settings."""
     raw_files = settings.get_setting("ignored_files", settings.get_default("ignored_files"))
@@ -185,55 +279,15 @@ def get_global_ignore_settings() -> Tuple[List[str], List[str]]:
 
 
 def should_ignore_file(path: Path, ignored_files: List[str]) -> bool:
-    """Check if a file should be ignored based on name or path patterns."""
-    name = path.name
-    str_path = str(path)
-    
-    # Check file patterns
-    for pattern in ignored_files:
-        if _match_ignore_pattern(name, str_path, pattern):
-            return True
-            
-    return False
+    """Check if a file should be ignored based on name or path patterns (Legacy wrapper)."""
+    manager = IgnoreManager(ignored_files, [])
+    return manager.should_ignore_file(path)
 
 
 def should_ignore_folder(path: Path, ignored_folders: List[str]) -> bool:
-    """Check if a folder should be ignored based on patterns."""
-    name = path.name
-    str_path = str(path)
-    for pattern in ignored_folders:
-        if _match_ignore_pattern(name, str_path, pattern):
-            return True
-    return False
-
-
-def _match_ignore_pattern(name: str, full_path: str, pattern: str) -> bool:
-    """Match a name or path against a pattern (logic from file_tree.py)."""
-    is_case_insensitive = pattern.startswith('"') and pattern.endswith('"')
-    if is_case_insensitive:
-        pattern = pattern[1:-1]
-        name_to_check = name.lower()
-        path_to_check = full_path.lower()
-        pattern_to_check = pattern.lower()
-    else:
-        name_to_check = name
-        path_to_check = full_path
-        pattern_to_check = pattern
-        
-    if "\\" in pattern or "/" in pattern:
-        if '*' in pattern or '?' in pattern:
-            if is_case_insensitive:
-                return fnmatch.fnmatch(path_to_check, pattern_to_check)
-            else:
-                return fnmatch.fnmatchcase(path_to_check, pattern_to_check)
-        return path_to_check == pattern_to_check
-    else:
-        if '*' in pattern or '?' in pattern:
-            if is_case_insensitive:
-                return fnmatch.fnmatch(name_to_check, pattern_to_check)
-            else:
-                return fnmatch.fnmatchcase(name_to_check, pattern_to_check)
-        return name_to_check == pattern_to_check
+    """Check if a folder should be ignored based on patterns (Legacy wrapper)."""
+    manager = IgnoreManager([], ignored_folders)
+    return manager.should_ignore_folder(path)
 
 
 def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
@@ -247,7 +301,8 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
         Dict mapping language name -> list of file paths
     """
     ignored_dirs_set = get_ignored_dirs()
-    ignored_files, ignored_folders = get_global_ignore_settings()
+    ignored_file_patterns, ignored_folder_patterns = get_global_ignore_settings()
+    ignore_manager = IgnoreManager(ignored_file_patterns, ignored_folder_patterns)
     language_files: Dict[str, List[str]] = defaultdict(list)
     
     for folder_path in folder_paths:
@@ -298,7 +353,7 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
             dirs[:] = [d for d in dirs if not (root_path / d).is_symlink()]
 
             # 3. User-defined global folder patterns
-            dirs[:] = [d for d in dirs if not should_ignore_folder(root_path / d, ignored_folders)]
+            dirs[:] = [d for d in dirs if not ignore_manager.should_ignore_folder(root_path / d)]
             
             for filename in files:
                 # Check file count limit
@@ -313,7 +368,7 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
                     continue
                 
                 # Global ignore check (patterns)
-                if should_ignore_file(file_path, ignored_files):
+                if ignore_manager.should_ignore_file(file_path):
                     continue
                 
                 ext = file_path.suffix.lower()

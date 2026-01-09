@@ -15,27 +15,27 @@ def _cache_path() -> Path:
 
 
 def build_signature(folders: Iterable[str]) -> str:
+    """Fast signature based on folder paths, mtimes, and ignore settings."""
     entries: List[Dict[str, object]] = []
+    
+    # 1. Include folder metadata
     for raw_path in sorted(set(folders)):
         path = os.path.abspath(raw_path)
         try:
             stat = os.stat(path)
-            # Count files in folder for better invalidation detection
-            # (catches file additions/deletions that may not change folder mtime)
-            try:
-                file_count = sum(1 for _ in Path(path).rglob('*') if _.is_file())
-            except (OSError, PermissionError):
-                file_count = -1
-            entries.append(
-                {
-                    "path": path,
-                    "mtime": stat.st_mtime_ns,
-                    "size": stat.st_size,
-                    "file_count": file_count,
-                }
-            )
+            entries.append({
+                "path": path,
+                "mtime": stat.st_mtime_ns,
+                "size": stat.st_size
+            })
         except FileNotFoundError:
             entries.append({"path": path, "missing": True})
+            
+    # 2. Include ignore settings (if they change, we MUST re-scan)
+    raw_files = settings.get_setting("ignored_files", "")
+    raw_folders = settings.get_setting("ignored_folders", "")
+    entries.append({"ignored_files": raw_files, "ignored_folders": raw_folders})
+    
     payload = json.dumps(entries, sort_keys=True).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
