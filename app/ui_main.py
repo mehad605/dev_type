@@ -1532,7 +1532,7 @@ class MainWindow(QMainWindow):
         s_layout.addWidget(typing_group)
         
         # Sound settings group (simplified)
-        sound_group = QGroupBox("Sound Effects")
+        sound_group = QGroupBox("Sounds")
         sound_layout = QVBoxLayout()
         
         # Sound enabled/disabled buttons
@@ -1569,7 +1569,7 @@ class MainWindow(QMainWindow):
         self._update_sound_enabled_buttons(sound_enabled)
         
         # Profile selector (No Sound, Brick, and custom profiles)
-        profile_label = QLabel("Sound Profile")
+        profile_label = QLabel("Sound")
         profile_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         sound_layout.addWidget(profile_label)
         
@@ -1595,8 +1595,16 @@ class MainWindow(QMainWindow):
         self.sound_profile_combo.currentIndexChanged.connect(self.on_sound_profile_changed)
         profile_layout.addWidget(self.sound_profile_combo)
         
-        # Add Manage Profiles button
-        manage_profiles_btn = QPushButton("Manage Profiles...")
+        # Test button for main settings
+        self.test_sound_btn = QPushButton("🔊 Test")
+        self.test_sound_btn.setMinimumHeight(34)
+        self.test_sound_btn.setStyleSheet("padding: 0 10px;")
+        self.test_sound_btn.setToolTip("Play the selected sound")
+        self.test_sound_btn.clicked.connect(self._test_current_sound)
+        profile_layout.addWidget(self.test_sound_btn)
+
+        # Add Manage Sounds button
+        manage_profiles_btn = QPushButton("Manage Sounds...")
         manage_profiles_btn.setMinimumHeight(34)
         manage_profiles_btn.clicked.connect(self.on_manage_sound_profiles)
         profile_layout.addWidget(manage_profiles_btn)
@@ -2122,14 +2130,20 @@ class MainWindow(QMainWindow):
             else:
                 self.sound_profile_combo.setToolTip("")
     
+    def _test_current_sound(self):
+        """Play the currently selected sound for testing."""
+        from app.sound_manager import get_sound_manager
+        sound_mgr = get_sound_manager()
+        sound_mgr.play_keypress()
+
     def on_manage_sound_profiles(self):
-        """Open sound profile manager dialog."""
+        """Open sound manager dialog."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QMessageBox
         from app.sound_profile_editor import SoundProfileEditor
         from app.sound_manager import get_sound_manager
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Manage Sound Profiles")
+        dialog.setWindowTitle("Manage Sounds")
         dialog.setMinimumSize(500, 400)
         
         layout = QVBoxLayout(dialog)
@@ -2150,7 +2164,7 @@ class MainWindow(QMainWindow):
         # Buttons
         btn_layout = QHBoxLayout()
         
-        new_btn = QPushButton("New Profile...")
+        new_btn = QPushButton("New Sound...")
         def create_new():
             editor = SoundProfileEditor(parent=dialog)
             if editor.exec() == QDialog.Accepted:
@@ -2170,11 +2184,11 @@ class MainWindow(QMainWindow):
         def edit_selected():
             current = profile_list.currentItem()
             if not current:
-                QMessageBox.warning(dialog, "No Selection", "Please select a profile to edit.")
+                QMessageBox.warning(dialog, "No Selection", "Please select a sound to edit.")
                 return
             profile_id = current.data(Qt.UserRole)
             if manager.get_all_profiles()[profile_id].get("builtin", False):
-                QMessageBox.warning(dialog, "Cannot Edit", "Built-in profiles cannot be edited.")
+                QMessageBox.warning(dialog, "Cannot Edit", "Built-in sounds cannot be edited.")
                 return
             editor = SoundProfileEditor(profile_id, parent=dialog)
             if editor.exec() == QDialog.Accepted:
@@ -2194,21 +2208,21 @@ class MainWindow(QMainWindow):
         def delete_selected():
             current = profile_list.currentItem()
             if not current:
-                QMessageBox.warning(dialog, "No Selection", "Please select a profile to delete.")
+                QMessageBox.warning(dialog, "No Selection", "Please select a sound to delete.")
                 return
             profile_id = current.data(Qt.UserRole)
             if manager.get_all_profiles()[profile_id].get("builtin", False):
-                QMessageBox.warning(dialog, "Cannot Delete", "Built-in profiles cannot be deleted.")
+                QMessageBox.warning(dialog, "Cannot Delete", "Built-in sounds cannot be deleted.")
                 return
             reply = QMessageBox.question(dialog, "Confirm Delete", 
-                                        f"Delete profile '{current.text().split(' (')[0]}'?")
+                                        f"Delete sound '{current.text().split(' (')[0]}'?")
             if reply == QMessageBox.Yes:
                 if manager.delete_custom_profile(profile_id):
                     profile_list.takeItem(profile_list.currentRow())
                     self._load_sound_profiles()
-                    QMessageBox.information(dialog, "Success", "Profile deleted.")
+                    QMessageBox.information(dialog, "Success", "Sound deleted.")
                 else:
-                    QMessageBox.critical(dialog, "Error", "Failed to delete profile.")
+                    QMessageBox.critical(dialog, "Error", "Failed to delete sound.")
         delete_btn.clicked.connect(delete_selected)
         btn_layout.addWidget(delete_btn)
         

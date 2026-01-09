@@ -49,7 +49,7 @@ class SoundManager(QObject):
         # Scan for keypress_*.wav and keypress_*.mp3 files
         if self.sounds_dir.exists():
             for file in self.sounds_dir.glob("keypress_*"):
-                if file.suffix.lower() in ['.wav', '.mp3', '.ogg']:
+                if file.suffix.lower() == '.wav':
                     # Extract name from filename (keypress_something.wav -> something)
                     name_part = file.stem.replace("keypress_", "")
                     # Capitalize name
@@ -101,7 +101,7 @@ class SoundManager(QObject):
         if profile_id in self.builtin_profiles:
             return False  # Can't override built-in
         
-        if not Path(sound_file).exists():
+        if not Path(sound_file).exists() or not sound_file.lower().endswith(".wav"):
             return False
         
         # Get custom sounds directory from portable data manager
@@ -314,8 +314,16 @@ class SoundManager(QObject):
         
         if profile_data.get("builtin"):
             path = self.sounds_dir / profile_data["file"]
+        elif "file_path" in profile_data:
+            path = Path(profile_data["file_path"])
         else:
-            path = self.custom_profiles_dir / profile_id / profile_data["file"]
+             # Fallback
+            try:
+                from app.portable_data import get_data_dir
+                custom_sounds_dir = get_data_dir() / "custom_sounds"
+            except:
+                custom_sounds_dir = self.sounds_dir / "custom"
+            path = custom_sounds_dir / profile_id / profile_data["file"]
         
         return str(path) if path.exists() else None
     

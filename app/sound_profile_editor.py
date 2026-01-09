@@ -16,7 +16,7 @@ class SoundProfileEditor(QDialog):
         self.profile_id = profile_id
         self.is_new = profile_id is None
         
-        self.setWindowTitle("Create Custom Sound Profile" if self.is_new else "Edit Sound Profile")
+        self.setWindowTitle("Create Custom Sound" if self.is_new else "Edit Sound")
         self.setMinimumWidth(500)
         
         self._setup_ui()
@@ -28,9 +28,9 @@ class SoundProfileEditor(QDialog):
         """Setup the UI elements."""
         layout = QVBoxLayout(self)
         
-        # Profile name
+        # Sound Name
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("Profile Name:"))
+        name_layout.addWidget(QLabel("Sound Name:"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("My Custom Keyboard")
         name_layout.addWidget(self.name_edit)
@@ -59,7 +59,7 @@ class SoundProfileEditor(QDialog):
         layout.addWidget(sounds_group)
         
         # Info label
-        info = QLabel("💡 Tip: Supported formats: WAV, MP3, OGG")
+        info = QLabel("💡 Tip: Use .wav files for zero-latency typing feedback.")
         info.setStyleSheet("color: #888; font-style: italic;")
         layout.addWidget(info)
         
@@ -71,7 +71,7 @@ class SoundProfileEditor(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         
-        save_btn = QPushButton("Save Profile")
+        save_btn = QPushButton("Save Sound")
         save_btn.clicked.connect(self._save_profile)
         save_btn.setDefault(True)
         btn_layout.addWidget(save_btn)
@@ -84,10 +84,13 @@ class SoundProfileEditor(QDialog):
             self,
             "Select Keypress Sound",
             "",
-            "Audio Files (*.wav *.mp3 *.ogg);;All Files (*.*)"
+            "WAV Audio (*.wav);;All Files (*.*)"
         )
         
         if file_path:
+            if not file_path.lower().endswith(".wav"):
+                QMessageBox.warning(self, "Unsupported Format", "Only .wav files are supported for typing sounds to ensure low latency.")
+                return
             self.sound_path.setText(file_path)
     
     def _test_sound(self):
@@ -102,10 +105,16 @@ class SoundProfileEditor(QDialog):
             return
         
         # Play the sound
-        effect = QSoundEffect()
-        effect.setSource(QUrl.fromLocalFile(file_path))
-        effect.setVolume(0.5)
-        effect.play()
+        # Play the sound using QMediaPlayer for better format support
+        from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+        
+        self.test_player = QMediaPlayer()
+        self.test_audio_output = QAudioOutput()
+        self.test_player.setAudioOutput(self.test_audio_output)
+        self.test_audio_output.setVolume(1.0)
+        
+        self.test_player.setSource(QUrl.fromLocalFile(file_path))
+        self.test_player.play()
     
     def _load_profile_data(self):
         """Load existing profile data for editing."""
@@ -161,20 +170,24 @@ class SoundProfileEditor(QDialog):
             QMessageBox.warning(self, "Missing Sound", "Please select a sound file.")
             return
         
+        if not sound_file.lower().endswith(".wav"):
+            QMessageBox.warning(self, "Invalid Format", "Only .wav files are supported.")
+            return
+        
         # Create/update profile
         manager = get_sound_manager()
         
         if self.is_new:
             success = manager.create_custom_profile(profile_id, name, sound_file)
             if success:
-                QMessageBox.information(self, "Success", f"Profile '{name}' created successfully!")
+                QMessageBox.information(self, "Success", f"Sound '{name}' created successfully!")
                 self.accept()
             else:
-                QMessageBox.critical(self, "Error", "Failed to create profile.")
+                QMessageBox.critical(self, "Error", "Failed to create sound.")
         else:
             success = manager.update_custom_profile(profile_id, sound_file=sound_file, name=name)
             if success:
-                QMessageBox.information(self, "Success", f"Profile '{name}' updated successfully!")
+                QMessageBox.information(self, "Success", f"Sound '{name}' updated successfully!")
                 self.accept()
             else:
-                QMessageBox.critical(self, "Error", "Failed to update profile.")
+                QMessageBox.critical(self, "Error", "Failed to update sound.")
