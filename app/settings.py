@@ -70,7 +70,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     
     # Sound settings
     "sound_enabled": "1",
-    "sound_profile": "brick",
+    "sound_profile": "default_1",
     "sound_volume": "50",
     "custom_sound_profiles": "{}",
     

@@ -1740,7 +1740,7 @@ class MainWindow(QMainWindow):
         sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
         self._update_sound_enabled_buttons(sound_enabled)
         
-        # Profile selector (No Sound, Brick, and custom profiles)
+        # Profile selector (No Sound, Default_1, and custom profiles)
         profile_label = QLabel("Sound")
         profile_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         sound_layout.addWidget(profile_label)
@@ -2091,12 +2091,17 @@ class MainWindow(QMainWindow):
         # Update scheme options for the new theme
         self._populate_scheme_combo(theme)
         
-        # Select a default scheme for the new theme if current one isn't valid
+        # Determine the new scheme to use
         current_scheme = self.scheme_combo.currentText()
+        
+        # If no valid scheme selected (e.g. list empty?), force a default
         if not current_scheme:
             default_scheme = "default" if theme == "light" else "dracula"
             self.scheme_combo.setCurrentText(default_scheme)
-            settings.set_setting("dark_scheme", default_scheme)
+            current_scheme = default_scheme
+            
+        # force update the setting because _populate_scheme_combo blocked signals
+        settings.set_setting("dark_scheme", current_scheme)
         
         self.apply_current_theme()
         self.update_color_buttons_from_theme()
@@ -2356,9 +2361,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(dialog, "No Selection", "Please select a sound to edit.")
                 return
             profile_id = current.data(Qt.UserRole)
-            if manager.get_all_profiles()[profile_id].get("builtin", False):
-                QMessageBox.warning(dialog, "Cannot Edit", "Built-in sounds cannot be edited.")
-                return
+            # We now allow editing built-ins (creates a custom override)
             editor = SoundProfileEditor(profile_id, parent=dialog)
             if editor.exec() == QDialog.Accepted:
                 # Refresh list
@@ -2380,11 +2383,15 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(dialog, "No Selection", "Please select a sound to delete.")
                 return
             profile_id = current.data(Qt.UserRole)
-            if manager.get_all_profiles()[profile_id].get("builtin", False):
-                QMessageBox.warning(dialog, "Cannot Delete", "Built-in sounds cannot be deleted.")
+            is_builtin = manager.get_all_profiles()[profile_id].get("builtin", False)
+            has_custom = profile_id in manager.custom_profiles
+            
+            if is_builtin and not has_custom:
+                QMessageBox.warning(dialog, "Cannot Delete", "The original built-in sound cannot be deleted.")
                 return
-            reply = QMessageBox.question(dialog, "Confirm Delete", 
-                                        f"Delete sound '{current.text().split(' (')[0]}'?")
+            
+            confirm_msg = f"Delete custom override for '{current.text().split(' (')[0]}' and revert to built-in?" if has_custom and is_builtin else f"Delete sound '{current.text().split(' (')[0]}'?"
+            reply = QMessageBox.question(dialog, "Confirm Delete", confirm_msg)
             if reply == QMessageBox.Yes:
                 if manager.delete_custom_profile(profile_id):
                     profile_list.takeItem(profile_list.currentRow())

@@ -37,7 +37,7 @@ class SoundManager(QObject):
         self._load_profile("none")
     
     def _discover_builtin_profiles(self) -> Dict:
-        """Discover built-in sound profiles from keypress_* files."""
+        """Discover built-in sound profiles from existing files."""
         profiles = {
             "none": {
                 "name": "No Sound",
@@ -45,6 +45,15 @@ class SoundManager(QObject):
                 "file": None
             }
         }
+        
+        # Specifically add the new default_1 profile if keystrokes.wav exists
+        keystrokes_file = self.sounds_dir / "keystrokes.wav"
+        if keystrokes_file.exists():
+            profiles["default_1"] = {
+                "name": "Default_1",
+                "builtin": True,
+                "file": "keystrokes.wav"
+            }
         
         # Scan for keypress_*.wav and keypress_*.mp3 files
         if self.sounds_dir.exists():
@@ -98,8 +107,8 @@ class SoundManager(QObject):
     
     def create_custom_profile(self, profile_id: str, name: str, sound_file: str) -> bool:
         """Create a new custom sound profile."""
-        if profile_id in self.builtin_profiles:
-            return False  # Can't override built-in
+        # Note: We now allow overriding built-in names which will take precedence
+        # in get_all_profiles()
         
         if not Path(sound_file).exists() or not sound_file.lower().endswith(".wav"):
             return False
@@ -134,8 +143,28 @@ class SoundManager(QObject):
     
     def update_custom_profile(self, profile_id: str, sound_file: str = None, name: str = None) -> bool:
         """Update a custom profile's sound file or name."""
+        # If it's a built-in not yet in custom_profiles, create a custom copy
         if profile_id not in self.custom_profiles:
-            return False
+            if profile_id in self.builtin_profiles:
+                # Get current name if not provided
+                if not name:
+                    name = self.builtin_profiles[profile_id]["name"]
+                
+                # If no sound file provided, we'd need to copy the built-in wav.
+                # However, this method is usually called with at least one change.
+                # For safety, if no sound_file provided, we'll try to find the built-in one.
+                if not sound_file:
+                    sound_file = self.get_profile_sound_file(profile_id)
+                
+                if not sound_file:
+                    return False
+                
+                # Create as custom
+                result = self.create_custom_profile(profile_id, name, sound_file)
+                if not result:
+                    return False
+            else:
+                return False
         
         # Update name if provided
         if name:
