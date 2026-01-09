@@ -159,6 +159,17 @@ def init_stats_tables():
             )
         """)
     
+    # Key confusions table (what was typed instead of what was expected)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS key_confusions (
+            expected_char TEXT,
+            actual_char TEXT,
+            language TEXT,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY (expected_char, actual_char, language)
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -346,6 +357,25 @@ def update_key_stats(language: str, key_hits: Dict[str, int], key_misses: Dict[s
     conn.close()
 
 
+def update_key_confusions(language: str, key_confusions: Dict[str, Dict[str, int]]):
+    """Update language-specific key confusion statistics."""
+    conn = _connect()
+    cur = conn.cursor()
+    lang = language or ""
+    
+    for expected, actuals in key_confusions.items():
+        for actual, count in actuals.items():
+            cur.execute("""
+                INSERT INTO key_confusions (expected_char, actual_char, language, count) 
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(expected_char, actual_char, language) DO UPDATE SET 
+                    count = count + excluded.count
+            """, (expected, actual, lang, count))
+            
+    conn.commit()
+    conn.close()
+
+
 def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:
     """Get key statistics for the heatmap, optionally filtered by language."""
     conn = _connect()
@@ -371,6 +401,38 @@ def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, 
     conn.close()
     
     return {row[0]: {"correct": row[1], "error": row[2]} for row in rows}
+
+
+def get_key_confusions(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:
+    """Get key confusion statistics, optionally filtered by language."""
+    conn = _connect()
+    cur = conn.cursor()
+    
+    if languages:
+        placeholders = ",".join(["?"] * len(languages))
+        cur.execute(f"""
+            SELECT expected_char, actual_char, SUM(count) 
+            FROM key_confusions 
+            WHERE language IN ({placeholders})
+            GROUP BY expected_char, actual_char
+        """, languages)
+    else:
+        cur.execute("""
+            SELECT expected_char, actual_char, SUM(count) 
+            FROM key_confusions 
+            GROUP BY expected_char, actual_char
+        """)
+        
+    rows = cur.fetchall()
+    conn.close()
+    
+    result = {}
+    for expected, actual, count in rows:
+        if expected not in result:
+            result[expected] = {}
+        result[expected][actual] = count
+        
+    return result
 
 
 def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[Dict[str, float]]:

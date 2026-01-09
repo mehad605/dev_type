@@ -24,10 +24,12 @@ class TypingState:
     # Maps character to count of correct/incorrect attempts
     key_hits: dict = None  # Lazy init in __post_init__ or process_keystroke
     key_misses: dict = None
+    key_confusions: dict = None  # Maps expected char -> {actual_char: count}
     
     def __post_init__(self):
         if self.key_hits is None: self.key_hits = {}
         if self.key_misses is None: self.key_misses = {}
+        if self.key_confusions is None: self.key_confusions = {}
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -155,6 +157,12 @@ class TypingEngine:
         else:
             self.state.incorrect_keystrokes += 1
             self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
+            
+            # Record what was typed instead
+            if expected_char not in self.state.key_confusions:
+                self.state.key_confusions[expected_char] = {}
+            actual_char = typed_char if typed_char else "[NONE]"
+            self.state.key_confusions[expected_char][actual_char] = self.state.key_confusions[expected_char].get(actual_char, 0) + 1
             
             if self.allow_continue_mistakes:
                 # Allow cursor to advance even on mistakes

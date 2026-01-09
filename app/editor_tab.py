@@ -534,6 +534,10 @@ class EditorTab(QWidget):
             key_hits=stats.get("key_hits", {}),
             key_misses=stats.get("key_misses", {})
         )
+        stats_db.update_key_confusions(
+            language=get_language_for_file(self.current_file),
+            key_confusions=stats.get("key_confusions", {})
+        )
 
         # Check and save ghost if this is a new best
         is_new_best = self._check_and_save_ghost(stats)
@@ -1059,10 +1063,15 @@ class EditorTab(QWidget):
             
             # Update detailed key statistics for heatmap
             if self.typing_area.engine:
+                lang = get_language_for_file(self.current_file)
                 stats_db.update_key_stats(
-                    language=get_language_for_file(self.current_file),
+                    language=lang,
                     key_hits=self.typing_area.engine.state.key_hits,
                     key_misses=self.typing_area.engine.state.key_misses
+                )
+                stats_db.update_key_confusions(
+                    language=lang,
+                    key_confusions=self.typing_area.engine.state.key_confusions
                 )
 
             # Check and save new ghost if this beat the old one

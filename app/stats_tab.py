@@ -1709,7 +1709,9 @@ class KeyboardHeatmap(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.raw_stats: Dict[str, Dict[str, int]] = {}
+        self.raw_confusions: Dict[str, Dict[str, int]] = {}
         self.display_stats: Dict[str, Dict[str, int]] = {}
+        self.display_confusions: Dict[str, Dict[str, int]] = {}
         self.shift_mode = False
         self.hovered_key: Optional[str] = None
         self.setMinimumHeight(240)
@@ -1727,9 +1729,10 @@ class KeyboardHeatmap(QWidget):
         self.neutral_color = colors["bg_tertiary"]
         self.tooltip_bg = QColor("#2d2d2d")
         
-    def set_data(self, stats: Dict[str, Dict[str, int]]):
-        """Set raw key stats and refresh."""
+    def set_data(self, stats: Dict[str, Dict[str, int]], confusions: Dict[str, Dict[str, int]]):
+        """Set raw key stats and confusion data, then refresh."""
         self.raw_stats = stats
+        self.raw_confusions = confusions
         self._refresh_display_stats()
         
     def _refresh_display_stats(self):
@@ -1740,6 +1743,7 @@ class KeyboardHeatmap(QWidget):
         # No, the user asked for layers. So if I'm in Shift layer, I see stats for 'A'. 
         # If I'm in lower layer, I see stats for 'a'.
         self.display_stats = {}
+        self.display_confusions = {}
         current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
         
         for row in current_rows:
@@ -1747,6 +1751,9 @@ class KeyboardHeatmap(QWidget):
                 char = ' ' if key == "SPACE" else key
                 s = self.raw_stats.get(char, {"correct": 0, "error": 0})
                 self.display_stats[key] = s.copy()
+                
+                c = self.raw_confusions.get(char, {})
+                self.display_confusions[key] = c.copy()
         self.update()
 
     def toggle_shift(self, enabled: bool):
@@ -1793,11 +1800,12 @@ class KeyboardHeatmap(QWidget):
 
     def _get_layout_params(self):
         rect = self.rect()
-        key_margin = 4
+        key_margin = 3
         current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
         max_row_len = max(len(row) for row in current_rows)
-        key_size = min((rect.width() - 40) / max_row_len, (rect.height() - 20) / len(current_rows))
-        key_size = max(30, min(50, key_size))
+        # Make it more compact - slightly smaller keys and tight margins
+        key_size = min((rect.width() - 20) / max_row_len, (rect.height() - 10) / len(current_rows))
+        key_size = max(25, min(42, key_size))
         total_width = max_row_len * key_size
         start_x = (rect.width() - total_width) / 2
         start_y = (rect.height() - len(current_rows) * key_size) / 2
@@ -1872,32 +1880,111 @@ class KeyboardHeatmap(QWidget):
             total = hover_stats["correct"] + hover_stats["error"]
             if total > 0:
                 acc_pct = (hover_stats["correct"] / total) * 100
-                lines = [
+                
+                # Header info - more compact
+                header_lines = [
                     f"Key: {self.hovered_key}",
-                    f"Correct: {hover_stats['correct']}",
-                    f"Errors: {hover_stats['error']}",
-                    f"Accuracy: {acc_pct:.1f}%"
+                    f"Accuracy: {acc_pct:.1f}% ({hover_stats['correct']}/{total})",
+                    f"Total Errors: {hover_stats['error']}"
                 ]
                 
+                # Top Mistakes
+                confusions = self.display_confusions.get(self.hovered_key, {})
+                sorted_confusions = []
+                if confusions and hover_stats["error"] > 0:
+                    sorted_confusions = sorted(confusions.items(), key=lambda x: x[1], reverse=True)[:3]
+
                 fm = painter.fontMetrics()
-                max_w = max(fm.horizontalAdvance(line) for line in lines)
-                th = len(lines) * fm.height()
+                header_h = len(header_lines) * max(fm.height(), 16)
                 
-                tx = hover_rect.center().x() - max_w / 2 - 8
-                ty = hover_rect.top() - th - 15
+                # Layout params - slightly more compact blocks
+                block_w, block_h, block_gap = 38, 38, 6
+                visual_section_w = 0
+                visual_section_h = 0
                 
-                # Clamp within widget
-                tx = max(5, min(tx, rect.width() - max_w - 15))
-                ty = max(5, ty)
+                if sorted_confusions:
+                    visual_section_h = 88
+                    visual_section_w = len(sorted_confusions) * (block_w + block_gap) - block_gap
+                    title_text = "Mistake Breakdown:"
+                    visual_section_w = max(visual_section_w, fm.horizontalAdvance(title_text))
                 
-                tip_rect = QRectF(tx, ty, max_w + 16, th + 10)
-                painter.setPen(Qt.NoPen)
+                max_w = max(visual_section_w, *(fm.horizontalAdvance(line) for line in header_lines))
+                total_h = header_h + (15 if sorted_confusions else 0) + visual_section_h
+                
+                # Positioning logic to NOT cover the key
+                # Prefer above, but if not enough space, use below
+                tx = hover_rect.center().x() - max_w / 2 - 12
+                ty = hover_rect.top() - total_h - 20
+                
+                if ty < 5: # Not enough space above, show below
+                    ty = hover_rect.bottom() + 10
+                
+                # Boundary clamping
+                tx = max(8, min(tx, rect.width() - max_w - 24))
+                ty = max(5, min(ty, rect.height() - total_h - 20))
+                
+                # Store orignal font to restore later
+                original_font = painter.font()
+                
+                # Draw tooltip background
+                tip_rect = QRectF(tx, ty, max_w + 24, total_h + 12)
+                painter.setPen(QPen(self.border_color.lighter(120), 1))
                 painter.setBrush(self.tooltip_bg)
-                painter.drawRoundedRect(tip_rect, 4, 4)
+                painter.drawRoundedRect(tip_rect, 6, 6)
                 
+                # 1. Header Text
                 painter.setPen(self.text_primary)
-                for i, line in enumerate(lines):
-                    painter.drawText(tx + 8, ty + (i + 1) * fm.height(), line)
+                curr_y = ty + fm.height() + 6
+                for line in header_lines:
+                    painter.drawText(int(tx + 12), int(curr_y), line)
+                    curr_y += max(fm.height(), 16)
+                
+                # 2. visual Mistakes Section
+                if sorted_confusions:
+                    # Subtle Separator
+                    curr_y += 2
+                    painter.setPen(QPen(self.border_color, 1))
+                    painter.drawLine(int(tx + 12), int(curr_y), int(tx + max_w + 12), int(curr_y))
+                    
+                    curr_y += 18
+                    painter.setPen(self.text_secondary)
+                    painter.drawText(int(tx + 12), int(curr_y), "Mistake Breakdown:")
+                    
+                    curr_y += 20 # Space for percentages
+                    
+                    confusion_colors = [
+                        QColor("#ff1744"), # Vivid Red
+                        QColor("#ff9100"), # Deep Orange
+                        QColor("#ffea00"), # Bright Yellow
+                    ]
+                    
+                    for i, (char, count) in enumerate(sorted_confusions):
+                        bx = tx + 12 + i * (block_w + block_gap)
+                        
+                        # Percentage relative to ERRORS (as requested)
+                        err_total = hover_stats["error"]
+                        pct = (count / err_total) * 100 if err_total > 0 else 0
+                        
+                        painter.setPen(confusion_colors[i % len(confusion_colors)])
+                        painter.setFont(QFont(original_font.family(), 8, QFont.Bold))
+                        painter.drawText(QRectF(bx, curr_y - 18, block_w, 15), Qt.AlignCenter, f"{pct:.0f}%")
+                        
+                        # Mistake Block
+                        painter.setPen(Qt.NoPen)
+                        painter.setBrush(confusion_colors[i % len(confusion_colors)])
+                        block_rect = QRectF(bx, curr_y, block_w, block_h)
+                        painter.drawRoundedRect(block_rect, 4, 4)
+                        
+                        # Character Label
+                        painter.setPen(QColor(0, 0, 0)) # Contrast Label
+                        painter.setFont(QFont(original_font.family(), 10, QFont.Medium))
+                        display_char = char
+                        if display_char == " ": display_char = "␣"
+                        elif display_char == "[NONE]": display_char = "?"
+                        painter.drawText(block_rect, Qt.AlignCenter, display_char)
+                
+                # Reset font
+                painter.setFont(original_font)
 
 
 
@@ -2320,7 +2407,8 @@ class StatsTab(QWidget):
         """Update the keyboard accuracy heatmap."""
         languages_list = list(self._selected_languages) if self._selected_languages else None
         key_stats = stats_db.get_key_stats(languages=languages_list)
-        self.keyboard_heatmap.set_data(key_stats)
+        key_confusions = stats_db.get_key_confusions(languages=languages_list)
+        self.keyboard_heatmap.set_data(key_stats, key_confusions)
     
     
     def apply_theme(self):
