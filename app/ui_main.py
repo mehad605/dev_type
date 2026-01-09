@@ -916,6 +916,9 @@ class MainWindow(QMainWindow):
         
         settings_widget = QWidget()
         s_layout = QVBoxLayout(settings_widget)
+        # Add padding to sides as requested
+        s_layout.setContentsMargins(40, 20, 40, 20)
+        
         if DEBUG_STARTUP_TIMING:
             print(f"    [SettingsTab] Basic setup: {time.time() - t:.3f}s")
         
@@ -1168,7 +1171,12 @@ class MainWindow(QMainWindow):
         cur_theme = settings.get_setting("theme", settings.get_default("theme"))
         self.theme_combo.setCurrentText(cur_theme)
         self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
-        theme_layout.addRow("Theme:", self.theme_combo)
+        
+        # Compact row for theme
+        theme_row = QHBoxLayout()
+        theme_row.addWidget(self.theme_combo)
+        theme_row.addStretch()
+        theme_layout.addRow("Theme:", theme_row)
         
         self.scheme_combo = QComboBox()
         # Initial population based on current theme
@@ -1181,7 +1189,12 @@ class MainWindow(QMainWindow):
             self.scheme_combo.setCurrentIndex(index)
             
         self.scheme_combo.currentTextChanged.connect(self.on_scheme_changed)
-        theme_layout.addRow("Color Scheme:", self.scheme_combo)
+        
+        # Compact row for scheme
+        scheme_row = QHBoxLayout()
+        scheme_row.addWidget(self.scheme_combo)
+        scheme_row.addStretch()
+        theme_layout.addRow("Color Scheme:", scheme_row)
         
         theme_group.setLayout(theme_layout)
         s_layout.addWidget(theme_group)
@@ -1361,14 +1374,24 @@ class MainWindow(QMainWindow):
         font_family = settings.get_setting("font_family", settings.get_default("font_family"))
         self.font_family_combo.setCurrentText(font_family)
         self.font_family_combo.currentTextChanged.connect(self.on_font_family_changed)
-        font_layout.addRow("Family:", self.font_family_combo)
+        
+        # Compact row for font family
+        font_family_row = QHBoxLayout()
+        font_family_row.addWidget(self.font_family_combo)
+        font_family_row.addStretch()
+        font_layout.addRow("Family:", font_family_row)
         
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
         font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
         self.font_size_spin.setValue(font_size)
         self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
-        font_layout.addRow("Size:", self.font_size_spin)
+        
+        # Compact row for font size
+        font_size_row = QHBoxLayout()
+        font_size_row.addWidget(self.font_size_spin)
+        font_size_row.addStretch()
+        font_layout.addRow("Size:", font_size_row)
         
         font_group.setLayout(font_layout)
         s_layout.addWidget(font_group)
@@ -1398,6 +1421,7 @@ class MainWindow(QMainWindow):
         space_layout.addWidget(self.space_char_combo)
         space_layout.addWidget(QLabel("Custom:"))
         space_layout.addWidget(self.space_char_custom)
+        space_layout.addStretch() # Ensure this row also doesn't stretch weirdly
         typing_layout.addRow("Space char:", space_layout)
         
         # Tab width
@@ -1407,7 +1431,12 @@ class MainWindow(QMainWindow):
         tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
         self.tab_width_spin.setValue(tab_width)
         self.tab_width_spin.valueChanged.connect(self.on_tab_width_changed)
-        typing_layout.addRow("Tab width:", self.tab_width_spin)
+        
+        # Compact row
+        tab_width_row = QHBoxLayout()
+        tab_width_row.addWidget(self.tab_width_spin)
+        tab_width_row.addStretch()
+        typing_layout.addRow("Tab width:", tab_width_row)
         
         # Pause delay
         self.pause_delay_spin = QSpinBox()
@@ -1415,7 +1444,12 @@ class MainWindow(QMainWindow):
         self.pause_delay_spin.setSuffix(" seconds")
         pause_delay = int(settings.get_setting_float("pause_delay", 7.0, min_val=1.0, max_val=60.0))
         self.pause_delay_spin.setValue(pause_delay)
-
+        
+        # Compact row
+        pause_delay_row = QHBoxLayout()
+        pause_delay_row.addWidget(self.pause_delay_spin)
+        pause_delay_row.addStretch()
+        
         best_wpm_min = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
         try:
             best_wpm_percent = int(round(float(best_wpm_min) * 100)) if best_wpm_min is not None else 90
@@ -1424,7 +1458,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "best_wpm_accuracy_spin"):
             self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
         self.pause_delay_spin.valueChanged.connect(self.on_pause_delay_changed)
-        typing_layout.addRow("Auto-pause delay:", self.pause_delay_spin)
+        typing_layout.addRow("Auto-pause delay:", pause_delay_row)
 
         # Best WPM accuracy threshold
         self.best_wpm_accuracy_spin = QSpinBox()
@@ -1437,7 +1471,12 @@ class MainWindow(QMainWindow):
             best_wpm_percent = 90
         self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
         self.best_wpm_accuracy_spin.valueChanged.connect(self.on_best_wpm_accuracy_changed)
-        typing_layout.addRow("Best WPM min accuracy:", self.best_wpm_accuracy_spin)
+        
+        # Compact row
+        best_wpm_row = QHBoxLayout()
+        best_wpm_row.addWidget(self.best_wpm_accuracy_spin)
+        best_wpm_row.addStretch()
+        typing_layout.addRow("Best WPM min accuracy:", best_wpm_row)
         
         typing_group.setLayout(typing_layout)
         s_layout.addWidget(typing_group)
@@ -2140,8 +2179,11 @@ class MainWindow(QMainWindow):
                 f"background-color: {scheme.cursor_color}; border: 1px solid #666;"
             )
     
-    def _refresh_all_settings_ui(self):
+    def refresh_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
+        if not hasattr(self, 'theme_combo'):
+            return  # Settings tab not loaded yet
+            
         # Theme settings
         theme = settings.get_setting("theme", settings.get_default("theme"))
         self.theme_combo.setCurrentText(theme)

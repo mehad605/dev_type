@@ -9,7 +9,8 @@ import urllib.error
 from pathlib import Path
 from typing import Optional, Dict
 from PySide6.QtGui import QPixmap, QIcon
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QObject, Signal, QUrl
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from app.settings import get_data_dir
 
 logger = logging.getLogger(__name__)
@@ -51,11 +52,31 @@ DEVICON_MAP = {
     "Less": "less",
     "XML": "xml",
     "JSON": "json",
-    "YAML": "yaml",
-    "TOML": "toml",
     "Markdown": "markdown",
-    "Text": "txt",
+    # Text and TOML don't have standard devicons, wil use emoji fallback
+
 }
+
+# Languages known to have no devicon (prevent useless 404 requests)
+SKIP_ICONS = {
+    "Text", "TOML", "Brainfuck", "Bf", 
+    "Yaml", "Json", "Xml", # Sometimes capitalization varies, though we have specific mappings for some
+}
+
+# Dynamic lookup helper
+def get_devicon_name(language: str) -> Optional[str]:
+    """Get the devicon library name for a language."""
+    if language in SKIP_ICONS:
+        return None
+        
+    # 1. Check strict map
+    if language in DEVICON_MAP:
+        return DEVICON_MAP[language]
+    
+    # 2. Heuristic: try lowercase name (e.g. Brainfuck -> brainfuck)
+    # Most devicons match the language name in lowercase
+    return language.lower()
+
 
 
 # Emoji fallbacks for languages
@@ -101,14 +122,21 @@ EMOJI_FALLBACK = {
 }
 
 
-class IconManager:
+class IconManager(QObject):
     """Manages downloading and caching of language icons."""
     
+    icon_downloaded = Signal(str)  # Emits language name when icon is ready
+
+    
     def __init__(self):
+        super().__init__()
         self.icon_dir = get_data_dir() / "icons"
         self.icon_dir.mkdir(parents=True, exist_ok=True)
         self._icon_cache: Dict[str, Optional[QPixmap]] = {}
         self._download_errors: Dict[str, str] = {}  # Track download failures for tooltips
+        self._network_manager = QNetworkAccessManager(self)
+        self._pending_downloads: Dict[QNetworkReply, str] = {} # Map reply -> language
+
     
     def get_icon_path(self, language: str) -> Optional[Path]:
         """Get the local path for a language icon.
@@ -119,86 +147,90 @@ class IconManager:
         Returns:
             Path to icon file if it exists, None otherwise
         """
-        if language not in DEVICON_MAP:
-            return None
-        
-        icon_name = DEVICON_MAP[language]
+        icon_name = get_devicon_name(language)
+        if not icon_name:
+             return None
+
         icon_path = self.icon_dir / f"{icon_name}.svg"
         
         if icon_path.exists():
             return icon_path
         
         return None
+
     
-    def download_icon(self, language: str) -> bool:
-        """Download icon for a language from devicon CDN.
+    def download_icon(self, language: str) -> None:
+        """Initiate async download icon for a language from devicon CDN.
         
         Args:
             language: Language name (e.g., "Python", "JavaScript")
-            
-        Returns:
-            True if download succeeded, False otherwise
         """
-        if language not in DEVICON_MAP:
-            return False
+        icon_name = get_devicon_name(language)
+        if not icon_name:
+            return
+
+        # Check if already downloading this language? (Optional optimization)
         
-        icon_name = DEVICON_MAP[language]
         icon_path = self.icon_dir / f"{icon_name}.svg"
         
         # Don't re-download if exists
         if icon_path.exists():
-            return True
+            return
         
         # Devicon CDN URL - using plain colored version
-        url = f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-original.svg"
+        url = QUrl(f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-original.svg")
+        request = QNetworkRequest(url)
+        request.setHeader(QNetworkRequest.UserAgentHeader, 'Mozilla/5.0 (Dev Typing App)')
         
-        try:
-            # Set timeout and user agent
-            req = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'Mozilla/5.0 (Dev Typing App)'}
-            )
+        reply = self._network_manager.get(request)
+        self._pending_downloads[reply] = language
+        reply.finished.connect(lambda: self._on_download_finished(reply))
+
+    def _on_download_finished(self, reply: QNetworkReply):
+        language = self._pending_downloads.pop(reply, None)
+        if not language:
+            reply.deleteLater()
+            return
+
+        if reply.error() != QNetworkReply.NoError:
+            # 404s (ContentNotFoundError) are expected for unknown languages/heuristics
+            # We treat them as "no icon available" and fallback to emoji silently.
+            error_code = reply.error()
+            error_msg = f"Network error ({error_code}): {reply.errorString()}"
             
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
-                    icon_path.write_bytes(response.read())
+            # Log as debug/info essentially ignoring it unless debugging
+            logger.debug(f"Could not download icon for {language}: {error_msg}")
+            
+            # Reset error tracking so we don't show a tooltip error for just a missing icon
+            # unless it's a critical network failure (e.g. no internet)?
+            # Actually, simply NOT setting _download_errors[language] means no tooltip.
+            # If we want to show "Offline" vs "Not Found", we'd distinguish.
+            # For now, let's clearer: if it's 404, forget it. If it's connection ref, maybe show.
+            if error_code == QNetworkReply.ContentNotFoundError:
+                self._download_errors.pop(language, None)
+            else:
+                 # Real network error (timeout, dns, etc) - maybe worth noting
+                 self._download_errors[language] = error_msg
+        else:
+            data = reply.readAll()
+            if data:
+                icon_name = get_devicon_name(language)
+                icon_path = self.icon_dir / f"{icon_name}.svg"
+                try:
+                    icon_path.write_bytes(data.data())
                     logger.info(f"Downloaded icon for {language}")
-                    self._download_errors.pop(language, None)  # Clear any previous error
-                    return True
-        except urllib.error.HTTPError as e:
-            error_msg = f"HTTP {e.code}: {e.reason}"
-            logger.warning(f"HTTP error downloading icon for {language}: {error_msg}")
-            self._download_errors[language] = error_msg
-        except urllib.error.URLError as e:
-            error_msg = "Network error: Unable to reach icon server"
-            logger.warning(f"Network error downloading icon for {language}: {e}")
-            self._download_errors[language] = error_msg
-        except TimeoutError:
-            error_msg = "Download timeout (check internet connection)"
-            logger.warning(f"Timeout downloading icon for {language}")
-            self._download_errors[language] = error_msg
-        except Exception as e:
-            error_msg = f"Error: {type(e).__name__}"
-            logger.warning(f"Unexpected error downloading icon for {language}: {e}")
-            self._download_errors[language] = error_msg
+                    self._download_errors.pop(language, None)
+                    
+                    # Invalidate cache entry if it was None/placeholder
+                    keys_to_remove = [k for k in self._icon_cache if k.startswith(f"{language}_")]
+                    for k in keys_to_remove:
+                        del self._icon_cache[k]
+                        
+                    self.icon_downloaded.emit(language)
+                except Exception as e:
+                    logger.error(f"Failed to save icon for {language}: {e}")
         
-        # Try alternative URL (plain version)
-        try:
-            url = f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-plain.svg"
-            req = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'Mozilla/5.0 (Dev Typing App)'}
-            )
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
-                    icon_path.write_bytes(response.read())
-                    logger.info(f"Downloaded icon (alt URL) for {language}")
-                    self._download_errors.pop(language, None)  # Clear error on success
-                    return True
-        except Exception as e2:
-            logger.debug(f"Alternative URL also failed for {language}: {e2}")
-        
-        return False
+        reply.deleteLater()
     
     def get_icon(self, language: str, size: int = 48) -> Optional[QPixmap]:
         """Get icon pixmap for a language, downloading if necessary.
@@ -219,9 +251,9 @@ class IconManager:
         icon_path = self.get_icon_path(language)
         
         if not icon_path:
-            # Try to download
-            if self.download_icon(language):
-                icon_path = self.get_icon_path(language)
+            # Trigger async download
+            self.download_icon(language)
+            return None
         
         # Load icon if available
         if icon_path and icon_path.exists():

@@ -84,28 +84,15 @@ class LanguageCard(QFrame):
         layout.setContentsMargins(20, 24, 20, 20)
         layout.setSpacing(10)
 
-        # Language icon - try to get from icon manager, fallback to emoji
-        icon_manager = _get_icon_manager()
-        icon_pixmap = icon_manager.get_icon(language, size=56)
+        # Language icon - try to get from icon manager
+        self.icon_manager = _get_icon_manager()
+        self.icon_manager.icon_downloaded.connect(self._on_icon_ready)
         
-        icon_label = QLabel()
-        icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label = QLabel()
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        self._update_icon()
         
-        if icon_pixmap:
-            # Use downloaded icon
-            icon_label.setPixmap(icon_pixmap)
-        else:
-            # Fallback to emoji
-            emoji = icon_manager.get_emoji_fallback(language)
-            icon_label.setText(emoji)
-            icon_label.setStyleSheet("font-size: 56px;")
-            
-            # Show tooltip if download failed
-            error = icon_manager.get_download_error(language)
-            if error:
-                icon_label.setToolTip(f"Icon unavailable: {error}")
-        
-        layout.addWidget(icon_label)
+        layout.addWidget(self.icon_label)
         
         # Language name
         name_label = QLabel(language)
@@ -137,6 +124,28 @@ class LanguageCard(QFrame):
         
         # Store original style for click feedback
         self._pressed = False
+        
+    def _update_icon(self):
+        icon_pixmap = self.icon_manager.get_icon(self.language, size=56)
+        if icon_pixmap:
+            # Use downloaded icon
+            self.icon_label.setPixmap(icon_pixmap)
+            self.icon_label.setToolTip("")
+        else:
+            # Fallback to emoji
+            emoji = self.icon_manager.get_emoji_fallback(self.language)
+            self.icon_label.setText(emoji)
+            self.icon_label.setStyleSheet("font-size: 56px;")
+            
+            # Show tooltip if download failed
+            error = self.icon_manager.get_download_error(self.language)
+            if error:
+                self.icon_label.setToolTip(f"Icon unavailable: {error}")
+
+    def _on_icon_ready(self, language: str):
+        """Slot called when an icon is downloaded."""
+        if language == self.language:
+            self._update_icon()
     
     def mousePressEvent(self, event):
         """Handle card click with visual feedback."""
