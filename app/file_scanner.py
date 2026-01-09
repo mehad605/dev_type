@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Set, Optional, Tuple
 from collections import defaultdict
+import fnmatch
+import app.settings as settings
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,69 @@ def validate_file_path(file_path: str, root_folder: Optional[str] = None) -> Tup
     return True, None
 
 
+def get_global_ignore_settings() -> Tuple[List[str], List[str]]:
+    """Return (ignored_files, ignored_folders) from settings."""
+    raw_files = settings.get_setting("ignored_files", settings.get_default("ignored_files"))
+    raw_folders = settings.get_setting("ignored_folders", settings.get_default("ignored_folders"))
+    
+    ignored_files = [p.strip() for p in raw_files.split('\n') if p.strip()]
+    ignored_folders = [p.strip() for p in raw_folders.split('\n') if p.strip()]
+    
+    return ignored_files, ignored_folders
+
+
+def should_ignore_file(path: Path, ignored_files: List[str]) -> bool:
+    """Check if a file should be ignored based on name or path patterns."""
+    name = path.name
+    str_path = str(path)
+    
+    # Check file patterns
+    for pattern in ignored_files:
+        if _match_ignore_pattern(name, str_path, pattern):
+            return True
+            
+    return False
+
+
+def should_ignore_folder(path: Path, ignored_folders: List[str]) -> bool:
+    """Check if a folder should be ignored based on patterns."""
+    name = path.name
+    str_path = str(path)
+    for pattern in ignored_folders:
+        if _match_ignore_pattern(name, str_path, pattern):
+            return True
+    return False
+
+
+def _match_ignore_pattern(name: str, full_path: str, pattern: str) -> bool:
+    """Match a name or path against a pattern (logic from file_tree.py)."""
+    is_case_insensitive = pattern.startswith('"') and pattern.endswith('"')
+    if is_case_insensitive:
+        pattern = pattern[1:-1]
+        name_to_check = name.lower()
+        path_to_check = full_path.lower()
+        pattern_to_check = pattern.lower()
+    else:
+        name_to_check = name
+        path_to_check = full_path
+        pattern_to_check = pattern
+        
+    if "\\" in pattern or "/" in pattern:
+        if '*' in pattern or '?' in pattern:
+            if is_case_insensitive:
+                return fnmatch.fnmatch(path_to_check, pattern_to_check)
+            else:
+                return fnmatch.fnmatchcase(path_to_check, pattern_to_check)
+        return path_to_check == pattern_to_check
+    else:
+        if '*' in pattern or '?' in pattern:
+            if is_case_insensitive:
+                return fnmatch.fnmatch(name_to_check, pattern_to_check)
+            else:
+                return fnmatch.fnmatchcase(name_to_check, pattern_to_check)
+        return name_to_check == pattern_to_check
+
+
 def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
     """
     Scan multiple folders and group files by language.
@@ -181,7 +246,8 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
     Returns:
         Dict mapping language name -> list of file paths
     """
-    ignored_dirs = get_ignored_dirs()
+    ignored_dirs_set = get_ignored_dirs()
+    ignored_files, ignored_folders = get_global_ignore_settings()
     language_files: Dict[str, List[str]] = defaultdict(list)
     
     for folder_path in folder_paths:
@@ -225,10 +291,14 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
                 pass
             
             # Filter out ignored directories
-            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            # 1. Hardcoded defaults
+            dirs[:] = [d for d in dirs if d not in ignored_dirs_set]
             
-            # Also filter out symlinked directories to prevent loops
+            # 2. Also filter out symlinked directories to prevent loops
             dirs[:] = [d for d in dirs if not (root_path / d).is_symlink()]
+
+            # 3. User-defined global folder patterns
+            dirs[:] = [d for d in dirs if not should_ignore_folder(root_path / d, ignored_folders)]
             
             for filename in files:
                 # Check file count limit
@@ -242,6 +312,9 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
                 if file_path.is_symlink():
                     continue
                 
+                # Global ignore check (patterns)
+                if should_ignore_file(file_path, ignored_files):
+                    continue
                 
                 ext = file_path.suffix.lower()
                 
@@ -249,38 +322,13 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
                 if ext in LANGUAGE_MAP:
                     lang = LANGUAGE_MAP[ext]
                 elif ext: # If it has an extension and we don't know it
-                     # Auto-register: remove dot and capitalize first letter
-                     # e.g. .bf -> Brainfuck or Bf? .xyz -> Xyz
-                     # User wants to support ANY new type.
-                     clean_name = ext.lstrip(".").capitalize()
-                     # Optional: Filter out weird/binary extensions?
-                     # For now, let's treat any text-like file as a language candidate.
-                     # But we don't know if it's binary.
-                     # We'll just group it. If the user tries to type it and it's binary, the editor handles that.
-                     lang = clean_name
-                     
+                    # Auto-register: capitalize extension
+                    lang = ext.lstrip(".").capitalize()
                 else:
                     lang = "No Extension"
                 
-                # Only add if it looks like a code/text file (not an image/binary)
-                # This is a heuristic.
-                # Common binary extensions to skip:
-                SKIP_EXTS = {
-                    '.exe', '.dll', '.so', '.dylib', '.bin', '.obj', '.o', 
-                    '.jpg', '.png', '.gif', '.ico', '.svg', '.webp', 
-                    '.mp3', '.wav', '.mp4', '.avi', '.mov', 
-                    '.zip', '.tar', '.gz', '.7z', '.rar',
-                    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-                    '.pyc', '.class', '.jar'
-                }
-                
-                if ext not in SKIP_EXTS:
-                    if ext not in LANGUAGE_MAP:
-                         # For unknown extensions, use the extension as the language name
-                         lang = ext.lstrip(".").capitalize()
-                    
-                    language_files[lang].append(str(file_path))
-                    file_count += 1
+                language_files[lang].append(str(file_path))
+                file_count += 1
             
             if file_count >= MAX_FILES_PER_FOLDER:
                 break

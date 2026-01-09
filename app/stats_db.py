@@ -23,6 +23,49 @@ def _connect_for_stats() -> sqlite3.Connection:
     return _connect()
 
 
+def _get_global_ignore_sql() -> str:
+    """Return SQL WHERE clause snippet to exclude ignored files, folders and patterns."""
+    # 1. Loading patterns from settings
+    raw_files = settings.get_setting("ignored_files", settings.get_default("ignored_files"))
+    raw_folders = settings.get_setting("ignored_folders", settings.get_default("ignored_folders"))
+    
+    ignored_files = [p.strip() for p in raw_files.split('\n') if p.strip()]
+    ignored_folders = [p.strip() for p in raw_folders.split('\n') if p.strip()]
+    
+    clauses = []
+    
+    # File Patterns: use GLOB (supports * and ?)
+    for pattern in ignored_files:
+        # Remove quotes used for case-insensitivity in the UI
+        p = pattern[1:-1] if pattern.startswith('"') and pattern.endswith('"') else pattern
+        
+        # If it looks like an extension (starts with .), treat it as suffix match
+        if p.startswith('.') and '*' not in p and '?' not in p:
+            clauses.append(f"file_path NOT LIKE '%{p}'")
+            continue
+
+        # If it's a simple name, match it anywhere in the path or as a suffix
+        if '/' not in p and '\\' not in p:
+            clauses.append(f"file_path NOT GLOB '*/{p}'")
+            clauses.append(f"file_path NOT GLOB '{p}'")
+        else:
+            clauses.append(f"file_path NOT GLOB '{p}'")
+            
+    # Folder Patterns:
+    for pattern in ignored_folders:
+        p = pattern[1:-1] if pattern.startswith('"') and pattern.endswith('"') else pattern
+        if '/' not in p and '\\' not in p:
+            clauses.append(f"file_path NOT GLOB '*/{p}/*'")
+            clauses.append(f"file_path NOT GLOB '{p}/*'")
+        else:
+            clauses.append(f"file_path NOT GLOB '{p}/*'")
+            
+    if not clauses:
+        return ""
+        
+    return " AND (" + " AND ".join(clauses) + ")"
+
+
 def init_stats_tables():
     """Initialize database tables for typing statistics."""
     conn = _connect()
@@ -278,10 +321,11 @@ def list_history_languages() -> List[str]:
     """Return distinct languages present in the session history."""
     conn = _connect_for_stats()
     cur = conn.cursor()
+    ignore_sql = _get_global_ignore_sql()
     cur.execute(
-        """
+        f"""
         SELECT DISTINCT language FROM session_history
-        WHERE language IS NOT NULL AND language != ''
+        WHERE language IS NOT NULL AND language != '' {ignore_sql}
         ORDER BY language COLLATE NOCASE
         """
     )
@@ -301,10 +345,11 @@ def fetch_session_history(
     """Retrieve session history rows matching the supplied filters."""
     conn = _connect()
     cur = conn.cursor()
+    ignore_sql = _get_global_ignore_sql()
     query = [
         "SELECT id, file_path, language, wpm, accuracy, total_keystrokes,",
         "       correct_keystrokes, incorrect_keystrokes, duration, recorded_at",
-        "FROM session_history WHERE 1=1",
+        f"FROM session_history WHERE 1=1 {ignore_sql}",
     ]
     params: List[Any] = []
 
@@ -511,13 +556,15 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
         where_clause = f"AND language IN ({placeholders})"
         params = list(languages)
     
+    ignore_sql = _get_global_ignore_sql()
+    
     # Get session counts
     cur.execute(f"""
         SELECT 
             SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END) as incomplete
         FROM session_history
-        WHERE 1=1 {where_clause}
+        WHERE 1=1 {where_clause} {ignore_sql}
     """, params)
     row = cur.fetchone()
     total_completed = row[0] or 0
@@ -533,7 +580,7 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
             MIN(accuracy * 100) as lowest_acc,
             AVG(accuracy * 100) as avg_acc
         FROM session_history
-        WHERE completed = 1 {where_clause}
+        WHERE completed = 1 {where_clause} {ignore_sql}
     """, params)
     row = cur.fetchone()
     highest_wpm = row[0]
@@ -547,7 +594,7 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
     cur.execute(f"""
         SELECT DATE(recorded_at) as day, SUM(correct_keystrokes + incorrect_keystrokes) as total_chars
         FROM session_history
-        WHERE completed = 1 {where_clause}
+        WHERE completed = 1 {where_clause} {ignore_sql}
         GROUP BY DATE(recorded_at)
         ORDER BY total_chars DESC
         LIMIT 1
@@ -559,7 +606,7 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
     cur.execute(f"""
         SELECT DATE(recorded_at) as day, COUNT(*) as session_count
         FROM session_history
-        WHERE completed = 1 {where_clause}
+        WHERE completed = 1 {where_clause} {ignore_sql}
         GROUP BY DATE(recorded_at)
         ORDER BY session_count DESC
         LIMIT 1
@@ -604,10 +651,11 @@ def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int
         where_clause = f"AND language IN ({placeholders})"
         params = list(languages)
     
+    ignore_sql = _get_global_ignore_sql()
     # Get all WPM values from completed sessions
     cur.execute(f"""
         SELECT wpm FROM session_history
-        WHERE completed = 1 {where_clause}
+        WHERE completed = 1 {where_clause} {ignore_sql}
     """, params)
     rows = cur.fetchall()
     conn.close()
@@ -665,11 +713,12 @@ def get_sessions_over_time(languages: Optional[List[str]] = None) -> List[Dict[s
         where_clause = f"AND language IN ({placeholders})"
         params = list(languages)
     
+    ignore_sql = _get_global_ignore_sql()
     cur.execute(f"""
         SELECT DATE(recorded_at) as date, wpm, accuracy, file_path,
                correct_keystrokes, incorrect_keystrokes, total_keystrokes
         FROM session_history
-        WHERE completed = 1 {where_clause}
+        WHERE completed = 1 {where_clause} {ignore_sql}
         ORDER BY recorded_at ASC
     """, params)
     rows = cur.fetchall()
@@ -734,13 +783,14 @@ def get_trend_data(
         # Default to day
         date_expr = "DATE(recorded_at)"
     
+    ignore_sql = _get_global_ignore_sql()
     cur.execute(f"""
         SELECT {date_expr} as period,
                AVG(wpm) as avg_wpm,
                AVG(accuracy) * 100 as avg_accuracy,
                COUNT(*) as session_count
         FROM session_history
-        WHERE {where_clause}
+        WHERE {where_clause} {ignore_sql}
         GROUP BY period
         ORDER BY period ASC
     """, params)
@@ -797,7 +847,8 @@ def get_daily_metrics(
         where_parts.append("DATE(recorded_at) <= ?")
         params.append(end_date)
     
-    where_clause = " AND ".join(where_parts)
+    ignore_sql = _get_global_ignore_sql()
+    where_clause = " AND ".join(where_parts) + ignore_sql
     
     cur.execute(f"""
         SELECT DATE(recorded_at) as date,
@@ -842,7 +893,8 @@ def get_first_session_date() -> Optional[str]:
     """
     conn = _connect_for_stats()
     cur = conn.cursor()
-    cur.execute("SELECT MIN(DATE(recorded_at)) FROM session_history WHERE completed = 1")
+    ignore_sql = _get_global_ignore_sql()
+    cur.execute(f"SELECT MIN(DATE(recorded_at)) FROM session_history WHERE completed = 1 {ignore_sql}")
     row = cur.fetchone()
     conn.close()
     return row[0] if row and row[0] else None
@@ -857,7 +909,8 @@ def get_per_language_stats() -> List[Dict[str, Any]]:
     conn = _connect_for_stats()
     cur = conn.cursor()
     
-    cur.execute("""
+    ignore_sql = _get_global_ignore_sql()
+    cur.execute(f"""
         SELECT 
             language,
             COUNT(*) as session_count,
@@ -866,7 +919,7 @@ def get_per_language_stats() -> List[Dict[str, Any]]:
             SUM(total_keystrokes) as total_chars,
             MAX(wpm) as best_wpm
         FROM session_history
-        WHERE completed = 1 AND language IS NOT NULL AND language != ''
+        WHERE completed = 1 AND language IS NOT NULL AND language != '' {ignore_sql}
         GROUP BY language
         ORDER BY session_count DESC
     """)
@@ -897,11 +950,12 @@ def get_current_streak() -> int:
     conn = _connect_for_stats()
     cur = conn.cursor()
     
+    ignore_sql = _get_global_ignore_sql()
     # Get all unique dates with completed sessions, ordered descending
-    cur.execute("""
+    cur.execute(f"""
         SELECT DISTINCT DATE(recorded_at) as date
         FROM session_history
-        WHERE completed = 1
+        WHERE completed = 1 {ignore_sql}
         ORDER BY date DESC
     """)
     
@@ -963,6 +1017,7 @@ def get_trend_comparison(days: int = 30, languages: Optional[List[str]] = None) 
     
     def get_period_stats(start_date, end_date):
         params = [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")] + lang_params
+        ignore_sql = _get_global_ignore_sql()
         cur.execute(f"""
             SELECT 
                 COUNT(*) as sessions,
@@ -973,7 +1028,7 @@ def get_trend_comparison(days: int = 30, languages: Optional[List[str]] = None) 
             WHERE completed = 1 
               AND DATE(recorded_at) >= ? 
               AND DATE(recorded_at) <= ?
-              {lang_clause}
+              {lang_clause} {ignore_sql}
         """, params)
         row = cur.fetchone()
         return {

@@ -20,7 +20,7 @@ import fnmatch
 import json
 import random
 from app import settings, stats_db
-from app.file_scanner import LANGUAGE_MAP
+from app.file_scanner import LANGUAGE_MAP, should_ignore_file, should_ignore_folder
 
 
 def _get_icon_manager():
@@ -108,9 +108,9 @@ class InternalFileTree(QTreeWidget):
                 self._save_expansion_state_to_db()
     
     def _load_ignore_settings(self):
-        """Load ignore patterns from settings."""
-        raw_files = settings.get_setting("ignored_files", "")
-        raw_folders = settings.get_setting("ignored_folders", "")
+        """Load global ignore settings."""
+        raw_files = settings.get_setting("ignored_files", settings.get_default("ignored_files"))
+        raw_folders = settings.get_setting("ignored_folders", settings.get_default("ignored_folders"))
         
         self.ignored_files = [p.strip() for p in raw_files.split('\n') if p.strip()]
         self.ignored_folders = [p.strip() for p in raw_folders.split('\n') if p.strip()]
@@ -130,55 +130,12 @@ class InternalFileTree(QTreeWidget):
             getattr(self, method_name)(*args, **kwargs)
 
     def _is_ignored(self, path: Path) -> bool:
-        """Check if a file or folder should be ignored."""
-        name = path.name
-        str_path = str(path)
-        
-        # Check folders
+        """Check if a file or folder should be ignored using global logic."""
         if path.is_dir():
-            for pattern in self.ignored_folders:
-                if self._match_pattern(name, str_path, pattern):
-                    return True
-        
-        # Check files
-        if path.is_file():
-            for pattern in self.ignored_files:
-                if self._match_pattern(name, str_path, pattern):
-                    return True
-                    
+            return should_ignore_folder(path, self.ignored_folders)
+        elif path.is_file():
+            return should_ignore_file(path, self.ignored_files)
         return False
-
-    def _match_pattern(self, name: str, full_path: str, pattern: str) -> bool:
-        """Match a name or path against a pattern with case-sensitivity rules."""
-        is_case_insensitive = pattern.startswith('"') and pattern.endswith('"')
-        if is_case_insensitive:
-            pattern = pattern[1:-1]
-            name_to_check = name.lower()
-            path_to_check = full_path.lower()
-            pattern_to_check = pattern.lower()
-        else:
-            name_to_check = name
-            path_to_check = full_path
-            pattern_to_check = pattern
-            
-        # Check if pattern is a full path (contains separator)
-        if "\\" in pattern or "/" in pattern:
-            # Normalize separators for comparison if needed, but simple string check first
-            # For full path matching with globs
-            if '*' in pattern or '?' in pattern:
-                if is_case_insensitive:
-                    return fnmatch.fnmatch(path_to_check, pattern_to_check)
-                else:
-                    return fnmatch.fnmatchcase(path_to_check, pattern_to_check)
-            return path_to_check == pattern_to_check
-        else:
-            # Match against name
-            if '*' in pattern or '?' in pattern:
-                if is_case_insensitive:
-                    return fnmatch.fnmatch(name_to_check, pattern_to_check)
-                else:
-                    return fnmatch.fnmatchcase(name_to_check, pattern_to_check)
-            return name_to_check == pattern_to_check
 
     def load_folder(self, folder_path: str):
         """Load a single folder and display its file tree."""

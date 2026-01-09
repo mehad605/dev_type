@@ -1188,13 +1188,14 @@ class MainWindow(QMainWindow):
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
         
-        # File Explorer settings group
-        explorer_group = QGroupBox("File Explorer")
+        # Global Exclusions settings group
+        explorer_group = QGroupBox("Global Exclusions")
         explorer_layout = QVBoxLayout()
         
         explorer_desc = QLabel(
-            "Configure files and folders to ignore in the file tree. "
-            "One pattern per line. Wrap in double quotes for case-insensitive matching (e.g. \"test.py\")."
+            "Configure files and folders to ignore globally. "
+            "Hidden items won't appear in folder counts, language cards, or statistics. "
+            "Use standard glob patterns (e.g. *.exe, *.pyc) or exact names."
         )
         explorer_desc.setWordWrap(True)
         explorer_desc.setStyleSheet("color: #888888; font-size: 9pt;")
@@ -1214,30 +1215,31 @@ class MainWindow(QMainWindow):
         """
         
         # Ignored Files
-        explorer_layout.addWidget(QLabel("Ignored Files/Patterns:"))
+        explorer_layout.addWidget(QLabel("Ignored Files/Patterns (one per line):"))
         self.ignored_files_edit = QTextEdit()
-        self.ignored_files_edit.setPlaceholderText("*.pyc\n__pycache__\n\"Test.py\"")
+        self.ignored_files_edit.setPlaceholderText("*.exe\n*.pyc\n__pycache__\n\"Test.py\"")
         self.ignored_files_edit.setMaximumHeight(100)
         self.ignored_files_edit.setStyleSheet(input_style)
-        self.ignored_files_edit.setText(settings.get_setting("ignored_files", ""))
-        # Use a timer to debounce save
-        self._ignore_save_timer = QTimer()
-        self._ignore_save_timer.setSingleShot(True)
-        self._ignore_save_timer.setInterval(500)
-        self._ignore_save_timer.timeout.connect(self._save_ignore_settings)
-        
-        self.ignored_files_edit.textChanged.connect(self._ignore_save_timer.start)
+        self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
         explorer_layout.addWidget(self.ignored_files_edit)
         
         # Ignored Folders
-        explorer_layout.addWidget(QLabel("Ignored Folders:"))
+        explorer_layout.addWidget(QLabel("Ignored Folders (one per line):"))
         self.ignored_folders_edit = QTextEdit()
         self.ignored_folders_edit.setPlaceholderText(".git\nnode_modules\n\"Build\"")
         self.ignored_folders_edit.setMaximumHeight(100)
         self.ignored_folders_edit.setStyleSheet(input_style)
-        self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", ""))
-        self.ignored_folders_edit.textChanged.connect(self._ignore_save_timer.start)
+        self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))
         explorer_layout.addWidget(self.ignored_folders_edit)
+        
+        # Use a timer to debounce save
+        self._ignore_save_timer = QTimer()
+        self._ignore_save_timer.setSingleShot(True)
+        self._ignore_save_timer.setInterval(1000)
+        self._ignore_save_timer.timeout.connect(self._save_ignore_settings)
+        
+        self.ignored_files_edit.textChanged.connect(self._ignore_save_timer.start)
+        self.ignored_folders_edit.textChanged.connect(self._ignore_save_timer.start)
         
         explorer_group.setLayout(explorer_layout)
         s_layout.addWidget(explorer_group)
@@ -1831,7 +1833,7 @@ class MainWindow(QMainWindow):
         
         data_dir_group.setLayout(data_dir_layout)
         s_layout.addWidget(data_dir_group)
-        
+
         s_layout.addStretch()
         
         scroll.setWidget(settings_widget)
@@ -2644,11 +2646,11 @@ class MainWindow(QMainWindow):
         show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost_state)
         
-        # File Explorer settings
+        # Global Exclusion settings
         if hasattr(self, 'ignored_files_edit'):
-            self.ignored_files_edit.setText(settings.get_setting("ignored_files", ""))
+            self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
         if hasattr(self, 'ignored_folders_edit'):
-            self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", ""))
+            self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -2751,6 +2753,22 @@ class MainWindow(QMainWindow):
         show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
         self.show_ghost_text_changed.emit(show_ghost)
+
+    def on_ignored_extensions_changed(self, text: str):
+        """Deprecated: Logic moved to _save_ignore_settings."""
+        pass
+
+    def _apply_ignore_extensions(self):
+        """Apply ignored extensions and refresh UI."""
+        # Note: LanguagesTab and FoldersTab will re-scan if their refresh() or load_folders() is called
+        if hasattr(self, 'folders_tab'):
+            self.folders_tab.load_folders()
+            
+        if hasattr(self, 'languages_tab'):
+            self.languages_tab.ensure_loaded(force=True)
+            
+        if hasattr(self, 'stats_tab') and not isinstance(self.stats_tab, QLabel):
+            self.stats_tab.refresh()
 
     def _update_allow_continue_buttons(self, enabled: bool):
         """Refresh the button styles for the allow-continue setting."""
@@ -2865,12 +2883,14 @@ class MainWindow(QMainWindow):
         self.show_ghost_text_changed.emit(enabled)
 
     def _save_ignore_settings(self):
-        """Save ignored files/folders settings and emit change signal."""
+        """Save ignored files/folders settings and refresh all tabs."""
         if hasattr(self, 'ignored_files_edit'):
             settings.set_setting("ignored_files", self.ignored_files_edit.toPlainText())
         if hasattr(self, 'ignored_folders_edit'):
             settings.set_setting("ignored_folders", self.ignored_folders_edit.toPlainText())
+            
         self.ignored_patterns_changed.emit()
+        self._apply_ignore_extensions()
 
 
 

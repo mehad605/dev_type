@@ -89,6 +89,10 @@ SETTING_DEFAULTS: Dict[str, str] = {
     
     # State persistence (not user-configurable)
     "expanded_folders": "[]",
+    
+    # Global Exclusions (user-configurable)
+    "ignored_files": "*.exe\n*.dll\n*.so\n*.dylib\n*.bin\n*.obj\n*.o\n*.pyc\n*.class\n*.jar\n*.zip\n*.tar\n*.gz\n*.7z\n*.rar\n*.pdf\n*.doc\n*.docx\n*.xls\n*.xlsx\n*.ppt\n*.pptx",
+    "ignored_folders": ".git\nnode_modules\n__pycache__\n.venv\nvenv\nbuild\ndist\nbin\nobj",
 }
 
 
