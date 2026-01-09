@@ -527,6 +527,13 @@ class EditorTab(QWidget):
             duration=stats["time"],
             completed=True,
         )
+        
+        # Update detailed key statistics for heatmap
+        stats_db.update_key_stats(
+            language=get_language_for_file(self.current_file),
+            key_hits=stats.get("key_hits", {}),
+            key_misses=stats.get("key_misses", {})
+        )
 
         # Check and save ghost if this is a new best
         is_new_best = self._check_and_save_ghost(stats)
@@ -1049,6 +1056,14 @@ class EditorTab(QWidget):
                 duration=user_time,
                 completed=True,
             )
+            
+            # Update detailed key statistics for heatmap
+            if self.typing_area.engine:
+                stats_db.update_key_stats(
+                    language=get_language_for_file(self.current_file),
+                    key_hits=self.typing_area.engine.state.key_hits,
+                    key_misses=self.typing_area.engine.state.key_misses
+                )
 
             # Check and save new ghost if this beat the old one
             race_stats = {

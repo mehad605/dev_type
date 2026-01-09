@@ -20,6 +20,15 @@ class TypingState:
     # Keep start_time for backward compatibility but it's not used for timing anymore
     start_time: float = 0
     
+    # Per-key stats for this session
+    # Maps character to count of correct/incorrect attempts
+    key_hits: dict = None  # Lazy init in __post_init__ or process_keystroke
+    key_misses: dict = None
+    
+    def __post_init__(self):
+        if self.key_hits is None: self.key_hits = {}
+        if self.key_misses is None: self.key_misses = {}
+    
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
     
@@ -132,6 +141,7 @@ class TypingEngine:
         
         if is_correct:
             self.state.correct_keystrokes += 1
+            self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
             self.state.cursor_position += 1
             
             # Clear mistake marker if we were allowing continuation and typed correctly
@@ -144,6 +154,7 @@ class TypingEngine:
                 self.pause()  # Properly pause to accumulate final time
         else:
             self.state.incorrect_keystrokes += 1
+            self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
             
             if self.allow_continue_mistakes:
                 # Allow cursor to advance even on mistakes

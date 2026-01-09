@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QFrame,
     QSizePolicy,
@@ -549,10 +550,7 @@ class WPMDistributionChart(QWidget):
 
 
 class CalendarHeatmap(QWidget):
-    """GitHub-style calendar heatmap showing daily activity."""
-    
-    # Signal emitted when metric selection changes
-    metric_changed = Signal(str)
+    """GitHub-style calendar heatmap showing daily activity for a specific year."""
     
     # Available metrics
     METRIC_OPTIONS = [
@@ -564,61 +562,59 @@ class CalendarHeatmap(QWidget):
         super().__init__(parent)
         self.setMouseTracking(True)
         
-        # Data: dict mapping date string (YYYY-MM-DD) to activity value
+        # Data
         self._data: Dict[str, float] = {}
-        self._daily_data: List[Dict[str, Any]] = []  # Store raw data for metric switching
-        self._metric = "total_chars"  # Default metric to display
+        self._daily_data: List[Dict[str, Any]] = []
+        self._metric = "total_chars"
+        self._year = datetime.now().year
         
         # Visual settings
         self._cell_size = 12
         self._cell_gap = 3
         self._month_label_height = 20
-        self._weekday_label_width = 28
+        self._weekday_label_width = 32
         
         # Theme colors
-        self._colors = get_theme_colors()
         self._update_colors()
         
         # Hover state
         self._hovered_date: Optional[str] = None
         self._hovered_rect: Optional[QRectF] = None
         
-        # Calculate size based on 53 weeks (full year) + labels
-        total_width = self._weekday_label_width + 53 * (self._cell_size + self._cell_gap)
-        total_height = self._month_label_height + 7 * (self._cell_size + self._cell_gap) + 20  # +20 for legend
+        # Calculate size based on 54 weeks (buffer for Jan alignment)
+        total_width = self._weekday_label_width + 54 * (self._cell_size + self._cell_gap)
+        total_height = self._month_label_height + 7 * (self._cell_size + self._cell_gap) + 30
         self.setFixedHeight(int(total_height))
         self.setMinimumWidth(int(total_width))
-    
-    def get_metric(self) -> str:
-        """Get the current metric."""
-        return self._metric
-    
+
+    def set_year(self, year: int):
+        """Set the year to display."""
+        if self._year != year:
+            self._year = year
+            self.update()
+
     def set_metric(self, metric: str):
-        """Set the metric and refresh display."""
-        if metric != self._metric and metric in [m[0] for m in self.METRIC_OPTIONS]:
+        """Set the metric to display."""
+        if metric != self._metric:
             self._metric = metric
-            # Re-process data with new metric
             self._process_data()
             self.update()
-    
+
     def _process_data(self):
-        """Process raw daily data with current metric."""
+        """Process raw daily data into the display format."""
         self._data = {}
         for entry in self._daily_data:
             date = entry.get("date")
             value = entry.get(self._metric, 0)
-            if date and value:
+            if date:
                 self._data[date] = float(value)
-    
+
     def _update_colors(self):
-        """Update color palette based on theme."""
+        """Sync with current theme colors."""
         self._colors = get_theme_colors()
         self._empty_color = self._colors["bg_tertiary"]
         self._text_color = self._colors["text_secondary"]
-        
-        # Generate heat gradient (5 levels) based on accent color
         accent = self._colors["accent"]
-        # Create levels from very light to full accent
         self._heat_levels = [
             self._empty_color,
             QColor(accent.red(), accent.green(), accent.blue(), 60),
@@ -626,262 +622,196 @@ class CalendarHeatmap(QWidget):
             QColor(accent.red(), accent.green(), accent.blue(), 180),
             accent,
         ]
-    
-    def set_data(self, daily_data: List[Dict[str, Any]], metric: str = None):
-        """Set the heatmap data from daily metrics.
-        
-        Args:
-            daily_data: List of dicts with 'date' and metric values.
-            metric: Which metric to visualize. If None, uses current metric.
-        """
+
+    def set_data(self, daily_data: List[Dict[str, Any]]):
+        """Update heatmap data."""
         self._daily_data = daily_data
-        if metric is not None:
-            self._metric = metric
         self._process_data()
         self.update()
-    
+
     def _get_heat_level(self, value: float) -> int:
-        """Get heat level (0-4) for a value."""
         if not self._data or value <= 0:
             return 0
-        
-        # Get max value for scaling
         max_val = max(self._data.values()) if self._data else 1
-        if max_val <= 0:
-            return 0
-        
-        # Calculate percentile-based level
+        if max_val <= 0: return 0
         ratio = value / max_val
-        if ratio <= 0:
-            return 0
-        elif ratio <= 0.25:
-            return 1
-        elif ratio <= 0.5:
-            return 2
-        elif ratio <= 0.75:
-            return 3
-        else:
-            return 4
-    
+        if ratio <= 0: return 0
+        elif ratio <= 0.25: return 1
+        elif ratio <= 0.5: return 2
+        elif ratio <= 0.75: return 3
+        else: return 4
+
     def _get_cell_rect(self, week: int, day: int) -> QRectF:
-        """Get the rectangle for a specific cell."""
         x = self._weekday_label_width + week * (self._cell_size + self._cell_gap)
         y = self._month_label_height + day * (self._cell_size + self._cell_gap)
         return QRectF(x, y, self._cell_size, self._cell_size)
-    
+
     def paintEvent(self, event):
-        """Paint the calendar heatmap."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
         self._update_colors()
-        
-        # Calculate date range (last 53 weeks ending today)
-        today = QDate.currentDate()
-        # Find the Sunday of the week containing 52 weeks ago
-        start_date = today.addDays(-364)  # Go back ~52 weeks
-        # Align to Sunday (day 0)
-        start_date = start_date.addDays(-start_date.dayOfWeek() % 7)
-        
-        # Draw weekday labels (Mon, Wed, Fri)
+
+        # Start from the Sunday of the week containing Jan 1st
+        start_date = QDate(self._year, 1, 1)
+        offset = start_date.dayOfWeek() % 7 # 0=Sun, 1=Mon...
+        start_date = start_date.addDays(-offset)
+        end_date = QDate(self._year, 12, 31)
+
+        # Draw weekday labels
         font = painter.font()
         font.setPointSize(9)
         painter.setFont(font)
         painter.setPen(self._text_color)
-        
         weekday_labels = ["", "Mon", "", "Wed", "", "Fri", ""]
         for i, label in enumerate(weekday_labels):
             if label:
                 y = self._month_label_height + i * (self._cell_size + self._cell_gap)
-                painter.drawText(QRectF(0, y, self._weekday_label_width - 4, self._cell_size),
+                painter.drawText(QRectF(0, y, self._weekday_label_width - 6, self._cell_size),
                                Qt.AlignRight | Qt.AlignVCenter, label)
-        
-        # Draw month labels and cells
+
         current_month = -1
-        month_positions: List[Tuple[int, str]] = []  # (x_pos, month_name)
-        
+        month_positions = []
         current_date = start_date
         week = 0
+        self._hovered_rect = None
         
-        while current_date <= today:
-            day_of_week = current_date.dayOfWeek() % 7  # 0 = Sunday, 6 = Saturday
+        # Draw cells
+        while current_date <= end_date or current_date.dayOfWeek() % 7 != 0:
+            day_of_week = current_date.dayOfWeek() % 7
             
-            # Track month labels
-            if current_date.month() != current_month:
+            # Month track
+            if current_date.year() == self._year and current_date.month() != current_month:
                 current_month = current_date.month()
                 x_pos = self._weekday_label_width + week * (self._cell_size + self._cell_gap)
                 month_name = current_date.toString("MMM")
                 month_positions.append((x_pos, month_name))
-            
-            # Draw cell
-            rect = self._get_cell_rect(week, day_of_week)
-            date_str = current_date.toString("yyyy-MM-dd")
-            value = self._data.get(date_str, 0)
-            level = self._get_heat_level(value)
-            
-            color = self._heat_levels[level]
-            painter.setBrush(QBrush(color))
-            painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(rect, 2, 2)
-            
-            # Highlight hovered cell
-            if date_str == self._hovered_date:
-                painter.setPen(QPen(self._colors["text_primary"], 2))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), 2, 2)
-                self._hovered_rect = rect
-            
-            # Move to next day
+
+            if current_date.year() == self._year:
+                rect = self._get_cell_rect(week, day_of_week)
+                date_str = current_date.toString("yyyy-MM-dd")
+                value = self._data.get(date_str, 0)
+                level = self._get_heat_level(value)
+                color = self._heat_levels[level]
+                
+                painter.setBrush(QBrush(color))
+                painter.setPen(Qt.NoPen)
+                painter.drawRoundedRect(rect, 2, 2)
+
+                if date_str == self._hovered_date:
+                    painter.setPen(QPen(self._colors["text_primary"], 1.5))
+                    painter.setBrush(Qt.NoBrush)
+                    painter.drawRoundedRect(rect.adjusted(-0.5, -0.5, 0.5, 0.5), 2, 2)
+                    self._hovered_rect = rect
+
             current_date = current_date.addDays(1)
-            if current_date.dayOfWeek() % 7 == 0:  # Sunday
+            if current_date.dayOfWeek() % 7 == 0:
                 week += 1
-        
-        # Draw month labels
+            if current_date.year() > self._year and current_date.dayOfWeek() % 7 == 0:
+                break
+
+        # Render month names
         painter.setPen(self._text_color)
         for x_pos, month_name in month_positions:
-            painter.drawText(QRectF(x_pos, 0, 40, self._month_label_height),
-                           Qt.AlignLeft | Qt.AlignVCenter, month_name)
-        
-        # Draw legend
-        legend_y = self._month_label_height + 7 * (self._cell_size + self._cell_gap) + 8
+            painter.drawText(QRectF(x_pos, 0, 40, self._month_label_height), Qt.AlignLeft | Qt.AlignVCenter, month_name)
+
+        # Legend
+        legend_y = self.height() - 15
         legend_x = self._weekday_label_width
-        
         font.setPointSize(8)
         painter.setFont(font)
-        painter.drawText(QRectF(legend_x, legend_y, 30, self._cell_size),
-                        Qt.AlignRight | Qt.AlignVCenter, "Less")
+        painter.drawText(QRectF(legend_x, legend_y, 30, self._cell_size), Qt.AlignLeft | Qt.AlignVCenter, "Less")
         legend_x += 35
-        
         for i, color in enumerate(self._heat_levels):
             rect = QRectF(legend_x + i * (self._cell_size + 2), legend_y, self._cell_size, self._cell_size)
             painter.setBrush(QBrush(color))
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(rect, 2, 2)
-        
         legend_x += len(self._heat_levels) * (self._cell_size + 2) + 5
-        painter.setPen(self._text_color)
-        painter.drawText(QRectF(legend_x, legend_y, 30, self._cell_size),
-                        Qt.AlignLeft | Qt.AlignVCenter, "More")
-        
-        # Draw tooltip if hovering
+        painter.drawText(QRectF(legend_x, legend_y, 30, self._cell_size), Qt.AlignLeft | Qt.AlignVCenter, "More")
+
+        # Tooltip
         if self._hovered_date and self._hovered_rect:
             value = self._data.get(self._hovered_date, 0)
+            if self._metric == "total_chars": value_str = f"{int(value):,} chars"
+            elif self._metric == "completed_sessions": value_str = f"{int(value)} sessions"
+            else: value_str = f"{value:.1f}"
             
-            # Format tooltip text based on metric
-            if self._metric == "total_chars":
-                value_str = f"{int(value):,} chars"
-            elif self._metric == "completed_sessions":
-                value_str = f"{int(value)} sessions"
-            elif self._metric == "avg_wpm":
-                value_str = f"{value:.1f} WPM"
-            else:
-                value_str = f"{value:.1f}"
-            
-            # Parse date for display
-            from datetime import datetime as dt
             try:
-                date_obj = dt.strptime(self._hovered_date, "%Y-%m-%d")
-                date_str = date_obj.strftime("%d %b %Y")
-            except:
-                date_str = self._hovered_date
+                date_obj = datetime.strptime(self._hovered_date, "%Y-%m-%d")
+                date_display = date_obj.strftime("%d %b %Y")
+            except: date_display = self._hovered_date
             
-            tooltip_text = f"{date_str}: {value_str}"
-            
+            tooltip_text = f"{date_display}: {value_str}"
             fm = QFontMetrics(font)
             text_width = fm.horizontalAdvance(tooltip_text) + 16
-            tooltip_rect = QRectF(
-                self._hovered_rect.center().x() - text_width / 2,
-                self._hovered_rect.y() - 28,
-                text_width,
-                22
-            )
+            tooltip_rect = QRectF(self._hovered_rect.center().x() - text_width/2, self._hovered_rect.y() - 28, text_width, 22)
+            if tooltip_rect.left() < 0: tooltip_rect.moveLeft(0)
+            if tooltip_rect.right() > self.width(): tooltip_rect.moveRight(self.width())
+            if tooltip_rect.top() < 0: # Flip below if cutoff
+                tooltip_rect.moveTop(self._hovered_rect.bottom() + 6)
             
-            # Keep tooltip in bounds
-            if tooltip_rect.left() < 0:
-                tooltip_rect.moveLeft(0)
-            if tooltip_rect.right() > self.width():
-                tooltip_rect.moveRight(self.width())
-            
-            # Draw tooltip background
             painter.setPen(Qt.NoPen)
             painter.setBrush(self._colors["bg_secondary"])
             painter.drawRoundedRect(tooltip_rect, 4, 4)
-            
-            # Draw tooltip border
             painter.setPen(QPen(self._colors["border"], 1))
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(tooltip_rect, 4, 4)
-            
-            # Draw tooltip text
             painter.setPen(self._colors["text_primary"])
             painter.drawText(tooltip_rect, Qt.AlignCenter, tooltip_text)
-    
+
     def mouseMoveEvent(self, event):
-        """Track mouse for hover effects."""
-        # Calculate date range
-        today = QDate.currentDate()
-        start_date = today.addDays(-364)
-        start_date = start_date.addDays(-start_date.dayOfWeek() % 7)
+        start_date = QDate(self._year, 1, 1)
+        offset = start_date.dayOfWeek() % 7
+        start_date = start_date.addDays(-offset)
         
-        # Find which cell is hovered
         x, y = event.position().x(), event.position().y()
-        
-        # Check if in cell area
         if x < self._weekday_label_width or y < self._month_label_height:
-            if self._hovered_date:
-                self._hovered_date = None
-                self.update()
+            if self._hovered_date: self._hovered_date = None; self.update()
             return
-        
-        # Calculate week and day
+
         week = int((x - self._weekday_label_width) / (self._cell_size + self._cell_gap))
         day = int((y - self._month_label_height) / (self._cell_size + self._cell_gap))
         
         if 0 <= day <= 6 and week >= 0:
-            # Calculate the date
             hovered_date = start_date.addDays(week * 7 + day)
-            if hovered_date <= today:
+            if hovered_date.year() == self._year:
                 date_str = hovered_date.toString("yyyy-MM-dd")
                 if date_str != self._hovered_date:
                     self._hovered_date = date_str
                     self.update()
                 return
         
-        if self._hovered_date:
-            self._hovered_date = None
-            self.update()
-    
+        if self._hovered_date: self._hovered_date = None; self.update()
+
     def leaveEvent(self, event):
-        """Clear hover state when mouse leaves."""
-        if self._hovered_date:
-            self._hovered_date = None
-            self.update()
-    
+        self._hovered_date = None
+        self.update()
+
     def apply_theme(self):
-        """Apply current theme colors."""
         self._update_colors()
         self.update()
 
 
-class WPMAccuracyScatterPlot(QWidget):
-    """Scatter plot showing WPM and Accuracy over time with dual Y-axes."""
+class MetricScatterPlot(QWidget):
+    """Scatter plot showing a single metric (WPM or Accuracy) over time."""
     
-    def __init__(self, parent=None):
+    def __init__(self, metric_type='wpm', parent=None):
         super().__init__(parent)
+        self.metric_type = metric_type  # 'wpm' or 'accuracy'
         self.data: List[Dict] = []  # List of session data
-        self.hover_info: Optional[Tuple[int, str]] = None  # (index, 'wpm' or 'acc' or 'wpm_trend' or 'acc_trend')
+        self.hover_info: Optional[Tuple[int, str]] = None  # (index, 'point' or 'trend')
         self._ctrl_held = False  # Track Ctrl key state for trend line mode
         
         # Colors - will be set from theme
         self._update_colors()
         
-        # Margins - increased right margin for axis title spacing
-        self.margin_left = 50
-        self.margin_right = 60
-        self.margin_top = 20
-        self.margin_bottom = 45
+        # Adjust margins for single-metric view
+        self.margin_left = 55
+        self.margin_right = 35
+        self.margin_top = 15
+        self.margin_bottom = 25
         
-        self.setMinimumHeight(250)
+        self.setMinimumHeight(180)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)  # Enable keyboard events
         self.setStyleSheet("background: transparent;")
@@ -894,6 +824,7 @@ class WPMAccuracyScatterPlot(QWidget):
         self.bg_color = colors["bg_secondary"]
         self.text_color = colors["text_primary"]
         self.grid_color = colors["border"]
+        self.active_color = self.wpm_color if self.metric_type == 'wpm' else self.acc_color
     
     def apply_theme(self):
         """Apply current theme colors."""
@@ -921,19 +852,50 @@ class WPMAccuracyScatterPlot(QWidget):
             return rect.x() + rect.width() / 2
         return rect.x() + (index / (len(self.data) - 1)) * rect.width()
     
-    def _wpm_to_y(self, wpm: float, max_wpm: float) -> float:
-        """Convert WPM to Y coordinate (left axis, 0 at bottom, max at top)."""
+    def _val_to_y(self, val: float, min_val: float, max_val: float) -> float:
+        """Convert metric value to Y coordinate."""
         rect = self._chart_rect()
-        if max_wpm == 0:
-            max_wpm = 100
-        return rect.y() + rect.height() - (wpm / max_wpm) * rect.height()
-    
-    def _acc_to_y(self, acc: float) -> float:
-        """Convert accuracy to Y coordinate (right axis, 100% at top, 0% at bottom - INVERTED display)."""
-        rect = self._chart_rect()
-        # Inverted: 100% at top, 0% at bottom (visually shows high accuracy = high position)
-        # But labels go 0% at top to 100% at bottom
-        return rect.y() + (acc / 100) * rect.height()
+        span = max_val - min_val
+        if span <= 0:
+            span = 10 if self.metric_type == 'wpm' else 20
+        clamped_val = max(min_val, min(max_val, val))
+        ratio = (clamped_val - min_val) / span
+        return rect.y() + rect.height() - (ratio * rect.height())
+
+    def _get_processed_values(self) -> List[float]:
+        """Get the metric values to plot, with necessary normalization."""
+        if not self.data: return []
+        if self.metric_type == 'wpm':
+            return [d["wpm"] for d in self.data]
+        else:
+            vals = []
+            for d in self.data:
+                correct = d.get("correct", 0)
+                incorrect = d.get("incorrect", 0)
+                total = d.get("total", correct + incorrect)
+                if total > 0:
+                    acc = (correct / total) * 100
+                else:
+                    acc = d.get("accuracy", 0)
+                    if acc <= 1.0: acc *= 100
+                vals.append(acc)
+            return vals
+
+    def _get_range(self, values: List[float]) -> Tuple[float, float]:
+        """Calculate the scale range for the metric."""
+        if not values: return 0.0, 100.0
+        min_v, max_v = min(values), max(values)
+        if self.metric_type == 'wpm':
+            min_r = (int(min_v) // 10) * 10
+            max_r = ((int(max_v) // 10) + 1) * 10
+            if max_r - min_r < 20: max_r = min_r + 20
+        else:
+            min_r = max(0, (int(min_v) // 10) * 10 - 10)
+            max_r = min(100, ((int(max_v) // 10) + 1) * 10 + 10)
+            if max_r - min_r < 20:
+                if max_r > 80: min_r = max_r - 20
+                else: max_r = min_r + 20
+        return float(min_r), float(max_r)
     
     def _calculate_trend_line(self, values: List[float]) -> Tuple[float, float]:
         """Calculate linear regression for trend line. Returns (slope, intercept)."""
@@ -959,95 +921,41 @@ class WPMAccuracyScatterPlot(QWidget):
         
         return slope, intercept
     
-    def _get_trend_y_at_x(self, x_idx: float, slope: float, intercept: float) -> float:
-        """Get the Y value on trend line at a given x index."""
-        return slope * x_idx + intercept
     
     def mouseMoveEvent(self, event):
-        """Track mouse for hover effects."""
-        if not self.data:
-            self.hover_info = None
-            self.update()
-            return
-        
-        # Update Ctrl state from event modifiers
+        if not self.data: return
         self._ctrl_held = bool(event.modifiers() & Qt.ControlModifier)
-        
         rect = self._chart_rect()
-        x = event.position().x()
-        y = event.position().y()
+        x, y = event.position().x(), event.position().y()
         
-        # Calculate max WPM for scaling
-        max_wpm = max(d["wpm"] for d in self.data) if self.data else 100
-        max_wpm = ((int(max_wpm) // 20) + 1) * 20  # Round up to nearest 20
-        
-        # Calculate trend lines
-        wpm_values = [d["wpm"] for d in self.data]
-        acc_values = [d["accuracy"] for d in self.data]
-        wpm_slope, wpm_intercept = self._calculate_trend_line(wpm_values)
-        acc_slope, acc_intercept = self._calculate_trend_line(acc_values)
+        values = self._get_processed_values()
+        min_r, max_r = self._get_range(values)
+        slope, intercept = self._calculate_trend_line(values)
         
         closest_info = None
-        
-        # When Ctrl is held, prioritize trend lines over data points
         if self._ctrl_held and len(self.data) >= 2 and rect.contains(x, y):
-            # Find the x index corresponding to mouse position
             x_ratio = (x - rect.x()) / rect.width()
             x_idx = x_ratio * (len(self.data) - 1)
-            
-            # Get trend line Y values at this x position
-            wpm_trend_val = self._get_trend_y_at_x(x_idx, wpm_slope, wpm_intercept)
-            acc_trend_val = self._get_trend_y_at_x(x_idx, acc_slope, acc_intercept)
-            
-            trend_wpm_y = self._wpm_to_y(wpm_trend_val, max_wpm)
-            trend_acc_y = self._acc_to_y(acc_trend_val)
-            
-            # Check distance to WPM trend line (increased hit area)
-            if abs(y - trend_wpm_y) < 20:
-                closest_info = (int(x_idx), 'wpm_trend')
-            # Check distance to accuracy trend line
-            elif abs(y - trend_acc_y) < 20:
-                closest_info = (int(x_idx), 'acc_trend')
+            trend_val = slope * x_idx + intercept
+            py_trend = self._val_to_y(trend_val, min_r, max_r)
+            if abs(y - py_trend) < 20:
+                closest_info = (int(x_idx), 'trend')
         else:
-            # Normal mode: check data points first
             closest_dist = float('inf')
-            
-            for i, d in enumerate(self.data):
+            for i, val in enumerate(values):
                 px = self._date_to_x(i)
-                
-                # Check WPM point
-                py_wpm = self._wpm_to_y(d["wpm"], max_wpm)
-                dist_wpm = ((x - px) ** 2 + (y - py_wpm) ** 2) ** 0.5
-                if dist_wpm < 15 and dist_wpm < closest_dist:
-                    closest_dist = dist_wpm
-                    closest_info = (i, 'wpm')
-                
-                # Check accuracy point
-                py_acc = self._acc_to_y(d["accuracy"])
-                dist_acc = ((x - px) ** 2 + (y - py_acc) ** 2) ** 0.5
-                if dist_acc < 15 and dist_acc < closest_dist:
-                    closest_dist = dist_acc
-                    closest_info = (i, 'acc')
-            
-            # If no data point is close, check trend lines
+                py = self._val_to_y(val, min_r, max_r)
+                dist = ((x - px)**2 + (y - py)**2)**0.5
+                if dist < 15 and dist < closest_dist:
+                    closest_dist = dist
+                    closest_info = (i, 'point')
             if closest_info is None and len(self.data) >= 2 and rect.contains(x, y):
-                # Find the x index corresponding to mouse position
                 x_ratio = (x - rect.x()) / rect.width()
                 x_idx = x_ratio * (len(self.data) - 1)
-                
-                # Get trend line Y values at this x position
-                wpm_trend_val = self._get_trend_y_at_x(x_idx, wpm_slope, wpm_intercept)
-                acc_trend_val = self._get_trend_y_at_x(x_idx, acc_slope, acc_intercept)
-                
-                trend_wpm_y = self._wpm_to_y(wpm_trend_val, max_wpm)
-                trend_acc_y = self._acc_to_y(acc_trend_val)
-                
-                # Check distance to WPM trend line
-                if abs(y - trend_wpm_y) < 8:
-                    closest_info = (int(x_idx), 'wpm_trend')
-                # Check distance to accuracy trend line
-                elif abs(y - trend_acc_y) < 8:
-                    closest_info = (int(x_idx), 'acc_trend')
+                trend_val = slope * x_idx + intercept
+                py_trend = self._val_to_y(trend_val, min_r, max_r)
+                if abs(y - py_trend) < 8:
+                    closest_info = (int(x_idx), 'trend')
         
         self.hover_info = closest_info
         self.update()
@@ -1078,266 +986,119 @@ class WPMAccuracyScatterPlot(QWidget):
         super().enterEvent(event)
     
     def paintEvent(self, event):
-        """Draw the scatter plot."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Background
         painter.fillRect(self.rect(), self.bg_color)
-        
         rect = self._chart_rect()
         
         if not self.data:
-            # Draw empty state
             painter.setPen(QColor("#666666"))
-            font = QFont()
-            font.setPointSize(12)
+            font = QFont(); font.setPointSize(12)
             painter.setFont(font)
             painter.drawText(rect, Qt.AlignCenter, "No session data available")
             return
         
-        # Calculate max WPM for scaling
-        max_wpm = max(d["wpm"] for d in self.data)
-        max_wpm = ((int(max_wpm) // 20) + 1) * 20  # Round up to nearest 20
-        
-        font = QFont()
-        font.setPointSize(9)
+        values = self._get_processed_values()
+        min_r, max_r = self._get_range(values)
+        font = QFont(); font.setPointSize(9)
         painter.setFont(font)
         
-        # Draw grid lines
+        # Grid lines
         painter.setPen(QPen(self.grid_color, 1))
-        
-        # Horizontal grid (WPM scale)
-        wpm_step = max(20, max_wpm // 5)
-        for wpm in range(0, int(max_wpm) + 1, wpm_step):
-            y = self._wpm_to_y(wpm, max_wpm)
+        for i in range(6):
+            grid_val = min_r + (i / 5.0) * (max_r - min_r)
+            y = self._val_to_y(grid_val, min_r, max_r)
             painter.drawLine(QPointF(rect.x(), y), QPointF(rect.x() + rect.width(), y))
         
-        # Draw axes
         painter.setPen(QPen(self.grid_color, 2))
         painter.drawRect(rect)
         
-        # Left Y-axis labels (WPM - green)
-        painter.setPen(self.wpm_color)
-        for wpm in range(0, int(max_wpm) + 1, wpm_step):
-            y = self._wpm_to_y(wpm, max_wpm)
+        # Y labels
+        painter.setPen(self.active_color)
+        for i in range(6):
+            grid_val = min_r + (i / 5.0) * (max_r - min_r)
+            y = self._val_to_y(grid_val, min_r, max_r)
+            label = f"{int(grid_val)}" if self.metric_type == 'wpm' else f"{int(grid_val)}%"
             painter.drawText(QRectF(0, y - 10, self.margin_left - 5, 20),
-                           Qt.AlignRight | Qt.AlignVCenter, str(wpm))
+                           Qt.AlignRight | Qt.AlignVCenter, label)
         
-        # Right Y-axis labels (Accuracy - blue, 0-100%)
-        painter.setPen(self.acc_color)
-        for acc in range(0, 101, 20):
-            y = self._acc_to_y(acc)
-            painter.drawText(QRectF(rect.x() + rect.width() + 5, y - 10, self.margin_right - 5, 20),
-                           Qt.AlignLeft | Qt.AlignVCenter, f"{acc}%")
-        
-        # X-axis labels (dates)
-        painter.setPen(self.text_color)
-        font.setPointSize(8)
-        painter.setFont(font)
-        
-        # Show a subset of date labels to avoid crowding
-        num_labels = min(8, len(self.data))
-        if len(self.data) > 1:
-            step = max(1, len(self.data) // num_labels)
-            for i in range(0, len(self.data), step):
-                x = self._date_to_x(i)
-                date_str = format_date_display(self.data[i]["date"], short=True)
-                painter.drawText(QRectF(x - 25, rect.y() + rect.height() + 5, 50, 20),
-                               Qt.AlignCenter, date_str)
-        
-        # Draw data points (dimmed when Ctrl is held for trend line focus)
         hover_idx, hover_type = self.hover_info if self.hover_info else (None, None)
-        
-        # Dim data points when Ctrl is held to emphasize trend lines
         point_opacity = 0.25 if self._ctrl_held else 1.0
         
-        for i, d in enumerate(self.data):
+        # Points
+        for i, val in enumerate(values):
             px = self._date_to_x(i)
-            
-            # WPM point (green circle)
-            py_wpm = self._wpm_to_y(d["wpm"], max_wpm)
-            is_hovered = (hover_idx == i and hover_type == 'wpm') and not self._ctrl_held
+            py = self._val_to_y(val, min_r, max_r)
+            is_hovered = (hover_idx == i and hover_type == 'point') and not self._ctrl_held
             size = 5 if is_hovered else 3
+            p_color = QColor(self.active_color)
+            p_color.setAlphaF(point_opacity)
+            painter.setPen(QPen(p_color, 1.5 if is_hovered else 1))
+            painter.setBrush(QBrush(p_color) if is_hovered else QBrush(self.bg_color))
+            painter.drawEllipse(QPointF(px, py), size, size)
             
-            wpm_point_color = QColor(self.wpm_color)
-            wpm_point_color.setAlphaF(point_opacity)
-            painter.setPen(QPen(wpm_point_color, 1.5 if is_hovered else 1))
-            painter.setBrush(QBrush(wpm_point_color) if is_hovered else QBrush(self.bg_color))
-            painter.drawEllipse(QPointF(px, py_wpm), size, size)
-            
-            # Accuracy point (blue circle)
-            py_acc = self._acc_to_y(d["accuracy"])
-            is_hovered = (hover_idx == i and hover_type == 'acc') and not self._ctrl_held
-            size = 5 if is_hovered else 3
-            
-            acc_point_color = QColor(self.acc_color)
-            acc_point_color.setAlphaF(point_opacity)
-            painter.setPen(QPen(acc_point_color, 1.5 if is_hovered else 1))
-            painter.setBrush(QBrush(acc_point_color) if is_hovered else QBrush(self.bg_color))
-            painter.drawEllipse(QPointF(px, py_acc), size, size)
-        
-        # Draw trend lines (best-fit lines) - emphasized when Ctrl is held
+        # Trend Line
         if len(self.data) >= 2:
-            # Calculate trend lines
-            wpm_values = [d["wpm"] for d in self.data]
-            acc_values = [d["accuracy"] for d in self.data]
-            
-            wpm_slope, wpm_intercept = self._calculate_trend_line(wpm_values)
-            acc_slope, acc_intercept = self._calculate_trend_line(acc_values)
-            
-            # Start and end X positions (screen coordinates)
+            slope, intercept = self._calculate_trend_line(values)
             x_start = self._date_to_x(0)
             x_end = self._date_to_x(len(self.data) - 1)
-            
-            # Base width depends on Ctrl mode
             base_width = 4 if self._ctrl_held else 2
             line_style = Qt.SolidLine if self._ctrl_held else Qt.DashLine
+            y_start = self._val_to_y(intercept, min_r, max_r)
+            y_end = self._val_to_y(slope * (len(self.data) - 1) + intercept, min_r, max_r)
+            trend_pen = QPen(self.active_color, base_width, line_style)
+            if hover_type == 'trend' or self._ctrl_held:
+                trend_pen.setWidth(base_width + 2)
+            painter.setPen(trend_pen)
+            painter.drawLine(QPointF(x_start, y_start), QPointF(x_end, y_end))
             
-            # WPM trend line (green)
-            wpm_y_start = self._wpm_to_y(wpm_intercept, max_wpm)
-            wpm_y_end = self._wpm_to_y(wpm_slope * (len(self.data) - 1) + wpm_intercept, max_wpm)
-            
-            wpm_trend_pen = QPen(self.wpm_color, base_width, line_style)
-            is_wpm_trend_hovered = hover_type == 'wpm_trend'
-            if is_wpm_trend_hovered or self._ctrl_held:
-                wpm_trend_pen.setWidth(base_width + 1)
-            painter.setPen(wpm_trend_pen)
-            painter.drawLine(QPointF(x_start, wpm_y_start), QPointF(x_end, wpm_y_end))
-            
-            # Accuracy trend line (blue)
-            acc_y_start = self._acc_to_y(acc_intercept)
-            acc_y_end = self._acc_to_y(acc_slope * (len(self.data) - 1) + acc_intercept)
-            
-            acc_trend_pen = QPen(self.acc_color, base_width, line_style)
-            is_acc_trend_hovered = hover_type == 'acc_trend'
-            if is_acc_trend_hovered or self._ctrl_held:
-                acc_trend_pen.setWidth(base_width + 1)
-            painter.setPen(acc_trend_pen)
-            painter.drawLine(QPointF(x_start, acc_y_start), QPointF(x_end, acc_y_end))
-        
-        # Axis titles
-        font.setPointSize(10)
-        painter.setFont(font)
-        
-        # Left Y-axis title (WPM)
-        painter.setPen(self.wpm_color)
+        # Title (Vertical on the left)
+        painter.setPen(self.active_color)
         painter.save()
-        painter.translate(12, rect.y() + rect.height() / 2)
+        painter.translate(14, rect.y() + rect.height() / 2)
         painter.rotate(-90)
-        painter.drawText(QRectF(-30, -10, 60, 20), Qt.AlignCenter, "WPM")
+        title = "WPM" if self.metric_type == 'wpm' else "Accuracy"
+        painter.drawText(QRectF(-40, -10, 80, 20), Qt.AlignCenter, title)
         painter.restore()
         
-        # Right Y-axis title (Accuracy)
-        painter.setPen(self.acc_color)
-        painter.save()
-        painter.translate(self.width() - 12, rect.y() + rect.height() / 2)
-        painter.rotate(90)
-        painter.drawText(QRectF(-40, -10, 80, 20), Qt.AlignCenter, "Accuracy")
-        painter.restore()
-        
-        # X-axis title
-        painter.setPen(self.text_color)
-        painter.drawText(QRectF(rect.x(), self.height() - 15, rect.width(), 15),
-                        Qt.AlignCenter, "Date")
-        
-        # Draw tooltip if hovering
-        if self.hover_info is not None:
-            idx, point_type = self.hover_info
-            
-            # Handle trend line tooltips
-            if point_type in ('wpm_trend', 'acc_trend'):
-                # Calculate trend line slope to describe the trend
-                if point_type == 'wpm_trend':
-                    wpm_values = [d["wpm"] for d in self.data]
-                    slope, intercept = self._calculate_trend_line(wpm_values)
-                    if abs(slope) < 0.01:
-                        trend_desc = "Your WPM is staying steady"
-                    elif slope > 0:
-                        trend_desc = f"Your WPM is increasing (+{slope:.2f}/session)"
-                    else:
-                        trend_desc = f"Your WPM is decreasing ({slope:.2f}/session)"
-                    tooltip_text = f"WPM Trend Line\n{trend_desc}"
-                    border_color = self.wpm_color
-                else:
-                    acc_values = [d["accuracy"] for d in self.data]
-                    slope, intercept = self._calculate_trend_line(acc_values)
-                    if abs(slope) < 0.01:
-                        trend_desc = "Your accuracy is staying steady"
-                    elif slope > 0:
-                        trend_desc = f"Your accuracy is improving (+{slope:.2f}%/session)"
-                    else:
-                        trend_desc = f"Your accuracy is declining ({slope:.2f}%/session)"
-                    tooltip_text = f"Accuracy Trend Line\n{trend_desc}"
-                    border_color = self.acc_color
-                
-                # Position tooltip near mouse cursor (use center of chart)
-                px = rect.x() + rect.width() / 2
-                py = rect.y() + rect.height() / 2
-                
-            elif 0 <= idx < len(self.data):
-                d = self.data[idx]
-                px = self._date_to_x(idx)
-                
-                if point_type == 'wpm':
-                    py = self._wpm_to_y(d["wpm"], max_wpm)
-                    file_name = Path(d["file_path"]).name if d.get("file_path") else "Unknown"
-                    tooltip_text = f"{format_date_display(d['date'])} | {d['wpm']:.1f} WPM | {file_name}"
-                    border_color = self.wpm_color
-                else:
-                    py = self._acc_to_y(d["accuracy"])
-                    correct = d.get("correct", 0)
-                    incorrect = d.get("incorrect", 0)
-                    total = d.get("total", correct + incorrect)
-                    if total > 0:
-                        correct_pct = correct / total * 100
-                        incorrect_pct = incorrect / total * 100
-                    else:
-                        correct_pct = incorrect_pct = 0
-                    file_name = Path(d["file_path"]).name if d.get("file_path") else "Unknown"
-                    tooltip_text = f"{format_date_display(d['date'])} | {file_name}\n{correct} ({correct_pct:.0f}%) ✓ | {incorrect} ({incorrect_pct:.0f}%) ✗ | {total} total"
-                    border_color = self.acc_color
+        # Tooltip
+        if self.hover_info:
+            idx, p_type = self.hover_info
+            if p_type == 'trend':
+                slope, intercept = self._calculate_trend_line(values)
+                unit = "WPM" if self.metric_type == 'wpm' else "%"
+                if abs(slope) < 0.01: trend_desc = f"Your {self.metric_type} is steady"
+                elif slope > 0: trend_desc = f"Your {self.metric_type} is increasing (+{slope:.2f}{unit}/session)"
+                else: trend_desc = f"Your {self.metric_type} is decreasing ({slope:.2f}{unit}/session)"
+                tooltip_text = f"{self.metric_type.upper()} Trend Line\n{trend_desc}"
+                px, py = rect.x() + rect.width() / 2, rect.y() + rect.height() / 2
             else:
-                return  # Invalid index, skip tooltip
+                d = self.data[idx]; px = self._date_to_x(idx)
+                py = self._val_to_y(values[idx], min_r, max_r)
+                file_name = Path(d["file_path"]).name if d.get("file_path") else "Unknown"
+                if self.metric_type == 'wpm':
+                    tooltip_text = f"{format_date_display(d['date'])} | {values[idx]:.1f} WPM | {file_name}"
+                else:
+                    c, inc = d.get("correct", 0), d.get("incorrect", 0)
+                    t = d.get("total", c + inc)
+                    cp = (c/t*100) if t>0 else 0; ip = (inc/t*100) if t>0 else 0
+                    tooltip_text = f"{format_date_display(d['date'])} | {file_name}\n{c} ({cp:.1f}%) ✓ | {inc} ({ip:.1f}%) ✗ | {t} total"
             
-            font.setPointSize(9)
-            font.setBold(True)
-            painter.setFont(font)
-            fm = QFontMetrics(font)
-            
-            # Handle multi-line tooltip
+            painter.setFont(font); fm = QFontMetrics(font)
             lines = tooltip_text.split('\n')
-            max_width = max(fm.horizontalAdvance(line) for line in lines)
-            text_height = fm.height() * len(lines)
-            
-            tooltip_x = px + 10
-            tooltip_y = py - text_height - 15
-            
-            # Keep tooltip on screen
-            if tooltip_x + max_width + 16 > self.width():
-                tooltip_x = px - max_width - 25
-            if tooltip_y < 5:
-                tooltip_y = py + 10
-            
-            # Tooltip background
-            tooltip_rect = QRectF(tooltip_x, tooltip_y, max_width + 16, text_height + 12)
-            painter.setPen(Qt.NoPen)
-            tooltip_bg = QColor("#2d2d2d")
-            painter.setBrush(tooltip_bg)
-            painter.drawRoundedRect(tooltip_rect, 4, 4)
-            
-            # Tooltip border
-            painter.setPen(QPen(border_color, 1))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(tooltip_rect, 4, 4)
-            
-            # Tooltip text
-            painter.setPen(self.text_color)
-            y_offset = tooltip_rect.y() + 6
-            for line in lines:
-                painter.drawText(QRectF(tooltip_rect.x() + 8, y_offset, max_width, fm.height()),
-                               Qt.AlignLeft | Qt.AlignVCenter, line)
-                y_offset += fm.height()
+            tw = max(fm.horizontalAdvance(l) for l in lines)
+            th = fm.height() * len(lines)
+            tx, ty = px + 10, py - th - 15
+            if tx + tw + 16 > self.width(): tx = px - tw - 25
+            if ty < 5: ty = py + 10
+            t_rect = QRectF(tx, ty, tw + 16, th + 12)
+            painter.setPen(Qt.NoPen); painter.setBrush(QColor("#2d2d2d"))
+            painter.drawRoundedRect(t_rect, 4, 4)
+            painter.setPen(QPen(self.active_color, 1))
+            painter.drawRoundedRect(t_rect, 4, 4)
+            painter.setPen(QColor("white"))
+            for i, line in enumerate(lines):
+                painter.drawText(t_rect.adjusted(8, 6 + i*fm.height(), -8, 0), Qt.AlignLeft | Qt.AlignTop, line)
 
 
 class DateRangeChart(QWidget):
@@ -1415,23 +1176,25 @@ class DateRangeChart(QWidget):
                 color: {text};
                 border: 1px solid {border};
                 border-radius: 4px;
-                padding: 4px 8px;
+                padding: 4px 12px;
                 font-size: 11px;
             }}
             QComboBox:hover {{ border-color: {hover}; }}
-            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox::drop-down {{ 
+                border: none; 
+                width: 0px; 
+            }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 6px solid {text};
-                margin-right: 6px;
+                width: 0px;
+                height: 0px;
             }}
             QComboBox QAbstractItemView {{
                 background-color: {bg};
                 color: {text};
                 selection-background-color: {colors["bg_primary"].name()};
                 border: 1px solid {border};
+                outline: 0px;
             }}
         """
     
@@ -1449,17 +1212,18 @@ class DateRangeChart(QWidget):
                 color: {text};
                 border: 1px solid {border};
                 border-radius: 4px;
-                padding: 4px 8px;
+                padding: 4px 12px;
                 font-size: 11px;
             }}
             QDateEdit:hover {{ border-color: {hover}; }}
-            QDateEdit::drop-down {{ border: none; width: 20px; }}
+            QDateEdit::drop-down {{ 
+                border: none; 
+                width: 0px; 
+            }}
             QDateEdit::down-arrow {{
                 image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 6px solid {text};
-                margin-right: 6px;
+                width: 0px;
+                height: 0px;
             }}
         """
     
@@ -1675,7 +1439,13 @@ class DateRangeChart(QWidget):
                     break
             
             # Check line point
-            py_line = self._right_to_y(d[self._right_metric], max_right)
+            val_right = d[self._right_metric]
+            if self._is_right_metric_accuracy() and val_right <= 1.0 and d.get("total_keystrokes", 0) > 0:
+                val_right = (d["correct_keystrokes"] / d["total_keystrokes"]) * 100
+            elif self._is_right_metric_accuracy() and val_right <= 1.0:
+                val_right *= 100
+                
+            py_line = self._right_to_y(val_right, max_right)
             dist = ((x - px) ** 2 + (y - py_line) ** 2) ** 0.5
             if dist < 12 and dist < closest_dist:
                 closest_dist = dist
@@ -1799,15 +1569,27 @@ class DateRangeChart(QWidget):
                 painter.setPen(QPen(self.line_color, 2))
                 for i in range(len(self.data) - 1):
                     x1 = self._x_to_pos(i)
-                    y1 = self._right_to_y(self.data[i][self._right_metric], max_right)
+                    val1 = self.data[i][self._right_metric]
+                    if self._is_right_metric_accuracy() and val1 <= 1.0: val1 *= 100
+                    y1 = self._right_to_y(val1, max_right)
+                    
                     x2 = self._x_to_pos(i + 1)
-                    y2 = self._right_to_y(self.data[i + 1][self._right_metric], max_right)
+                    val2 = self.data[i + 1][self._right_metric]
+                    if self._is_right_metric_accuracy() and val2 <= 1.0: val2 *= 100
+                    y2 = self._right_to_y(val2, max_right)
+                    
                     painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
             
             # Draw points
             for i, d in enumerate(self.data):
                 px = self._x_to_pos(i)
-                py = self._right_to_y(d[self._right_metric], max_right)
+                val_right = d[self._right_metric]
+                if self._is_right_metric_accuracy() and val_right <= 1.0 and d.get("total_keystrokes", 0) > 0:
+                    val_right = (d["correct_keystrokes"] / d["total_keystrokes"]) * 100
+                elif self._is_right_metric_accuracy() and val_right <= 1.0:
+                    val_right *= 100
+                    
+                py = self._right_to_y(val_right, max_right)
                 is_hovered = (hover_idx == i and hover_type == 'line')
                 size = 5 if is_hovered else 3
                 
@@ -1903,190 +1685,221 @@ class DateRangeChart(QWidget):
             return f"{val:.0f}"
 
 
-class PerLanguageStatsWidget(QWidget):
-    """Widget displaying per-language statistics in a table format."""
+class KeyboardHeatmap(QWidget):
+    """Heatmap visualization showing typing accuracy per key."""
+    
+    # QWERTY Layout rows - Lower layer
+    ROWS_LOWER = [
+        ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="],
+        ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", "\\"],
+        ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'"],
+        ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
+        ["SPACE"]
+    ]
+    
+    # QWERTY Layout rows - Upper layer (Shift)
+    ROWS_UPPER = [
+        ["~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+"],
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\""],
+        ["Z", "X", "C", "V", "B", "N", "M", "<", ">", "?"],
+        ["SPACE"]
+    ]
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._data: List[Dict[str, Any]] = []
-        self._colors = get_theme_colors()
+        self.raw_stats: Dict[str, Dict[str, int]] = {}
+        self.display_stats: Dict[str, Dict[str, int]] = {}
+        self.shift_mode = False
+        self.hovered_key: Optional[str] = None
+        self.setMinimumHeight(240)
+        self.setMouseTracking(True)
+        self._update_colors()
         
-        # Layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+    def _update_colors(self):
+        colors = get_theme_colors()
+        self.bg_color = colors["bg_secondary"]
+        self.text_primary = colors["text_primary"]
+        self.text_secondary = colors["text_secondary"]
+        self.border_color = colors["border"]
+        self.success_color = colors["success"]
+        self.error_color = colors["error"]
+        self.neutral_color = colors["bg_tertiary"]
+        self.tooltip_bg = QColor("#2d2d2d")
         
-        # Create a horizontal scroll area for the cards
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll_area.setFixedHeight(130)
+    def set_data(self, stats: Dict[str, Dict[str, int]]):
+        """Set raw key stats and refresh."""
+        self.raw_stats = stats
+        self._refresh_display_stats()
         
-        self.cards_container = QWidget()
-        self.cards_layout = QHBoxLayout(self.cards_container)
-        self.cards_layout.setContentsMargins(0, 0, 0, 0)
-        self.cards_layout.setSpacing(12)
+    def _refresh_display_stats(self):
+        """Map raw stats to the current layer's keys."""
+        # For simplicity, if shift is OFF, we show stats for lowercase.
+        # If shift is ON, we show stats for uppercase/symbols.
+        # But actually, users usually want to see stats regardless of layer?
+        # No, the user asked for layers. So if I'm in Shift layer, I see stats for 'A'. 
+        # If I'm in lower layer, I see stats for 'a'.
+        self.display_stats = {}
+        current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
         
-        self.scroll_area.setWidget(self.cards_container)
-        layout.addWidget(self.scroll_area)
-        
-        self._apply_style()
-    
-    def _apply_style(self):
-        """Apply theme styles."""
-        self._colors = get_theme_colors()
-        bg = self._colors["bg_primary"].name()
-        bg_sec = self._colors["bg_secondary"].name()
-        border = self._colors["border"].name()
-        
-        self.scroll_area.setStyleSheet(f"""
-            QScrollArea {{
-                background-color: {bg};
-                border: none;
-            }}
-            QScrollBar:horizontal {{
-                background: {bg};
-                height: 8px;
-                margin: 0;
-            }}
-            QScrollBar::handle:horizontal {{
-                background: {bg_sec};
-                min-width: 30px;
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:horizontal:hover {{
-                background: {border};
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0;
-            }}
-        """)
-        self.cards_container.setStyleSheet(f"background-color: {bg};")
-    
-    def set_data(self, data: List[Dict[str, Any]]):
-        """Set the per-language data."""
-        self._data = data
-        self._rebuild_cards()
-    
-    def _rebuild_cards(self):
-        """Rebuild the language cards."""
-        # Clear existing cards
-        while self.cards_layout.count():
-            item = self.cards_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        
-        if not self._data:
-            # Show empty state
-            empty_label = QLabel("No language data available")
-            empty_label.setStyleSheet(f"color: {self._colors['text_disabled'].name()}; font-size: 12px;")
-            self.cards_layout.addWidget(empty_label)
-            self.cards_layout.addStretch()
-            return
-        
-        # Create a card for each language
-        for lang_data in self._data[:10]:  # Limit to top 10 languages
-            card = self._create_language_card(lang_data)
-            self.cards_layout.addWidget(card)
-        
-        self.cards_layout.addStretch()
-    
-    def _create_language_card(self, data: Dict[str, Any]) -> QFrame:
-        """Create a card for a single language."""
-        card = QFrame()
-        card.setObjectName("langCard")
-        card.setFixedSize(140, 110)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
-        
-        # Language name
-        lang_label = QLabel(data["language"])
-        lang_label.setObjectName("langName")
-        layout.addWidget(lang_label)
-        
-        # Sessions count
-        sessions_label = QLabel(f"{data['session_count']} sessions")
-        sessions_label.setObjectName("langSessions")
-        layout.addWidget(sessions_label)
-        
-        # Average WPM
-        wpm_label = QLabel(f"Avg: {data['avg_wpm']:.0f} WPM")
-        wpm_label.setObjectName("langWpm")
-        layout.addWidget(wpm_label)
-        
-        # Best WPM
-        best_label = QLabel(f"Best: {data['best_wpm']:.0f} WPM")
-        best_label.setObjectName("langBest")
-        layout.addWidget(best_label)
-        
-        # Accuracy
-        acc_label = QLabel(f"Acc: {data['avg_accuracy']:.1f}%")
-        acc_label.setObjectName("langAcc")
-        layout.addWidget(acc_label)
-        
-        layout.addStretch()
-        
-        # Apply card style
-        self._apply_card_style(card)
-        
-        return card
-    
-    def _apply_card_style(self, card: QFrame):
-        """Apply style to a language card."""
-        colors = self._colors
-        bg = colors["bg_secondary"].name()
-        border = colors["border"].name()
-        text_pri = colors["text_primary"].name()
-        text_sec = colors["text_secondary"].name()
-        accent = colors["accent"].name()
-        
-        card.setStyleSheet(f"""
-            QFrame#langCard {{
-                background-color: {bg};
-                border-radius: 8px;
-                border: 1px solid {border};
-            }}
-            QLabel#langName {{
-                color: {accent};
-                font-size: 13px;
-                font-weight: bold;
-                background: transparent;
-                border: none;
-            }}
-            QLabel#langSessions {{
-                color: {text_sec};
-                font-size: 10px;
-                background: transparent;
-                border: none;
-            }}
-            QLabel#langWpm {{
-                color: {text_pri};
-                font-size: 11px;
-                background: transparent;
-                border: none;
-            }}
-            QLabel#langBest {{
-                color: {text_sec};
-                font-size: 10px;
-                background: transparent;
-                border: none;
-            }}
-            QLabel#langAcc {{
-                color: {text_sec};
-                font-size: 10px;
-                background: transparent;
-                border: none;
-            }}
-        """)
-    
+        for row in current_rows:
+            for key in row:
+                char = ' ' if key == "SPACE" else key
+                s = self.raw_stats.get(char, {"correct": 0, "error": 0})
+                self.display_stats[key] = s.copy()
+        self.update()
+
+    def toggle_shift(self, enabled: bool):
+        """Toggle between lower and upper keyboard layers."""
+        self.shift_mode = enabled
+        self._refresh_display_stats()
+
     def apply_theme(self):
-        """Apply current theme."""
-        self._apply_style()
-        self._rebuild_cards()
+        self._update_colors()
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        pos = event.position()
+        self.hovered_key = self._get_key_at(pos.x(), pos.y())
+        self.update()
+
+    def leaveEvent(self, event):
+        self.hovered_key = None
+        self.update()
+
+    def _get_key_at(self, mx: float, my: float) -> Optional[str]:
+        """Hit test to find which key is under the mouse."""
+        rect, key_size, key_margin, start_x, start_y = self._get_layout_params()
+        current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
+        
+        for r, row in enumerate(current_rows):
+            offset = self._get_row_offset(r, key_size)
+            for c, key_label in enumerate(row):
+                w = key_size - key_margin
+                if key_label == "SPACE": w = key_size * 5 - key_margin
+                
+                x = start_x + offset + c * key_size
+                y = start_y + r * key_size
+                if QRectF(x, y, w, key_size - key_margin).contains(mx, my):
+                    return key_label
+        return None
+
+    def _get_row_offset(self, r: int, key_size: float) -> float:
+        if r == 1: return key_size * 0.5
+        if r == 2: return key_size * 0.75
+        if r == 3: return key_size * 1.25
+        if r == 4: return key_size * 4
+        return 0
+
+    def _get_layout_params(self):
+        rect = self.rect()
+        key_margin = 4
+        current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
+        max_row_len = max(len(row) for row in current_rows)
+        key_size = min((rect.width() - 40) / max_row_len, (rect.height() - 20) / len(current_rows))
+        key_size = max(30, min(50, key_size))
+        total_width = max_row_len * key_size
+        start_x = (rect.width() - total_width) / 2
+        start_y = (rect.height() - len(current_rows) * key_size) / 2
+        return rect, key_size, key_margin, start_x, start_y
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        rect, key_size, key_margin, start_x, start_y = self._get_layout_params()
+        current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
+        
+        hover_rect = None
+        hover_stats = None
+        
+        for r, row in enumerate(current_rows):
+            offset = self._get_row_offset(r, key_size)
+            for c, key_label in enumerate(row):
+                w = key_size - key_margin
+                h = key_size - key_margin
+                if key_label == "SPACE": w = key_size * 5 - key_margin
+                
+                x = start_x + offset + c * key_size
+                y = start_y + r * key_size
+                key_rect = QRectF(x, y, w, h)
+                
+                s = self.display_stats.get(key_label, {"correct": 0, "error": 0})
+                total = s["correct"] + s["error"]
+                
+                # Accuracy color
+                if total == 0:
+                    fill_color = self.neutral_color
+                else:
+                    acc = s["correct"] / total
+                    if acc > 0.95: fill_color = self.success_color
+                    elif acc < 0.7: fill_color = self.error_color
+                    else:
+                        t = (acc - 0.7) / 0.25
+                        r_val = self.error_color.red() + t * (self.success_color.red() - self.error_color.red())
+                        g_val = self.error_color.green() + t * (self.success_color.green() - self.error_color.green())
+                        b_val = self.error_color.blue() + t * (self.success_color.blue() - self.error_color.blue())
+                        fill_color = QColor(int(r_val), int(g_val), int(b_val))
+                
+                # Highlight if hovered
+                is_hovered = (key_label == self.hovered_key)
+                if is_hovered:
+                    fill_color = fill_color.lighter(120)
+                    hover_rect = key_rect
+                    hover_stats = s
+                
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(fill_color)
+                painter.drawRoundedRect(key_rect, 4, 4)
+                
+                # Label with contrast check
+                # Determine ideal text color based on background luminance
+                luminance = (0.299 * fill_color.red() + 0.587 * fill_color.green() + 0.114 * fill_color.blue()) / 255
+                text_color = QColor(255, 255, 255) if luminance < 0.5 else QColor(0, 0, 0)
+                if total == 0: text_color = self.text_secondary
+                
+                painter.setPen(text_color)
+                display_label = key_label if key_label != "SPACE" else "____"
+                painter.drawText(key_rect, Qt.AlignCenter, display_label)
+                
+                # Border
+                painter.setPen(QPen(self.border_color.lighter(110) if is_hovered else self.border_color, 1))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRoundedRect(key_rect, 4, 4)
+
+        # Draw Tooltip
+        if hover_rect and hover_stats:
+            total = hover_stats["correct"] + hover_stats["error"]
+            if total > 0:
+                acc_pct = (hover_stats["correct"] / total) * 100
+                lines = [
+                    f"Key: {self.hovered_key}",
+                    f"Correct: {hover_stats['correct']}",
+                    f"Errors: {hover_stats['error']}",
+                    f"Accuracy: {acc_pct:.1f}%"
+                ]
+                
+                fm = painter.fontMetrics()
+                max_w = max(fm.horizontalAdvance(line) for line in lines)
+                th = len(lines) * fm.height()
+                
+                tx = hover_rect.center().x() - max_w / 2 - 8
+                ty = hover_rect.top() - th - 15
+                
+                # Clamp within widget
+                tx = max(5, min(tx, rect.width() - max_w - 15))
+                ty = max(5, ty)
+                
+                tip_rect = QRectF(tx, ty, max_w + 16, th + 10)
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(self.tooltip_bg)
+                painter.drawRoundedRect(tip_rect, 4, 4)
+                
+                painter.setPen(self.text_primary)
+                for i, line in enumerate(lines):
+                    painter.drawText(tx + 8, ty + (i + 1) * fm.height(), line)
+
+
 
 
 class StatsTab(QWidget):
@@ -2194,12 +2007,16 @@ class StatsTab(QWidget):
     def _create_chart_placeholders(self):
         """Create chart widgets."""
         colors = get_theme_colors()
-        label_style = f"font-size: 16px; font-weight: bold; color: {colors['text_secondary'].name()}; margin-top: 16px;"
+        # Clean label style without pushing it down with margins (let layout handle it)
+        label_style = f"font-size: 16px; font-weight: bold; color: {colors['text_secondary'].name()};"
         
         # Calendar Heatmap (GitHub-style activity visualization)
-        # Header row with label and dropdown
+        # Header row with label and dropdowns
         heatmap_header = QHBoxLayout()
         heatmap_header.setSpacing(12)
+        heatmap_header.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        # Add some top margin to the whole header layout instead of individual labels
+        heatmap_header.setContentsMargins(0, 16, 0, 0)
         
         self.heatmap_label = QLabel("Activity Heatmap")
         self.heatmap_label.setStyleSheet(label_style)
@@ -2214,37 +2031,81 @@ class StatsTab(QWidget):
         self.heatmap_metric_combo.currentIndexChanged.connect(self._on_heatmap_metric_changed)
         heatmap_header.addWidget(self.heatmap_metric_combo)
         
+        # Year selector dropdown
+        self.heatmap_year_combo = QComboBox()
+        self.heatmap_year_combo.setFixedWidth(100)
+        self.heatmap_year_combo.setStyleSheet(self._get_combo_style())
+        self.heatmap_year_combo.currentIndexChanged.connect(self._on_heatmap_year_changed)
+        heatmap_header.addWidget(self.heatmap_year_combo)
+        
         heatmap_header.addStretch()
         self.content_layout.addLayout(heatmap_header)
         
         self.calendar_heatmap = CalendarHeatmap()
         self.content_layout.addWidget(self.calendar_heatmap)
         
-        # WPM & Accuracy Scatter Plot (real implementation)
-        self.scatter_label = QLabel("WPM & Accuracy Over Time")
-        self.scatter_label.setStyleSheet(label_style)
-        self.content_layout.addWidget(self.scatter_label)
+        # WPM Over Time
+        wpm_scatter_header = QHBoxLayout()
+        wpm_scatter_header.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        wpm_scatter_header.setContentsMargins(0, 16, 0, 0)
+        self.wpm_scatter_label = QLabel("WPM Over Time")
+        self.wpm_scatter_label.setStyleSheet(label_style)
+        wpm_scatter_header.addWidget(self.wpm_scatter_label)
+        self.content_layout.addLayout(wpm_scatter_header)
         
-        self.scatter_chart = WPMAccuracyScatterPlot()
-        self.scatter_chart.setFixedHeight(280)
-        self.content_layout.addWidget(self.scatter_chart)
+        self.wpm_scatter_chart = MetricScatterPlot(metric_type='wpm')
+        self.wpm_scatter_chart.setFixedHeight(220)
+        self.content_layout.addWidget(self.wpm_scatter_chart)
         
-        # WPM Distribution Bar Chart (real implementation)
+        # Accuracy Over Time
+        acc_scatter_header = QHBoxLayout()
+        acc_scatter_header.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        acc_scatter_header.setContentsMargins(0, 16, 0, 0)
+        self.acc_scatter_label = QLabel("Accuracy Over Time")
+        self.acc_scatter_label.setStyleSheet(label_style)
+        acc_scatter_header.addWidget(self.acc_scatter_label)
+        self.content_layout.addLayout(acc_scatter_header)
+        
+        self.acc_scatter_chart = MetricScatterPlot(metric_type='accuracy')
+        self.acc_scatter_chart.setFixedHeight(220)
+        self.content_layout.addWidget(self.acc_scatter_chart)
+        
+        # Keyboard Heatmap
+        kb_header = QHBoxLayout()
+        kb_header.setSpacing(12)
+        kb_header.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        kb_header.setContentsMargins(0, 16, 0, 0)
+        
+        self.heatmap_kb_label = QLabel("Keyboard Accuracy Heatmap")
+        self.heatmap_kb_label.setStyleSheet(label_style)
+        kb_header.addWidget(self.heatmap_kb_label)
+        
+        # Shift toggle button
+        self.kb_shift_btn = QPushButton("Shift: Off")
+        self.kb_shift_btn.setCheckable(True)
+        self.kb_shift_btn.setFixedWidth(100)
+        self.kb_shift_btn.clicked.connect(self._on_kb_shift_toggled)
+        kb_header.addWidget(self.kb_shift_btn)
+        
+        kb_header.addStretch()
+        self.content_layout.addLayout(kb_header)
+        
+        self.keyboard_heatmap = KeyboardHeatmap()
+        self.content_layout.addWidget(self.keyboard_heatmap)
+        
+        # WPM Distribution Bar Chart
+        bar_header = QHBoxLayout()
+        bar_header.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        bar_header.setContentsMargins(0, 16, 0, 0)
+
         self.bar_label = QLabel("WPM Distribution")
         self.bar_label.setStyleSheet(label_style)
-        self.content_layout.addWidget(self.bar_label)
+        bar_header.addWidget(self.bar_label)
+        self.content_layout.addLayout(bar_header)
         
         self.wpm_distribution_chart = WPMDistributionChart()
         self.wpm_distribution_chart.setFixedHeight(220)
         self.content_layout.addWidget(self.wpm_distribution_chart)
-        
-        # Per-Language Stats
-        self.lang_label = QLabel("Performance by Language")
-        self.lang_label.setStyleSheet(label_style)
-        self.content_layout.addWidget(self.lang_label)
-        
-        self.per_language_stats = PerLanguageStatsWidget()
-        self.content_layout.addWidget(self.per_language_stats)
         
         # Load persisted preferences
         self._load_stats_preferences()
@@ -2263,23 +2124,25 @@ class StatsTab(QWidget):
                 color: {text};
                 border: 1px solid {border};
                 border-radius: 4px;
-                padding: 4px 8px;
+                padding: 4px 12px;
                 font-size: 11px;
             }}
             QComboBox:hover {{ border-color: {hover}; }}
-            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox::drop-down {{ 
+                border: none; 
+                width: 0px; 
+            }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 6px solid {text};
-                margin-right: 6px;
+                width: 0px;
+                height: 0px;
             }}
             QComboBox QAbstractItemView {{
                 background-color: {bg};
                 color: {text};
                 selection-background-color: {colors["bg_primary"].name()};
                 border: 1px solid {border};
+                outline: 0px;
             }}
         """
     
@@ -2311,11 +2174,38 @@ class StatsTab(QWidget):
         self._selected_languages = selected_languages
         self._update_all_stats()
     
+    def _on_heatmap_year_changed(self, index: int):
+        """Handle heatmap year dropdown change."""
+        self._update_calendar_heatmap(list(self._selected_languages) if self._selected_languages else None)
+
+    def _on_kb_shift_toggled(self):
+        """Handle keyboard heatmap shift toggle."""
+        is_on = self.kb_shift_btn.isChecked()
+        self.kb_shift_btn.setText("Shift: On" if is_on else "Shift: Off")
+        self.keyboard_heatmap.toggle_shift(is_on)
+        self._save_stats_preferences()
+    
     def refresh(self):
         """Refresh all data in the stats tab."""
         # Load available languages
         languages = stats_db.list_history_languages()
         self.filter_bar.set_languages(languages)
+        
+        # Load available years for the heatmap
+        years = stats_db.get_available_years()
+        self.heatmap_year_combo.blockSignals(True)
+        self.heatmap_year_combo.clear()
+        for y in years:
+            self.heatmap_year_combo.addItem(str(y))
+        
+        # Default to current year
+        current_year = datetime.now().year
+        idx = self.heatmap_year_combo.findText(str(current_year))
+        if idx != -1:
+            self.heatmap_year_combo.setCurrentIndex(idx)
+        else:
+            self.heatmap_year_combo.setCurrentIndex(0)
+        self.heatmap_year_combo.blockSignals(False)
         
         # Update all stats and charts
         self._update_all_stats()
@@ -2333,11 +2223,11 @@ class StatsTab(QWidget):
         # Update scatter chart
         self._update_scatter_chart(languages_list)
         
+        # Update keyboard heatmap
+        self._update_keyboard_heatmap()
+        
         # Update WPM distribution chart
         self._update_wpm_distribution(languages_list)
-        
-        # Update per-language stats
-        self._update_per_language_stats()
     
     def _update_summary_stats(self, languages_list=None):
         """Update the summary statistics based on current filters."""
@@ -2392,26 +2282,46 @@ class StatsTab(QWidget):
         self.summary_cards["most_sessions_day"].set_value(str(most_sessions) if most_sessions else "-")
     
     def _update_calendar_heatmap(self, languages_list=None):
-        """Update the calendar heatmap with daily activity data."""
-        # Get all daily data for heatmap (last year)
-        daily_data = stats_db.get_daily_metrics(languages=languages_list)
-        # Pass data without overriding the current metric selection
+        """Update the calendar heatmap with daily activity data for the selected year."""
+        year_str = self.heatmap_year_combo.currentText()
+        if not year_str:
+            year = datetime.now().year
+        else:
+            try:
+                year = int(year_str)
+            except ValueError:
+                year = datetime.now().year
+        
+        self.calendar_heatmap.set_year(year)
+        
+        # Load data for the specific year
+        start_date = f"{year}-01-01"
+        end_date = f"{year}-12-31"
+        
+        daily_data = stats_db.get_daily_metrics(
+            languages=languages_list,
+            start_date=start_date,
+            end_date=end_date
+        )
         self.calendar_heatmap.set_data(daily_data)
     
     def _update_scatter_chart(self, languages_list=None):
-        """Update the WPM & Accuracy scatter chart."""
+        """Update the WPM and Accuracy scatter charts."""
         session_data = stats_db.get_sessions_over_time(languages=languages_list)
-        self.scatter_chart.set_data(session_data)
+        self.wpm_scatter_chart.set_data(session_data)
+        self.acc_scatter_chart.set_data(session_data)
     
     def _update_wpm_distribution(self, languages_list=None):
         """Update the WPM distribution bar chart."""
         distribution_data = stats_db.get_wpm_distribution(languages=languages_list)
         self.wpm_distribution_chart.set_data(distribution_data)
+
+    def _update_keyboard_heatmap(self):
+        """Update the keyboard accuracy heatmap."""
+        languages_list = list(self._selected_languages) if self._selected_languages else None
+        key_stats = stats_db.get_key_stats(languages=languages_list)
+        self.keyboard_heatmap.set_data(key_stats)
     
-    def _update_per_language_stats(self):
-        """Update the per-language statistics."""
-        lang_data = stats_db.get_per_language_stats()
-        self.per_language_stats.set_data(lang_data)
     
     def apply_theme(self):
         """Apply current theme to all widgets in the Stats tab."""
@@ -2464,14 +2374,30 @@ class StatsTab(QWidget):
             self.heatmap_label.setStyleSheet(label_style)
         if hasattr(self, 'heatmap_metric_combo'):
             self.heatmap_metric_combo.setStyleSheet(self._get_combo_style())
-        if hasattr(self, 'scatter_label'):
-            self.scatter_label.setStyleSheet(label_style)
+        if hasattr(self, 'wpm_scatter_label'):
+            self.wpm_scatter_label.setStyleSheet(label_style)
+        if hasattr(self, 'acc_scatter_label'):
+            self.acc_scatter_label.setStyleSheet(label_style)
+        if hasattr(self, 'heatmap_kb_label'):
+            self.heatmap_kb_label.setStyleSheet(label_style)
         if hasattr(self, 'bar_label'):
             self.bar_label.setStyleSheet(label_style)
-        if hasattr(self, 'lang_label'):
-            self.lang_label.setStyleSheet(label_style)
         
-        # Update filter bar
+        if hasattr(self, 'kb_shift_btn'):
+            self.kb_shift_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {colors['bg_tertiary'].name()};
+                    color: {colors['text_primary'].name()};
+                    border: 1px solid {colors['border'].name()};
+                    border-radius: 4px;
+                    padding: 4px 12px;
+                    font-size: 11px;
+                }}
+                QPushButton:checked {{
+                    background-color: {colors['accent'].name()};
+                    color: white;
+                }}
+            """)
         self.filter_bar.apply_theme()
         
         # Update summary cards
@@ -2480,6 +2406,7 @@ class StatsTab(QWidget):
         
         # Update charts
         self.calendar_heatmap.apply_theme()
-        self.scatter_chart.apply_theme()
+        self.wpm_scatter_chart.apply_theme()
+        self.acc_scatter_chart.apply_theme()
+        self.keyboard_heatmap.apply_theme()
         self.wpm_distribution_chart.apply_theme()
-        self.per_language_stats.apply_theme()

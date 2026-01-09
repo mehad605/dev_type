@@ -1,5 +1,6 @@
 """Database module for tracking typing statistics and session progress."""
 import sqlite3
+from datetime import datetime
 from typing import Any, Optional, Dict, List, Iterable
 from app.settings import _db_file, _connect
 import app.settings as settings
@@ -129,6 +130,34 @@ def init_stats_tables():
                    ON session_history(file_path, recorded_at DESC)""")
     cur.execute("""CREATE INDEX IF NOT EXISTS idx_session_history_language
                    ON session_history(language)""")
+    
+    # Key statistics table for heatmap - updated to include language
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS key_stats (
+            char TEXT,
+            language TEXT,
+            correct_count INTEGER DEFAULT 0,
+            error_count INTEGER DEFAULT 0,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (char, language)
+        )
+    """)
+    # Migration: check if language column exists in older (very recent) version
+    cur.execute("PRAGMA table_info(key_stats)")
+    columns = [row[1] for row in cur.fetchall()]
+    if columns and "language" not in columns:
+        # If we have the old version without language, just drop and recreate as it's brand new
+        cur.execute("DROP TABLE key_stats")
+        cur.execute("""
+            CREATE TABLE key_stats (
+                char TEXT,
+                language TEXT,
+                correct_count INTEGER DEFAULT 0,
+                error_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (char, language)
+            )
+        """)
     
     conn.commit()
     conn.close()
@@ -285,6 +314,63 @@ def record_session_history(
     )
     conn.commit()
     conn.close()
+
+
+def update_key_stats(language: str, key_hits: Dict[str, int], key_misses: Dict[str, int]):
+    """Update language-specific key statistics."""
+    conn = _connect()
+    cur = conn.cursor()
+    lang = language or ""
+    
+    # Process hits
+    for char, count in key_hits.items():
+        cur.execute("""
+            INSERT INTO key_stats (char, language, correct_count) 
+            VALUES (?, ?, ?)
+            ON CONFLICT(char, language) DO UPDATE SET 
+                correct_count = correct_count + excluded.correct_count,
+                last_updated = CURRENT_TIMESTAMP
+        """, (char, lang, count))
+        
+    # Process misses
+    for char, count in key_misses.items():
+        cur.execute("""
+            INSERT INTO key_stats (char, language, error_count) 
+            VALUES (?, ?, ?)
+            ON CONFLICT(char, language) DO UPDATE SET 
+                error_count = error_count + excluded.error_count,
+                last_updated = CURRENT_TIMESTAMP
+        """, (char, lang, count))
+        
+    conn.commit()
+    conn.close()
+
+
+def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:
+    """Get key statistics for the heatmap, optionally filtered by language."""
+    conn = _connect()
+    cur = conn.cursor()
+    
+    if languages:
+        placeholders = ",".join(["?"] * len(languages))
+        cur.execute(f"""
+            SELECT char, SUM(correct_count), SUM(error_count) 
+            FROM key_stats 
+            WHERE language IN ({placeholders})
+            GROUP BY char
+        """, languages)
+    else:
+        # Sum across all languages
+        cur.execute("""
+            SELECT char, SUM(correct_count), SUM(error_count) 
+            FROM key_stats 
+            GROUP BY char
+        """)
+        
+    rows = cur.fetchall()
+    conn.close()
+    
+    return {row[0]: {"correct": row[1], "error": row[2]} for row in rows}
 
 
 def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[Dict[str, float]]:
@@ -1011,6 +1097,24 @@ def get_per_language_stats() -> List[Dict[str, Any]]:
         })
     
     return result
+
+
+def get_available_years() -> List[int]:
+    """Get list of years that have recorded sessions."""
+    conn = _connect_for_stats()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT STRFTIME('%Y', recorded_at) as year FROM session_history WHERE year IS NOT NULL ORDER BY year DESC")
+        rows = cur.fetchall()
+        years = [int(row[0]) for row in rows if row[0]]
+    except Exception:
+        years = []
+    conn.close()
+    
+    current_year = datetime.now().year
+    if current_year not in years:
+        years.append(current_year)
+    return sorted(list(set(years)), reverse=True)
 
 
 def get_current_streak() -> int:

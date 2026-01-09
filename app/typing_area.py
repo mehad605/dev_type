@@ -844,6 +844,8 @@ class TypingAreaWidget(QTextEdit):
             "total": self.engine.state.total_keystrokes(),
             "is_paused": self.engine.state.is_paused,
             "is_finished": self.engine.state.is_finished,
+            "key_hits": self.engine.state.key_hits,
+            "key_misses": self.engine.state.key_misses,
         }
     
     def update_font(self, family: str, size: int, ligatures: bool):
