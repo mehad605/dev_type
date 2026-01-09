@@ -699,11 +699,7 @@ class FileTreeWidget(QWidget):
     
     def _on_random_clicked(self):
         """Handle random button click."""
-        # Clear search filter if active
-        if self.search_bar.text():
-            self.search_bar.clear()
-        
-        # Open random file
+        # Open random file (respects current filter)
         self.tree.open_random_file()
 
     # Proxy methods

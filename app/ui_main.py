@@ -954,6 +954,8 @@ class MainWindow(QMainWindow):
 
         # Main scroll area for settings
         scroll = QScrollArea()
+        self.settings_scroll_area = scroll # Save ref for scrolling logic
+        self._settings_scroll_pos = 0 # Store previous scroll position
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setFrameShape(QFrame.NoFrame) # Remove border for cleaner integration
@@ -1711,8 +1713,20 @@ class MainWindow(QMainWindow):
             # Let's update _create_settings_tab to save self.settings_scroll_widget
             return 
 
+        if not query:
+            # Restore saved scroll position if we were searching
+            if hasattr(self, '_settings_scroll_pos') and self._settings_scroll_pos > 0:
+                # Use a singleShot to ensure layout settles before scrolling
+                QTimer.singleShot(10, lambda: self.settings_scroll_area.verticalScrollBar().setValue(self._settings_scroll_pos))
+        else:
+            # If starting a new search (was empty before), save position
+            if len(query) == 1 and not hasattr(self, '_search_active'):
+                 self._settings_scroll_pos = self.settings_scroll_area.verticalScrollBar().value()
+
         widget = self.settings_scroll_widget
         layout = widget.layout()
+        
+        has_visible_groups = False
         
         for i in range(layout.count()):
             item = layout.itemAt(i)
@@ -1722,26 +1736,30 @@ class MainWindow(QMainWindow):
                 continue
                 
             group_box = w
+            
+            # If query is empty, show everything
+            if not query:
+                self._set_group_visible(group_box, True, list_items=True)
+                continue
+
             group_visible = False
             
             # Check group title
             if query in group_box.title().lower():
                 group_visible = True
-                # If group matches, should we show all contents? 
-                # Usually yes, or filtering contents is too aggressive.
-                # Let's show all contents if group matches.
+                # If group matches, show all contents
                 self._set_group_visible(group_box, True, list_items=True)
+                has_visible_groups = True
                 continue
             
             # Check children
-            # We need to iterate the group's layout items
-            child_match_found = False
-            
             # This helper effectively keeps rows visible if they match
             if self._filter_group_contents(group_box, query):
                 group_visible = True
+                has_visible_groups = True
             
             group_box.setVisible(group_visible)
+
 
     def _set_group_visible(self, group: QGroupBox, visible: bool, list_items=False):
         """Helper to show/hide a group and optionally all its internal items."""
