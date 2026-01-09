@@ -31,6 +31,14 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QFormLayout,
     QDialog,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QLineEdit,
+    QColorDialog,
+    QTextEdit,
+    QRadioButton,
+
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
@@ -904,17 +912,57 @@ class MainWindow(QMainWindow):
             import time
             t_start = time.time()
         
-        from PySide6.QtWidgets import QScrollArea, QSlider, QSpinBox, QLineEdit, QColorDialog, QTextEdit
-        from PySide6.QtCore import QSize
+        # Imports moved to top of file
         
         if DEBUG_STARTUP_TIMING:
+
             t = time.time()
+            
+        # Top-level container for search bar + scroll area
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0) # Search bar sits flush or close
+
+        # === Search Bar Setup ===
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(40, 20, 40, 10) # Match settings margins
+        
+        self.settings_search_input = QLineEdit()
+        self.settings_search_input.setPlaceholderText("Search settings...")
+        self.settings_search_input.setClearButtonEnabled(True)
+        self.settings_search_input.setMinimumHeight(36)
+        # Style similar to VS Code - a bit darker/prominent
+        self.settings_search_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #3c3c3c;
+                border-radius: 4px;
+                padding: 4px 8px;
+                background-color: #252526;
+                color: #cccccc;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border-color: #007fd4;
+            }
+        """)
+        self.settings_search_input.textChanged.connect(self._filter_settings)
+        
+        search_layout.addWidget(self.settings_search_input)
+        container_layout.addWidget(search_container)
+
         # Main scroll area for settings
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.NoFrame) # Remove border for cleaner integration
+        
+        container_layout.addWidget(scroll)
+
         
         settings_widget = QWidget()
+        self.settings_scroll_widget = settings_widget # Save ref for search
         s_layout = QVBoxLayout(settings_widget)
         # Add padding to sides as requested
         s_layout.setContentsMargins(40, 20, 40, 20)
@@ -1608,10 +1656,170 @@ class MainWindow(QMainWindow):
         
         scroll.setWidget(settings_widget)
         
+        # Store layout items for filtering
+        # We need to map: GroupBox -> [Child Widgets/Labels] or just filter deeply.
+        # A simple approach: Iterate over all GroupBoxes. For each, iterate over children.
+        # If any child text matches, show child + group. Else hide.
+        self_settings_groups = []       
+        
         if DEBUG_STARTUP_TIMING:
             print(f"    [SettingsTab] TOTAL: {time.time() - t_start:.3f}s")
         
-        return scroll
+        return container_widget
+
+    def _filter_settings(self, text: str):
+        """Filter settings groups and items based on search text."""
+        query = text.lower().strip()
+        
+        # Helper to find recursive text in a layout item
+        def has_matching_text(widget):
+            if not widget: return False
+            
+            # Check labels, buttons, checkboxes directly
+            if isinstance(widget, (QLabel, QPushButton, QCheckBox, QRadioButton)):
+                if query in widget.text().lower():
+                    return True
+            if isinstance(widget, (QGroupBox)):
+                if query in widget.title().lower():
+                    return True
+
+            # If it's a container, check children
+            # This is a bit manual in Qt. simpler:
+            # We will traverse the whole settings_widget tree.
+            return False
+
+        # Better approach:
+        # Traverse the main VBox (s_layout).
+        # Items are mainly GroupBoxes.
+        # Inside GroupBoxes are Layouts (Form or VBox).
+        # We check if GroupBox title matches OR any internal widget matches.
+        
+        # Retrieve the scroll area's widget (settings_widget)
+        # Note: self.tabs contains the container_widget created above. 
+        # We need to access the scroll area inside it? 
+        # Actually, self.settings_search_input is bound to this method, so 'self' is MainWindow.
+        # We need access to 's_layout' or 'settings_widget'.
+        # We can find it via children or store it as self.settings_widget.
+        
+        # Let's assume we stored it (we didn't yet, so let's rely on finding it or logic update).
+        # BETTER: Save settings_widget as self.settings_scroll_widget
+        pass # Replaced below logic since we need to save the reference
+        
+        if not hasattr(self, 'settings_scroll_widget'):
+            # Find the scroll area in the current tab (Settings)
+            # This is fragile. 
+            # Let's update _create_settings_tab to save self.settings_scroll_widget
+            return 
+
+        widget = self.settings_scroll_widget
+        layout = widget.layout()
+        
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if not item: continue
+            w = item.widget()
+            if not w or not isinstance(w, QGroupBox): 
+                continue
+                
+            group_box = w
+            group_visible = False
+            
+            # Check group title
+            if query in group_box.title().lower():
+                group_visible = True
+                # If group matches, should we show all contents? 
+                # Usually yes, or filtering contents is too aggressive.
+                # Let's show all contents if group matches.
+                self._set_group_visible(group_box, True, list_items=True)
+                continue
+            
+            # Check children
+            # We need to iterate the group's layout items
+            child_match_found = False
+            
+            # This helper effectively keeps rows visible if they match
+            if self._filter_group_contents(group_box, query):
+                group_visible = True
+            
+            group_box.setVisible(group_visible)
+
+    def _set_group_visible(self, group: QGroupBox, visible: bool, list_items=False):
+        """Helper to show/hide a group and optionally all its internal items."""
+        group.setVisible(visible)
+        if list_items and visible:
+            # Make sure all children are visible (reset previous hiding)
+            # This is tricky without knowing the exact structure.
+            # A simple recursive 'setVisible(True)' on all children?
+            for child in group.findChildren(QWidget):
+                child.setVisible(True)
+
+    def _filter_group_contents(self, group: QGroupBox, query: str) -> bool:
+        """
+        Filter items inside a GroupBox. 
+        Returns True if at least one item matches (and thus Group stays visible).
+        Items that don't match are hidden (if possible).
+        """
+        layout = group.layout()
+        if not layout: return False
+        
+        has_match = False
+        
+        # We need to iterate layout items.
+        # QFormLayout: itemAt(i, QFormLayout.LabelRole) / FieldRole
+        # QVBoxLayout / QHBoxLayout: itemAt(i)
+        
+        # Universal approach: Validate widgets
+        # BUT: In Layouts, hiding a widget usually hides the row if layout handles it.
+        # For FormLayout, we might need to hide both label and field.
+        
+        children = group.findChildren(QWidget)
+        # This gives a flat list. It's hard to associate labels with inputs using findChildren.
+        
+        # Iterating layout is safer for rows.
+        count = layout.count()
+        
+        # Strategy:
+        # 1. Iterate over "rows" or "items".
+        # 2. Check if text in that item matches.
+        # 3. If match, setVisible(True). catch: setVisible on a Label might hide it, but the input remains?
+        
+        # Simpler heuristic for VS Code like settings:
+        # Just check if ANY text in the group matches. If so, show the WHOLE group.
+        # Modifying rows inside is complex because of layout variations (Form vs VBox + HBox rows).
+        
+        # Let's try aggressive strict filtering:
+        # - Iterate all child widgets.
+        # - Identify "Rows" (e.g. text + input).
+        
+        # For this revision let's stick to: 
+        # Show Group IF (Title matches OR Any Child Text matches).
+        # We won't hide individual rows inside the group yet (complicated and might break layouts).
+        
+        should_show_group = False
+        if query in group.title().lower():
+            should_show_group = True
+        
+        if not should_show_group:
+            # Check text of labels and buttons
+            widget_types = (QLabel, QPushButton, QRadioButton, QCheckBox)
+            for widget_type in widget_types:
+                for child in group.findChildren(widget_type):
+                    text = child.text().lower()
+                    if query in text:
+                        should_show_group = True
+                        break
+                if should_show_group:
+                    break
+        
+        # Also check tooltips?
+        if not should_show_group:
+             for child in group.findChildren(QWidget):
+                if child.toolTip() and query in child.toolTip().lower():
+                    should_show_group = True
+                    break
+                    
+        return should_show_group
+
 
     def open_typing_tab(self, folder_path: str):
         """Switch to typing tab and load the specified folder."""
