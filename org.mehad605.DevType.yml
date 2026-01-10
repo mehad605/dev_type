@@ -3,21 +3,26 @@ runtime: org.kde.Platform
 runtime-version: '6.7' # Standard Qt6 runtime
 sdk: org.kde.Sdk
 command: dev_type
+build-options:
+  append-path: /usr/lib/sdk/python3/bin
+  env:
+    PIP_CACHE_DIR: /run/build/python3-dependencies/flatpak-pip-cache
 finish-args:
   - --share=ipc
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
+  - --share=network # Needed for checking online repo availability
   - --filesystem=home
   - --talk-name=org.freedesktop.Notifications
 
 modules:
   - name: python3-dependencies
     buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network # CRITICAL: Allow network to download dependencies
     build-commands:
-      # We install dependencies to /app
-      # In a real Flathub submission, we would use pre-generated manifest for dependencies
-      # For personal builds, we can use pip if network is allowed (handled in GH Action)
       - pip3 install --prefix=/app PySide6 pillow matplotlib
 
   - name: dev-type
