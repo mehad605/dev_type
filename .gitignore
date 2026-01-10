@@ -1,40 +1,61 @@
-# Python-generated files
+# --- Python ---
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
 
-# Virtual environments
-.venv
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
 
-# User-specific data (legacy locations - now all in Dev_Type_Data/)
-ghosts/              # Legacy ghost replay recordings
-typing_stats.db      # Legacy database
-data.db              # Legacy database
-data/                # Legacy data folder
-
-# Portable data directory - contains ALL user data (DO NOT COMMIT)
-Dev_Type_Data/
-data_location.txt    # Custom data directory configuration
-
-# Generated icon files (can be regenerated from icon.svg)
-assets/icon_*.png
-assets/icon.png
-assets/icon.ico
-
-# PyInstaller build artifacts
-build/
-dist/
-*.spec
-AppDir/
-
-# IDE/Editor files
+# --- IDE/Editors ---
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+
+# --- Project Specific ---
+Dev_Type_Data/
+data_location.txt
+dev_type.spec
+version_info.txt
+AppDir/
+ghosts/
+typing_stats.db
+data.db
+data/
 todo.md
 improvement_list.md
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+
+# --- Generated Assets ---
+assets/icon_*.png
+assets/icon.png
+assets/icon.ico
+BUILD_RELEASE_GUIDE.md

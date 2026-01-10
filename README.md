@@ -74,7 +74,7 @@ uv is a fast Python package installer and resolver that makes dependency managem
 
 3. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   pip install .
    ```
 
 4. **Run the application:**
@@ -99,7 +99,7 @@ Before building, ensure you have:
    # If using regular pip
    pip install pyinstaller
    ```
-3. **All project dependencies** installed (via `uv sync` or `pip install -r requirements.txt`)
+3. **All project dependencies** installed (via `uv sync` or `pip install .`)
 
 ### 🪟 Building on Windows
 
@@ -127,7 +127,24 @@ This will:
 
 ### 🐧 Building on Linux
 
-> **⚠️ Note:** Linux build process is not yet fully tested and documented. Instructions will be added after testing is complete.
+The project includes a shell script for building on Linux and packaging as an AppImage:
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+Or manually using the build script:
+
+```bash
+# Package as AppImage (requires appimagetool in PATH)
+uv run python build.py --linux --appimage --clean
+
+# Build standalone binary only
+uv run python build.py --linux --clean
+```
+
+This will create an `AppDir` and a `dev_type.AppImage` in the `dist/` directory. If `appimagetool` is not in your PATH, it will still create the `AppDir` structure which you can manually package.
 
 ### What the Build Does
 
@@ -166,6 +183,9 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## 📄 License
 
-This project is licensed under the Source First License 1.1 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) - see the [LICENSE](LICENSE) file for details.
 
-**In short:** This software is free for personal, non-commercial use. You can use, modify, and share it for personal projects, learning, and hobby purposes. Commercial use requires separate permission.
+**In short:** 
+- **Personal Use**: You can use this app for any personal use.
+- **Non-Commercial**: You cannot make use of it for financial gain.
+- **ShareAlike**: Any and all derivatives of this project must also be made open-source and must have the same or more open licensing.
