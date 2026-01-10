@@ -57,7 +57,7 @@ improvement_list.md
 Thumbs.db
 
 # --- Generated Assets ---
-assets/icon_*.png
-assets/icon.png
-assets/icon.ico
+# assets/icon_*.png
+# assets/icon.png
+# assets/icon.ico
 BUILD_RELEASE_GUIDE.md
