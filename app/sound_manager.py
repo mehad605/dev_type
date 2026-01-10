@@ -23,8 +23,12 @@ class SoundManager(QObject):
         self.volume = 0.5
         self._last_error: Optional[str] = None  # Track sound loading errors
         
-        # Base sounds directory
-        self.sounds_dir = Path(__file__).parent.parent / "assets" / "sounds"
+        # Base sounds directory (Dynamic: Prefer portable data folder)
+        try:
+             from app.portable_data import get_data_manager
+             self.sounds_dir = get_data_manager().get_sounds_dir()
+        except ImportError:
+             self.sounds_dir = Path(__file__).parent.parent / "assets" / "sounds"
         
         # Custom profiles are now stored in database
         

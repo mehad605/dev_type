@@ -1,13 +1,14 @@
 """Generate demo data for testing the Stats page.
 
 This module creates realistic fake typing session data spanning one year.
-Run the app with --demo flag to use demo data: `python main.py --demo`
 """
 import sqlite3
 import random
+import string
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
+import calendar
 
 # Runtime flag for demo mode (set via command line --demo)
 _demo_mode_enabled: bool = False
@@ -72,6 +73,54 @@ def init_demo_tables(conn: sqlite3.Connection):
         )
     """)
     
+    # File statistics
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS file_stats (
+            file_path TEXT PRIMARY KEY,
+            best_wpm REAL DEFAULT 0,
+            last_wpm REAL DEFAULT 0,
+            best_accuracy REAL DEFAULT 0,
+            last_accuracy REAL DEFAULT 0,
+            times_practiced INTEGER DEFAULT 0,
+            last_practiced TIMESTAMP,
+            completed BOOLEAN DEFAULT 0
+        )
+    """)
+    
+    # Key statistics for heatmaps
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS key_stats (
+            char TEXT,
+            language TEXT,
+            correct_count INTEGER DEFAULT 0,
+            error_count INTEGER DEFAULT 0,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (char, language)
+        )
+    """)
+    
+    # Error type statistics
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS error_type_stats (
+            language TEXT PRIMARY KEY,
+            omissions INTEGER DEFAULT 0,
+            insertions INTEGER DEFAULT 0,
+            transpositions INTEGER DEFAULT 0,
+            substitutions INTEGER DEFAULT 0
+        )
+    """)
+    
+    # Key confusions
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS key_confusions (
+            expected_char TEXT,
+            actual_char TEXT,
+            language TEXT,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY (expected_char, actual_char, language)
+        )
+    """)
+
     cur.execute("""CREATE INDEX IF NOT EXISTS idx_demo_session_history_language
                    ON session_history(language)""")
     cur.execute("""CREATE INDEX IF NOT EXISTS idx_demo_session_history_date
@@ -80,11 +129,12 @@ def init_demo_tables(conn: sqlite3.Connection):
     conn.commit()
 
 
-def generate_demo_data(days: int = 365, sessions_per_day_range: tuple = (0, 8)):
+def generate_demo_data(year: Optional[int] = None, days: int = 365, sessions_per_day_range: tuple = (3, 10)):
     """Generate realistic demo data for the stats page.
     
     Args:
-        days: Number of days of history to generate (default 365 = 1 year)
+        year: Optional specific year to generate data for (e.g. 2025). If set, 'days' is ignored.
+        days: Number of days of history to generate (default 365 = 1 year). Ignored if year is set.
         sessions_per_day_range: Tuple of (min, max) sessions per day
     """
     conn = connect_demo()
@@ -92,6 +142,10 @@ def generate_demo_data(days: int = 365, sessions_per_day_range: tuple = (0, 8)):
     
     # Clear existing demo data
     cur.execute("DELETE FROM session_history")
+    cur.execute("DELETE FROM key_stats")
+    cur.execute("DELETE FROM file_stats")
+    cur.execute("DELETE FROM error_type_stats")
+    cur.execute("DELETE FROM key_confusions")
     
     # Languages to simulate
     languages = ["Python", "JavaScript", "TypeScript", "Rust", "Go", "C++", "Java", "C#"]
@@ -116,12 +170,21 @@ def generate_demo_data(days: int = 365, sessions_per_day_range: tuple = (0, 8)):
     base_accuracy = 0.85  # Starting accuracy (85%)
     max_accuracy_gain = 0.12  # Max accuracy improvement
     
-    today = datetime.now()
-    start_date = today - timedelta(days=days)
+    if year:
+        start_date = datetime(year, 1, 1)
+        if calendar.isleap(year):
+            days = 366
+        else:
+            days = 365
+    else:
+        today = datetime.now()
+        start_date = today - timedelta(days=days)
+    
+    print(f"Generating data from {start_date.date()} to {start_date.date() + timedelta(days=days-1)}")
     
     records = []
     
-    for day_offset in range(days + 1):
+    for day_offset in range(days):
         current_date = start_date + timedelta(days=day_offset)
         
         # Progress factor (0 to 1 over the year)
@@ -214,10 +277,133 @@ def generate_demo_data(days: int = 365, sessions_per_day_range: tuple = (0, 8)):
     """, records)
     
     conn.commit()
+    
+    populate_auxiliary_stats(conn, records, languages)
+    
     conn.close()
     
     print(f"Generated {len(records)} demo sessions over {days} days")
     return len(records)
+
+
+def populate_auxiliary_stats(conn: sqlite3.Connection, sessions: list, languages: list):
+    """Populate auxiliary stats like key heatmaps based on session data."""
+    cur = conn.cursor()
+    
+    print("Generating heatmap and error stats...")
+    
+    # 1. Key Stats (Heatmap)
+    # Include all standard keyboard keys (lower and upper)
+    # Based on the layouts in KeyboardHeatmap
+    rows_lower = "`1234567890-=" + "qwertyuiop[]\\" + "asdfghjkl;'" + "zxcvbnm,./"
+    rows_upper = "~!@#$%^&*()_+" + "QWERTYUIOP{}|" + "ASDFGHJKL:\"" + "ZXCVBNM<>?"
+    
+    all_chars = rows_lower + rows_upper + " " # Add space
+    
+    key_records = []
+    
+    for lang in languages:
+        # Check if language has any sessions
+        # But even if not, we want some base "global" stats if possible, or just skip
+        # The demo usually generates data for all languages in the list
+        
+        # Base multiplier based on language popularity (simulated)
+        # But ensuring minimum activity for valid heatmap
+        activity_multiplier = 1000 
+        
+        for char in all_chars:
+            # Generate "balanced" stats
+            # We want every key to have hits and some errors
+            
+            # Base frequency logic (common chars happen more)
+            if char.lower() in "eiaorsntlcdupmhgbfywkvxzjq ":
+                freq_factor = 2.0  # Common
+            elif char in string.digits:
+                freq_factor = 0.8
+            else:
+                freq_factor = 0.5  # Symbols/Upper rare
+            
+            # Randomize frequency a bit
+            hits = int(activity_multiplier * freq_factor * random.uniform(0.5, 1.5))
+            hits = max(15, hits) # Ensure at least 15 hits per key per language
+            
+            # Calculate accuracy - ensure it's not perfect
+            # Random accuracy between 75% and 98%
+            accuracy = random.uniform(0.75, 0.98)
+            
+            # Specific keys might have worse accuracy (e.g. number row, symbols)
+            if char in "~!@#$%^&*()_+{}|:\"<>?":
+                accuracy -= random.uniform(0.05, 0.15)
+            
+            correct = int(hits * accuracy)
+            error = hits - correct
+            
+            # Ensure at least some errors
+            if error == 0 and hits > 10:
+                error = random.randint(1, int(hits * 0.1) + 1)
+                correct = hits - error
+            
+            key_records.append((char, lang, correct, error))
+            
+    cur.executemany("INSERT INTO key_stats (char, language, correct_count, error_count) VALUES (?, ?, ?, ?)", key_records)
+    
+    # 2. Error Type Stats
+    error_records = []
+    for lang in languages:
+        total_sessions = sum(1 for s in sessions if s[1] == lang)
+        base_errors = total_sessions * 50
+        
+        omissions = int(base_errors * 0.4)
+        insertions = int(base_errors * 0.2)
+        transpositions = int(base_errors * 0.1)
+        substitutions = int(base_errors * 0.3)
+        
+        error_records.append((lang, omissions, insertions, transpositions, substitutions))
+        
+    cur.executemany("""
+        INSERT INTO error_type_stats (language, omissions, insertions, transpositions, substitutions)
+        VALUES (?, ?, ?, ?, ?)
+    """, error_records)
+    
+    # 3. File Stats
+    # Aggregate from sessions
+    file_map = {}
+    for s in sessions:
+        # s = (file_path, language, wpm, accuracy, total_chars, correct, incorrect, duration, completed, timestamp)
+        fpath = s[0]
+        wpm = s[2]
+        acc = s[3]
+        
+        if fpath not in file_map:
+            file_map[fpath] = {
+                "best_wpm": 0, "last_wpm": 0, 
+                "best_acc": 0, "last_acc": 0, 
+                "times": 0, "completed": 0
+            }
+        
+        fm = file_map[fpath]
+        fm["last_wpm"] = wpm
+        if wpm > fm["best_wpm"]: fm["best_wpm"] = wpm
+        fm["last_acc"] = acc
+        if acc > fm["best_acc"]: fm["best_acc"] = acc
+        fm["times"] += 1
+        if s[8]: fm["completed"] = 1 # Just mark if ever moved
+    
+    file_records = []
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for fpath, data in file_map.items():
+        file_records.append((
+            fpath, data["best_wpm"], data["last_wpm"], 
+            data["best_acc"], data["last_acc"], 
+            data["times"], now_str, data["completed"]
+        ))
+        
+    cur.executemany("""
+        INSERT INTO file_stats (file_path, best_wpm, last_wpm, best_accuracy, last_accuracy, times_practiced, last_practiced, completed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, file_records)
+    
+    conn.commit()
 
 
 def ensure_demo_data():
@@ -243,18 +429,33 @@ def ensure_demo_data():
             generate_demo_data()
 
 
-def regenerate_demo_data():
-    """Force regenerate demo data (useful for testing)."""
+def setup_demo_data(year: Optional[int] = None, persist: bool = False):
+    """Setup demo data based on flags.
+    
+    Args:
+        year: Specific year to generate data for.
+        persist: If True, do not regenerate if exists.
+    """
+    if persist and demo_db_exists():
+        print("Demo data persists (skipping regeneration)...")
+        return
+
+    print("Regenerating demo data...")
+    # Force regenerate
     db_path = get_demo_db_path()
     if db_path.exists():
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except PermissionError:
+            print("Warning: Could not delete existing demo DB (file might be in use). Appending/Updating instead.")
+            
     conn = connect_demo()
     init_demo_tables(conn)
     conn.close()
-    generate_demo_data()
+    generate_demo_data(year=year)
 
 
 if __name__ == "__main__":
     # Run directly to generate/regenerate demo data
-    regenerate_demo_data()
+    setup_demo_data()
     print(f"Demo database created at: {get_demo_db_path()}")

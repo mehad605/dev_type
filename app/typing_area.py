@@ -121,6 +121,8 @@ class TypingAreaWidget(QTextEdit):
     session_completed = Signal()  # Emitted when file is fully typed
     mistake_occurred = Signal()  # Emitted when user makes a typing mistake
     first_key_pressed = Signal()  # Emitted when user presses the first race key
+    typing_resumed = Signal()  # Emitted when user resumes typing from paused state
+    typing_paused = Signal()   # Emitted when session auto-pauses due to inactivity
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -639,13 +641,19 @@ class TypingAreaWidget(QTextEdit):
             # Toggle pause state
             if self.engine.state.is_paused:
                 self.engine.start()
+                self.typing_resumed.emit()
             else:
                 self.engine.pause()
+                self.typing_paused.emit()
             self.stats_updated.emit()
             event.accept()
             return
         
         self._maybe_emit_first_key(event)
+        
+        # Check if engine is currently paused before processing keystroke
+        # If it is, the keystroke will auto-resume it, and we need to emit a signal
+        was_paused = self.engine.state.is_paused
         
         # Play keypress sound for valid typing keys
         from app.sound_manager import get_sound_manager
@@ -731,6 +739,10 @@ class TypingAreaWidget(QTextEdit):
             # Process keystroke
             is_correct, expected = self.engine.process_keystroke(char)
             
+            # If engine was paused and is now running, emit typing_resumed signal
+            if was_paused and not self.engine.state.is_paused:
+                self.typing_resumed.emit()
+            
             # Record keystroke for ghost
             self._record_keystroke(char, is_correct)
             
@@ -795,6 +807,7 @@ class TypingAreaWidget(QTextEdit):
     def _check_auto_pause(self):
         """Check if session should auto-pause."""
         if self.engine and self.engine.check_auto_pause():
+            self.typing_paused.emit()
             self.stats_updated.emit()
     
     def reset_session(self):

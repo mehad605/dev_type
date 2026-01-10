@@ -80,14 +80,26 @@ class PortableDataManager:
             self._base_dir = Path(__file__).parent.parent
             self._is_portable = False
         
-        # Try to load custom data directory from config file
+        # Priority Logic:
+        # 1. Check for User Custom Path in AppData/Config
         self._load_custom_data_dir()
         
-        # Data directory is the custom one if set, otherwise default
+        # 2. Check for Local Portable Folder (Dev_Type_Data next to exe)
+        local_data = self._base_dir / "Dev_Type_Data"
+        
+        # DECISION:
+        # If user explicitly set a custom path in settings (global config), honor it.
         if self._custom_data_dir and self._custom_data_dir.exists():
-            self._data_dir = self._custom_data_dir
+             self._data_dir = self._custom_data_dir
+             
+        # Otherwise, check if local folder exists (Standard Portable Mode)
+        elif local_data.exists():
+            self._data_dir = local_data
+            
+        # If neither exists strings attached, assume we should be portable
+        # and create local folder. (First run scenario)
         else:
-            self._data_dir = self._base_dir / "Dev_Type_Data"  # Descriptive name
+            self._data_dir = local_data
         
         # Create data directory and subdirectories if they don't exist
         self._ensure_directories()
@@ -213,6 +225,34 @@ class PortableDataManager:
                     subdir_path.mkdir(parents=True, exist_ok=True)
                     logger.debug(f"Created subdirectory: {subdir_path}")
             
+            # --- ASSET COPYING LOGIC ---
+            # Copy default assets (sounds) to data directory so users can customize them
+            
+            # 1. Determine source assets path
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller logic
+                assets_src = Path(sys._MEIPASS) / "assets"
+            else:
+                # Dev logic
+                assets_src = self._base_dir / "assets"
+            
+            # Copy Default Sounds
+            sounds_dest = self._data_dir / "sounds" # Use a dedicated sounds folder in data dir
+            sounds_src = assets_src / "sounds"
+            
+            if not sounds_dest.exists():
+                sounds_dest.mkdir(parents=True, exist_ok=True)
+                if sounds_src.exists():
+                    try:
+                        import shutil
+                        # Copy all wav/mp3 files
+                        for snd in sounds_src.glob("*.*"):
+                            if snd.suffix.lower() in ['.wav', '.mp3']:
+                                shutil.copy2(snd, sounds_dest / snd.name)
+                        logger.info(f"Copied default sounds to {sounds_dest}")
+                    except Exception as e:
+                        logger.warning(f"Failed to copy default sounds: {e}")
+
             return True
             
         except PermissionError as e:
@@ -353,6 +393,23 @@ class PortableDataManager:
             'data_dir_exists': self._data_dir.exists(),
             'database_exists': self.get_database_path().exists(),
         }
+
+    def get_sounds_dir(self) -> Path:
+        """Get path to the sounds directory.
+        
+        Prioritizes user-customizable sounds in data directory.
+        Falls back to bundled sounds if missing.
+        """
+        # 1. Check data directory (user customizable)
+        custom_sounds = self._data_dir / "sounds"
+        if custom_sounds.exists() and any(custom_sounds.iterdir()):
+             return custom_sounds
+             
+        # 2. Check bundled assets
+        if hasattr(sys, '_MEIPASS'):
+            return Path(sys._MEIPASS) / "assets" / "sounds"
+        else:
+            return self._base_dir / "assets" / "sounds"
 
 
 # Global instance

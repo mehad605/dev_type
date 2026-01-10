@@ -13,6 +13,16 @@ def main():
         action="store_true",
         help="Use demo database with fake data for testing the stats page"
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        help="Generate fake data for a specific year (e.g., 2025). Only relevant with --demo."
+    )
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="Persist demo data between runs. If not set, data is regenerated each time. Only relevant with --demo."
+    )
     args = parser.parse_args()
     
     # Show instant splash BEFORE heavy imports
@@ -20,6 +30,7 @@ def main():
     try:
         from app.instant_splash import create_instant_splash
         splash = create_instant_splash()
+            
         if splash:
             splash.update("Starting...", 5)
     except Exception as e:
@@ -31,6 +42,7 @@ def main():
             splash.update("Enabling demo mode...", 10)
         from app import demo_data
         demo_data.set_demo_mode(True)
+        demo_data.setup_demo_data(year=args.year, persist=args.persist)
         print("Running in DEMO MODE - using fake statistics data")
     
     # Heavy import - splash visible during this

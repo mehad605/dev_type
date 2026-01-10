@@ -357,8 +357,8 @@ class InteractiveStatusBox(QFrame):
         self.status_text.setFont(status_font)
         layout.addWidget(self.status_text)
         
-        # Cancel/Pause Button
-        self.action_btn = QPushButton("Cancel")
+        # Pause Button
+        self.action_btn = QPushButton("Pause")
         self.action_btn.setCursor(Qt.PointingHandCursor)
         self.action_btn.setFixedHeight(30)
         self.action_btn.clicked.connect(self.pause_clicked.emit)
@@ -378,7 +378,7 @@ class InteractiveStatusBox(QFrame):
             self.action_btn.setText("Resume")
         else:
             self.status_text.setText("ACTIVE")
-            self.action_btn.setText("Cancel")
+            self.action_btn.setText("Pause")
             
         self.apply_theme()
     

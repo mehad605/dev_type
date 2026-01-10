@@ -64,7 +64,7 @@ def _get_global_ignore_sql() -> str:
 
 def init_stats_tables():
     """Initialize database tables for typing statistics."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # File statistics table
@@ -200,7 +200,7 @@ def init_stats_tables():
 
 def get_file_stats(file_path: str) -> Optional[Dict]:
     """Get statistics for a specific file."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute("""
         SELECT best_wpm, last_wpm, best_accuracy, last_accuracy, 
@@ -229,7 +229,7 @@ def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, A
     if not paths:
         return {}
 
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     stats_map: Dict[str, Dict[str, Any]] = {}
     
@@ -264,7 +264,7 @@ def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, A
 
 def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bool = False):
     """Update statistics for a file after a typing session."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Minimum accuracy required to update best WPM
@@ -318,7 +318,7 @@ def record_session_history(
     completed: bool = False,
 ):
     """Append a session result to the historical log."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute(
         """
@@ -353,7 +353,7 @@ def record_session_history(
 
 def update_key_stats(language: str, key_hits: Dict[str, int], key_misses: Dict[str, int]):
     """Update language-specific key statistics using batch operations."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     lang = language or ""
     
@@ -385,7 +385,7 @@ def update_key_stats(language: str, key_hits: Dict[str, int], key_misses: Dict[s
 
 def update_key_confusions(language: str, key_confusions: Dict[str, Dict[str, int]]):
     """Update language-specific key confusion statistics using batch operations."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     lang = language or ""
     
@@ -408,7 +408,7 @@ def update_key_confusions(language: str, key_confusions: Dict[str, Dict[str, int
 
 def update_error_type_stats(language: str, errors: Dict[str, int]):
     """Update language-specific error type statistics."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     lang = language or ""
     
@@ -429,7 +429,7 @@ def update_error_type_stats(language: str, errors: Dict[str, int]):
 
 def get_error_type_stats(languages: Optional[List[str]] = None) -> Dict[str, int]:
     """Get aggregated error type statistics."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     query = "SELECT SUM(omissions), SUM(insertions), SUM(transpositions), SUM(substitutions) FROM error_type_stats"
@@ -459,7 +459,7 @@ def get_error_type_stats(languages: Optional[List[str]] = None) -> Dict[str, int
 
 def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:
     """Get key statistics for the heatmap, optionally filtered by language."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     if languages:
@@ -486,7 +486,7 @@ def get_key_stats(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, 
 
 def get_key_confusions(languages: Optional[List[str]] = None) -> Dict[str, Dict[str, int]]:
     """Get key confusion statistics, optionally filtered by language."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     if languages:
@@ -521,7 +521,7 @@ def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[D
     if not file_paths:
         return None
 
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     placeholders = ",".join(["?"] * len(file_paths))
     query = f"""
@@ -551,7 +551,7 @@ def get_bulk_recent_wpm_averages(languages: List[str], limit_per_lang: int = 10)
     if not languages:
         return {}
 
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # We use a window function to get the top N rows per language in one go
@@ -601,7 +601,7 @@ def get_bulk_recent_wpm_averages(languages: List[str], limit_per_lang: int = 10)
 
 def get_recent_wpm_average_by_language(language: str, limit: int = 10) -> Optional[Dict[str, float]]:
     """Return average WPM for the most recent sessions for a specific language."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute("""
         SELECT wpm FROM session_history
@@ -644,7 +644,7 @@ def fetch_session_history(
     max_duration: Optional[float] = None,
 ) -> List[Dict]:
     """Retrieve session history rows matching the supplied filters."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     ignore_sql = _get_global_ignore_sql()
     query = [
@@ -707,7 +707,7 @@ def delete_session_history(record_ids: List[int]):
     if not record_ids:
         return
 
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     placeholders = ",".join(["?"] * len(record_ids))
     cur.execute(f"DELETE FROM session_history WHERE id IN ({placeholders})", record_ids)
@@ -727,7 +727,7 @@ def cleanup_old_sessions(retention_days: Optional[int] = None) -> int:
     if retention_days is None or retention_days <= 0:
         return 0
     
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     
     # Delete sessions older than retention_days
@@ -749,7 +749,7 @@ def cleanup_old_sessions(retention_days: Optional[int] = None) -> int:
 
 def get_session_progress(file_path: str) -> Optional[Dict]:
     """Get saved progress for a file session."""
-    conn = _connect()
+    conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute("""
         SELECT cursor_position, total_characters, correct_keystrokes,

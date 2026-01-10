@@ -40,7 +40,7 @@ class Builder:
     
     def clean(self):
         """Remove build artifacts."""
-        print("🧹 Cleaning build directories...")
+        print("Cleaning build directories...")
         
         dirs_to_clean = [self.build_dir, self.dist_dir, self.root / "__pycache__"]
         for dir_path in dirs_to_clean:
@@ -48,22 +48,22 @@ class Builder:
                 shutil.rmtree(dir_path)
                 print(f"   Removed {dir_path}")
         
-        print("✓ Clean complete\n")
+        print("[OK] Clean complete\n")
     
     def check_pyinstaller(self):
         """Ensure PyInstaller is installed."""
         try:
             import PyInstaller
-            print(f"✓ PyInstaller {PyInstaller.__version__} found")
+            print(f"[OK] PyInstaller {PyInstaller.__version__} found")
             return True
         except ImportError:
-            print("❌ PyInstaller not found!")
+            print("[ERROR] PyInstaller not found!")
             print("   Install it with: pip install pyinstaller")
             return False
     
     def check_assets(self):
         """Verify required asset files exist."""
-        print("📋 Checking required assets...")
+        print("Checking required assets...")
         
         required_files = [
             self.root / "assets" / "icon.png",
@@ -77,15 +77,15 @@ class Builder:
         for file_path in required_files:
             if not file_path.exists():
                 missing.append(file_path)
-                print(f"   ❌ Missing: {file_path}")
+                print(f"   [MISSING] Missing: {file_path}")
             else:
-                print(f"   ✓ Found: {file_path.name}")
+                print(f"   [OK] Found: {file_path.name}")
         
         if missing:
-            print("\n❌ Some required assets are missing!")
+            print("\n[ERROR] Some required assets are missing!")
             return False
         
-        print("✓ All required assets found\n")
+        print("[OK] All required assets found\n")
         return True
     
     def get_icon_path(self) -> str:
@@ -94,7 +94,7 @@ class Builder:
             # Windows needs .ico file
             ico_path = self.root / "assets" / "icon.ico"
             if not ico_path.exists():
-                print("⚠️  Windows .ico file not found, will use .png")
+                print("[WARN] Windows .ico file not found, will use .png")
                 return str(self.root / "assets" / "icon.png")
             return str(ico_path)
         else:
@@ -103,7 +103,7 @@ class Builder:
     
     def build_windows(self):
         """Build Windows executable."""
-        print("🏗️  Building Windows executable...\n")
+        print("Building Windows executable...\n")
         
         icon_path = self.get_icon_path()
         version_file = self.root / "version_info.txt"
@@ -118,6 +118,8 @@ class Builder:
             "--onefile",  # Single executable file
             "--windowed",  # No console window
             f"--icon={icon_path}",
+            # NOTE: No --splash argument - we use custom Tkinter splash instead
+            # This allows users to customize splash.png in Dev_Type_Data folder
         ]
         
         # Add version info for Windows
@@ -136,9 +138,16 @@ class Builder:
             "--hidden-import=PySide6.QtSvg",
             "--hidden-import=PySide6.QtSvgWidgets",
             "--hidden-import=PySide6.QtMultimedia",
-            "--hidden-import=matplotlib",
-            "--hidden-import=matplotlib.pyplot",
-            "--hidden-import=matplotlib.backends.backend_agg",
+            "--hidden-import=PySide6.QtNetwork",  # Often needed for local socket/event loop internals
+            
+            # Exclude heavy unused libraries to reduce size
+            "--exclude-module=matplotlib",
+            "--exclude-module=numpy",
+            "--exclude-module=pandas",
+            "--exclude-module=scipy",
+            "--exclude-module=IPython",
+            "--exclude-module=PIL", # We use PySide6 for images, unless Pillow is explicitly needed
+            
             "--hidden-import=_tkinter",
             "--hidden-import=tkinter",
             "--hidden-import=tkinter.font",
@@ -180,18 +189,18 @@ class Builder:
         
         try:
             result = subprocess.run(cmd, check=True, cwd=self.root)
-            print("\n✅ Windows build complete!")
+            print("\n[SUCCESS] Windows build complete!")
             print(f"   Executable: {self.dist_dir / 'dev_type.exe'}")
             
             return True
         except subprocess.CalledProcessError as e:
-            print(f"\n❌ Build failed with error code {e.returncode}")
+            print(f"\n[ERROR] Build failed with error code {e.returncode}")
             
             return False
     
     def build_linux(self):
         """Build Linux executable."""
-        print("🏗️  Building Linux executable...\n")
+        print("Building Linux executable...\n")
         
         icon_path = self.get_icon_path()
         
@@ -260,9 +269,9 @@ if __name__ == "__main__":
         
         try:
             result = subprocess.run(cmd, check=True, cwd=self.root)
-            print("\n✅ Linux build complete!")
+            print("\n[SUCCESS] Linux build complete!")
             print(f"   Executable: {self.dist_dir / 'dev_type'}")
-            print("\n📦 To create AppImage:")
+            print("\n[INFO] To create AppImage:")
             print("   1. Download appimagetool from https://appimage.github.io/")
             print("   2. Create AppDir structure:")
             print("      mkdir -p AppDir/usr/bin")
@@ -277,7 +286,7 @@ if __name__ == "__main__":
             
             return True
         except subprocess.CalledProcessError as e:
-            print(f"\n❌ Build failed with error code {e.returncode}")
+            print(f"\n[ERROR] Build failed with error code {e.returncode}")
             
             # Clean up temporary entry script
             if entry_script.exists():
@@ -304,11 +313,11 @@ if __name__ == "__main__":
             elif self.is_linux:
                 success = self.build_linux()
             elif self.is_mac:
-                print("⚠️  macOS build not yet implemented")
+                print("[WARN] macOS build not yet implemented")
                 print("   Linux build process should work with minor adjustments")
                 success = False
             else:
-                print(f"❌ Unsupported platform: {self.system}")
+                print(f"[ERROR] Unsupported platform: {self.system}")
                 success = False
         
         elif target == "windows":
@@ -324,7 +333,7 @@ if __name__ == "__main__":
             elif self.is_linux:
                 success = self.build_linux()
             else:
-                print("⚠️  Building for multiple platforms from this OS not supported")
+                print("[WARN] Building for multiple platforms from this OS not supported")
                 success = False
         
         return success
@@ -361,16 +370,16 @@ def main():
     
     if success:
         print("\n" + "=" * 60)
-        print("  ✅ BUILD SUCCESSFUL")
+        print("  [SUCCESS] BUILD SUCCESSFUL")
         print("=" * 60)
-        print("\n📋 Next steps:")
+        print("\nNext steps:")
         print("   1. Test the executable in dist/")
         print("   2. The 'data' folder will be created automatically on first run")
         print("   3. To update: just replace the executable, keep the data folder")
         return 0
     else:
         print("\n" + "=" * 60)
-        print("  ❌ BUILD FAILED")
+        print("  [FAILED] BUILD FAILED")
         print("=" * 60)
         return 1
 

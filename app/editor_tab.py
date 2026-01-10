@@ -170,6 +170,8 @@ class EditorTab(QWidget):
         self.typing_area.session_completed.connect(self.on_session_completed)
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
         self.typing_area.first_key_pressed.connect(self._on_first_race_key)
+        self.typing_area.typing_resumed.connect(self._on_typing_resumed)
+        self.typing_area.typing_paused.connect(self._on_typing_paused)
         v_splitter.addWidget(self.typing_area)
         # Ensure engine matches current instant death state
         self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
@@ -917,6 +919,28 @@ class EditorTab(QWidget):
         # Start ghost immediately - don't wait for first timestamp
         self._ghost_prev_timestamp = 0
         self._ghost_timer.start(0)  # Start immediately!
+    
+    def _on_typing_resumed(self):
+        """Resume the ghost playback when user starts typing again after pause."""
+        # Only resume ghost if we're in an active race (not pending start) and ghost is paused
+        if self.is_racing and not self._race_pending_start and self._race_paused_at is not None:
+            # Adjust start time to account for pause duration
+            pause_duration = time.perf_counter() - self._race_paused_at
+            if self._race_start_perf is not None:
+                self._race_start_perf += pause_duration
+            self._race_paused_at = None
+            
+            # Resume ghost timer
+            self._advance_ghost_race()
+
+    def _on_typing_paused(self):
+        """Pause the ghost playback when user auto-pauses due to inactivity."""
+        # Only pause ghost if we're in an active race and not already paused
+        if self.is_racing and not self._race_pending_start and self._race_paused_at is None:
+            self._race_paused_at = time.perf_counter()
+            if self._ghost_timer.isActive():
+                self._ghost_timer.stop()
+    
     
     def _advance_ghost_race(self):
         """Advance the ghost playback timeline."""

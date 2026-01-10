@@ -876,6 +876,19 @@ class MainWindow(QMainWindow):
             self._replace_tab(self.settings_tab, real_settings, "Settings")
             self.settings_tab = real_settings
             
+            # Force Qt to process pending events
+            QApplication.processEvents()
+            
+            # Ensure combo boxes have correct focus policy and are polished
+            # This helps usually with frozen applications where styles might lag
+            if hasattr(self, 'theme_combo'):
+                self.theme_combo.setFocusPolicy(Qt.StrongFocus)
+                self.theme_combo.style().polish(self.theme_combo)
+                
+            if hasattr(self, 'scheme_combo'):
+                self.scheme_combo.setFocusPolicy(Qt.StrongFocus)
+                self.scheme_combo.style().polish(self.scheme_combo)
+            
             # Re-emit settings to ensure all UI elements are synced
             self._emit_initial_settings()
 
@@ -1942,14 +1955,10 @@ class MainWindow(QMainWindow):
 
 
     def _set_group_visible(self, group: QGroupBox, visible: bool, list_items=False):
-        """Helper to show/hide a group and optionally all its internal items."""
+        """Helper to show/hide a group."""
         group.setVisible(visible)
-        if list_items and visible:
-            # Make sure all children are visible (reset previous hiding)
-            # This is tricky without knowing the exact structure.
-            # A simple recursive 'setVisible(True)' on all children?
-            for child in group.findChildren(QWidget):
-                child.setVisible(True)
+        # We generally shouldn't manually toggle children visibility as it can break 
+        # complex widgets like QComboBox internals. The GroupBox visibility is sufficient.
 
     def _filter_group_contents(self, group: QGroupBox, query: str) -> bool:
         """
