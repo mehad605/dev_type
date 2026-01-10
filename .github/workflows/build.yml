@@ -38,17 +38,23 @@ jobs:
   build-flatpak:
     name: Build Flatpak
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.7
     steps:
       - uses: actions/checkout@v4
 
       - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          bundle: dev_type.flatpak
-          manifest-path: org.mehad605.DevType.yml
-          cache: true
-          # Disable rofiles-fuse because it often fails in containerized/CI environments
-          build-args: --disable-rofiles-fuse
+        run: |
+          # Fix machine-id for dbus
+          mkdir -p /var/lib/dbus
+          dbus-uuidgen > /var/lib/dbus/machine-id
+          ln -sf /var/lib/dbus/machine-id /etc/machine-id
+          
+          # Build using flatpak-builder with FUSE disabled
+          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse build-dir org.mehad605.DevType.yml
+          
+          # Create bundle
+          flatpak build-bundle repo dev_type.flatpak org.mehad605.DevType
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

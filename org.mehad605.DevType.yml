@@ -23,7 +23,7 @@ modules:
       build-args:
         - --share=network # CRITICAL: Allow network to download dependencies
     build-commands:
-      - pip3 install --prefix=/app PySide6 pillow matplotlib
+      - pip3 install --prefix=/app PySide6 pillow matplotlib numpy fonttools
 
   - name: dev-type
     buildsystem: simple
