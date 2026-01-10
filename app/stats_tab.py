@@ -2573,14 +2573,16 @@ class StatsTab(QWidget):
         self.header.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {text_primary}; margin-bottom: 8px;")
         
         # Update summary label
-        self.summary_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {text_secondary}; margin-top: 16px;")
+        self.summary_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {text_secondary};")
         
         # Update chart section labels
-        label_style = f"font-size: 16px; font-weight: bold; color: {text_secondary}; margin-top: 16px;"
+        label_style = f"font-size: 16px; font-weight: bold; color: {text_secondary};"
         if hasattr(self, 'heatmap_label'):
             self.heatmap_label.setStyleSheet(label_style)
         if hasattr(self, 'heatmap_metric_combo'):
             self.heatmap_metric_combo.setStyleSheet(self._get_combo_style())
+        if hasattr(self, 'heatmap_year_combo'):
+            self.heatmap_year_combo.setStyleSheet(self._get_combo_style())
         if hasattr(self, 'wpm_scatter_label'):
             self.wpm_scatter_label.setStyleSheet(label_style)
         if hasattr(self, 'acc_scatter_label'):
