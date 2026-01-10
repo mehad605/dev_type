@@ -52,6 +52,17 @@ class Builder:
         
         print("[OK] Clean complete\n")
     
+    def get_version(self):
+        """Get version from pyproject.toml."""
+        version = "0.1.0"
+        pyproject_path = self.root / "pyproject.toml"
+        if pyproject_path.exists():
+            content = pyproject_path.read_text()
+            match = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if match:
+                version = match.group(1)
+        return version
+
     def check_pyinstaller(self):
         """Ensure PyInstaller is installed."""
         try:
@@ -209,13 +220,21 @@ class Builder:
         
         try:
             result = subprocess.run(cmd, check=True, cwd=self.root)
-            print("\n[SUCCESS] Windows build complete!")
-            print(f"   Executable: {self.dist_dir / 'dev_type.exe'}")
+            
+            # Versioned rename
+            version = self.get_version()
+            src = self.dist_dir / "dev_type.exe"
+            dst = self.dist_dir / f"dev_type_v{version}.exe"
+            
+            if src.exists():
+                if dst.exists():
+                    dst.unlink()
+                src.rename(dst)
+                print(f"\n[SUCCESS] Windows build complete: {dst.name}")
             
             return True
         except subprocess.CalledProcessError as e:
             print(f"\n[ERROR] Build failed with error code {e.returncode}")
-            
             return False
     
     def build_linux(self):
@@ -371,17 +390,20 @@ Description: Master touch typing while coding
         os.chmod(debian_dir / "control", 0o644)
 
         # 9. Build the package using dpkg-deb
-        deb_file = self.dist_dir / f"dev_type_{version}_amd64.deb"
+        version = self.get_version()
+        temp_deb = self.dist_dir / f"dev-type_{version}_amd64.deb"
+        final_deb = self.dist_dir / f"dev_type_v{version}.deb"
+        
         try:
-            print(f"Running dpkg-deb to create {deb_file.name}...")
-            subprocess.run(["dpkg-deb", "--build", str(pkg_dir), str(deb_file)], check=True)
-            print(f"\n[SUCCESS] Debian package built: {deb_file}")
+            print(f"Running dpkg-deb to create {temp_deb.name}...")
+            subprocess.run(["dpkg-deb", "--build", str(pkg_dir), str(temp_deb)], check=True)
             
-            # Create a generic symlink for easier access in CI
-            generic_deb = self.dist_dir / "dev_type.deb"
-            if generic_deb.exists():
-                generic_deb.unlink()
-            shutil.copy2(deb_file, generic_deb)
+            # Rename to consistent format
+            if final_deb.exists():
+                final_deb.unlink()
+            temp_deb.rename(final_deb)
+            
+            print(f"\n[SUCCESS] Debian package built: {final_deb.name}")
             
             return True
         except FileNotFoundError:

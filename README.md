@@ -1,191 +1,131 @@
-# ⌨️ Dev Typing App
+# ⌨️ Dev Type
 
-A modern typing practice application designed specifically for developers. Practice your typing skills by typing real code from your projects, with features tailored for programmers.
+A modern, high-performance typing practice application designed specifically for developers. Practice your typing skills by typing real code from your projects, with features tailored for programmers.
+
+---
+
+## 📥 Downloads
+
+If you just want to use the app, you can download the latest pre-built binaries from the GitHub Releases page:
+
+- **Windows**: `dev_type_vX.Y.Z.exe` (Portable executable)
+*   **Linux**: `dev_type_vX.Y.Z.deb` (Debian/Ubuntu package)
+
+👉 **[Download Latest Release](https://github.com/mehad605/dev_type/releases/latest)**
+
+---
+
+## 🎬 Demo
+
+<video src="assets/Demo_Video/demo.mp4" width="100%" controls></video>
+
+---
 
 ## ✨ Features
 
-- **📁 Code Folder Integration**: Add folders containing your code projects and practice typing on real code files
-- **🔍 Language Detection**: Automatically scans and categorizes files by programming language
-- **⚡ Typing Practice**: Interactive typing interface with real-time feedback
-- **🎨 Themes & Customization**: Multiple dark/light themes with color schemes (Nord, Catppuccin, Dracula)
-- **🔊 Sound Effects**: Optional typing sounds with customizable profiles
-- **📊 Statistics Tracking**: Comprehensive stats including WPM, accuracy, and progress tracking
-- **📜 Session History**: Review past typing sessions and performance trends
-- **👻 Ghost Replays**: Compare your current typing against previous best performances
-- **💾 Portable Data**: Configurable data directory for stats, ghosts, and custom sounds
-- **⚙️ Settings**: Extensive customization options for fonts, cursors, colors, and typing behavior
+- **📁 Code Folder Integration**: Add folders containing your code projects and practice typing on real code files.
+- **🔍 Language Detection**: Automatically scans and categorizes files by programming language.
+- **⚡ Typing Practice**: High-performance interactive typing interface with real-time syntax highlighting feedback.
+- **📊 Statistics Tracking**: Comprehensive stats including WPM, accuracy, and detailed progress charts.
+- **👻 Ghost Replays**: Race against your previous best performances.
+- **🔊 Sound Effects**: Mechanical keyboard sounds with customizable profiles.
+- **🎨 Color Schemes**: Beautiful dark themes including Nord, Catppuccin, and Dracula.
+- **💾 Portable Data**: Keep your stats and settings in a local folder or move them between machines.
 
-## 🚀 Installation and Running
+---
+
+## 📸 Screenshots
+
+| Typing Practice | Folder Explorer |
+| :---: | :---: |
+| ![Typing](assets/Screenshots/typing_tab.png) | ![Folders](assets/Screenshots/folder_tab.png) |
+
+| Session History | Language Stats |
+| :---: | :---: |
+| ![History](assets/Screenshots/history_tab.png) | ![Languages](assets/Screenshots/language_tab.png) |
+
+| Performance Stats | Extensive Settings |
+| :---: | :---: |
+| ![Stats](assets/Screenshots/stats_tab.png) | ![Settings](assets/Screenshots/settings_tab.png) |
+
+---
+
+## 🚀 Development Setup (Run from Source)
+
+If you want to run the latest development version:
 
 ### Prerequisites
+- **Python 3.13** or higher
+- **Git**
 
-- Python 3.13 or higher
-- Git
+### Using uv (⭐ Recommended)
+[uv](https://github.com/astral-sh/uv) is a blazing fast Python package manager. 
+*Don't have uv?* [Install it here](https://docs.astral.sh/uv/getting-started/installation/).
 
-### Option 1: Using uv (⭐ Recommended)
-
-uv is a fast Python package installer and resolver that makes dependency management easier.
-
-**Don't have uv installed?** 📥 Follow the installation guide here: [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)
-
-1. **Clone the repository:**
+1. **Clone & Enter:**
    ```bash
    git clone https://github.com/mehad605/dev_type.git
    cd dev_type
    ```
-
-2. **Sync dependencies:**
+2. **Setup & Run:**
    ```bash
    uv sync
-   ```
-
-3. **Run the application:**
-   ```bash
    uv run main.py
    ```
 
-### Option 2: Using pip
-
-1. **Clone the repository:**
+### Using standard pip
+1. **Clone & Enter:**
    ```bash
    git clone https://github.com/mehad605/dev_type.git
    cd dev_type
    ```
-
-2. **Create a virtual environment (recommended):**
-   
-   **Windows (PowerShell):**
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
-   
-   **Windows (Command Prompt):**
-   ```cmd
-   python -m venv venv
-   venv\Scripts\activate.bat
-   ```
-   
-   **Linux/macOS:**
+2. **Create Virtual Environment:**
    ```bash
-   python -m venv venv
-   source venv/bin/activate
+   python -m venv .venv
+   # Windows:
+   .venv\Scripts\activate
+   # Linux/macOS:
+   source .venv/bin/activate
    ```
-
-3. **Install dependencies:**
+3. **Install & Run:**
    ```bash
    pip install .
-   ```
-
-4. **Run the application:**
-   ```bash
    python main.py
    ```
 
-## 📦 Building Standalone Executable
+---
 
-To create a standalone executable that doesn't require running `uv run` or `python` commands every time, you can build a portable executable.
+## 📦 Building from Source
 
-### Prerequisites for Building
+You can generate your own standalone binaries using the included build system.
 
-Before building, ensure you have:
-
-1. **Python 3.13 or higher** installed
-2. **PyInstaller** installed:
-   ```bash
-   # If using uv
-   uv pip install pyinstaller
-   
-   # If using regular pip
-   pip install pyinstaller
-   ```
-3. **All project dependencies** installed (via `uv sync` or `pip install .`)
-
-### 🪟 Building on Windows
-
-The project includes a convenient build script for Windows:
-
+### 🪟 Windows (.exe)
+Double-click `build.bat` or run:
 ```bash
-build.bat
-```
-
-Or manually using the build script:
-
-```bash
-# Using uv (recommended)
 uv run python build.py --windows --clean
-
-# Using regular python
-python build.py --windows --clean
 ```
+The output will be a portable executable in the `dist/` folder named `dev_type_vX.Y.Z.exe`.
 
-This will:
-- Create a single-file executable `dev_type.exe`
-- Bundle all Python dependencies and assets
-- Include themes, sounds, and default configurations
-- Place the executable in the `dist/` directory
-
-### 🐧 Building on Linux
-
-The project includes a shell script for building on Linux and packaging as an AppImage:
-
+### 🐧 Linux (.deb)
+Run the build script:
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
-
-Or manually using the build script:
-
+Or manually:
 ```bash
-# Package as AppImage (requires appimagetool in PATH)
-uv run python build.py --linux --appimage --clean
-
-# Build standalone binary only
 uv run python build.py --linux --clean
 ```
+This will generate a Debian package `dev_type_vX.Y.Z.deb` in the `dist/` folder, which can be installed via `sudo apt install ./dist/dev_type_vX.Y.Z.deb`.
 
-This will create an `AppDir` and a `dev_type.AppImage` in the `dist/` directory. If `appimagetool` is not in your PATH, it will still create the `AppDir` structure which you can manually package.
-
-### What the Build Does
-
-- Creates a standalone executable using PyInstaller
-- Bundles all Python dependencies and required libraries
-- Includes application assets (icons, sounds, etc.)
-- Produces a portable application that runs without Python installation
-- On first run, automatically creates a `Dev_Type_Data/` folder for storing:
-  - User settings
-  - Typing statistics
-  - Session history
-  - Custom sounds and ghosts
-
-### After Building
-
-1. Find your executable in the `dist/` folder
-2. Run `dev_type.exe` (Windows) - no Python required! 🎉
-3. The data folder will be created automatically next to the executable
-4. To update: replace the executable, keep your data folder to preserve settings and stats
-
-## 🎯 Usage
-
-1. **Add Code Folders**: Use the "Folders" tab to add directories containing code you want to practice with
-2. **Select Language**: Go to the "Languages" tab to see detected programming languages and file counts
-3. **Start Typing**: Click on a language or folder to begin a typing session
-4. **Customize**: Adjust settings in the "Settings" tab for themes, sounds, fonts, and behavior
-5. **Track Progress**: View your statistics and history in the respective tabs
-
-## 🔧 Configuration
-
-The app stores settings, statistics, and custom data in a configurable data directory. By default, this is next to the executable, but you can change it in Settings > Data Directory.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
+---
 
 ## 📄 License
 
-This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**.
 
-**In short:** 
-- **Personal Use**: You can use this app for any personal use.
-- **Non-Commercial**: You cannot make use of it for financial gain.
-- **ShareAlike**: Any and all derivatives of this project must also be made open-source and must have the same or more open licensing.
+- **Non-Commercial**: You cannot use this for financial gain.
+- **ShareAlike**: Derivatives must use the same open license.
+- **Attribution**: You must give appropriate credit.
+
+[Full License Details](LICENSE)

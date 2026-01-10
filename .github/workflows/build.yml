@@ -33,7 +33,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dev_type-windows
-          path: dist/dev_type.exe
+          path: dist/*.exe
 
   build-debian:
     name: Build Debian Package
@@ -89,7 +89,7 @@ jobs:
           body: ${{ github.event.inputs.release_notes }}
           generate_release_notes: ${{ github.event.inputs.release_notes == '' && (github.event.inputs.auto_generate == 'true' || github.event_name == 'push') }}
           files: |
-            release_assets/dev_type.exe
-            release_assets/dev_type*.deb
+            release_assets/*.exe
+            release_assets/*.deb
           draft: false
           prerelease: false
