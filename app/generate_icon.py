@@ -32,10 +32,10 @@ def convert_svg_to_png(svg_path: Path, png_path: Path, size: int = 256):
     
     # Save as high-quality PNG
     if image.save(str(png_path), "PNG", quality=100):
-        print(f"✓ Created {png_path.name} ({size}x{size})")
+        print(f" [OK] Created {png_path.name} ({size}x{size})")
         return True
     else:
-        print(f"✗ Failed to save {png_path}")
+        print(f" [FAIL] Failed to save {png_path}")
         return False
 
 
@@ -91,11 +91,11 @@ def convert_svg_to_ico(svg_path: Path, ico_path: Path):
         for img in images:
             img.close()
         
-        print(f"✓ Created {ico_path.name} (sizes: {', '.join(map(str, sizes))})")
+        print(f" [OK] Created {ico_path.name} (sizes: {', '.join(map(str, sizes))})")
         return True
         
     except Exception as e:
-        print(f"✗ Failed to create ICO: {e}")
+        print(f" [FAIL] Failed to create ICO: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -141,7 +141,7 @@ def main():
     convert_svg_to_ico(svg_path, ico_path)
     
     print()
-    print("✓ Icon generation complete!")
+    print(" [OK] Icon generation complete!")
     print(f"  All icons saved to: {assets_dir.absolute()}")
     print("  Files created:")
     print("    - icon.png (256x256)")
