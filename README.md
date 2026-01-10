@@ -17,9 +17,9 @@ If you just want to use the app, you can download the latest pre-built binaries 
 
 ## 🎬 Demo
 
-<video src="https://raw.githubusercontent.com/mehad605/dev_type/master/assets/Demo_Video/demo.mp4" width="100%" controls>
-  Your browser does not support the video tag.
-</video>
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/ef18ab02-c152-4711-a8ab-fa79f8841734" width="70%"> </video>
+</div>
 
 ---
 
