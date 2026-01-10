@@ -20,9 +20,8 @@ class ToolbarButton(QPushButton):
     def _update_colors(self):
         """Get current theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        self._scheme = get_color_scheme(theme, scheme_name)
+        self._scheme = get_color_scheme("dark", scheme_name)
     
     def enterEvent(self, event):
         self._hover = True

@@ -139,9 +139,8 @@ class StatsBox(QFrame):
     def apply_theme(self):
         """Apply current theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         bg_color = scheme.bg_secondary
         border_color = scheme.border_color
@@ -286,9 +285,8 @@ class KeystrokeBox(QFrame):
     def apply_theme(self):
         """Apply current theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         bg_color = scheme.bg_secondary
         border_color = scheme.border_color
@@ -385,9 +383,8 @@ class InteractiveStatusBox(QFrame):
     def apply_theme(self):
         """Apply theme colors."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         bg_color = scheme.bg_secondary
         border_color = scheme.border_color
@@ -556,9 +553,8 @@ class StatsDisplayWidget(QWidget):
     def apply_theme(self):
         """Apply current theme to all components."""
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         self.setStyleSheet(f"""
             #statsDisplay {{

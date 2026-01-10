@@ -33,9 +33,7 @@ except ImportError:
 # =============================================================================
 SETTING_DEFAULTS: Dict[str, str] = {
     # Theme settings
-    "theme": "dark",
     "dark_scheme": "dracula",
-    "light_scheme": "default",
     "custom_themes": "{}",
     
     # Confirmation dialogs

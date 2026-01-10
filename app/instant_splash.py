@@ -60,10 +60,6 @@ class InstantSplash:
             conn = sqlite3.connect(str(db_path))
             cur = conn.cursor()
             
-            cur.execute("SELECT value FROM settings WHERE key='theme'")
-            row = cur.fetchone()
-            theme = row[0] if row else "dark"
-            
             cur.execute("SELECT value FROM settings WHERE key='dark_scheme'")
             row = cur.fetchone()
             scheme = row[0] if row else "dracula"
@@ -72,16 +68,6 @@ class InstantSplash:
             
             # Theme color mappings - directly from themes.py ColorScheme definitions
             schemes = {
-                # Light theme (LIGHT_THEME)
-                "light": {
-                    "bg": "#ffffff",  # bg_primary
-                    "border": "#1976d2",  # accent_color
-                    "title": "#212121",  # text_primary
-                    "subtitle": "#1976d2",  # accent_color
-                    "status": "#757575",  # text_untyped
-                    "progress_bg": "#e0e0e0",  # bg_tertiary
-                    "progress_fill": "#1976d2",  # accent_color
-                },
                 # Dracula (DRACULA_DARK)
                 "dracula": {
                     "bg": "#282a36",  # bg_primary
@@ -154,9 +140,7 @@ class InstantSplash:
                 },
             }
             
-            if theme == "light":
-                colors = schemes["light"]
-            elif scheme in schemes:
+            if scheme in schemes:
                 colors = schemes[scheme]
                 
         except Exception:

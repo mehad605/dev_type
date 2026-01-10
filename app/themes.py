@@ -214,41 +214,7 @@ DRACULA_DARK = ColorScheme(
 )
 
 
-# Light theme (for light mode)
-LIGHT_THEME = ColorScheme(
-    # Backgrounds
-    bg_primary="#ffffff",
-    bg_secondary="#f5f5f5",
-    bg_tertiary="#e0e0e0",
-    
-    # Text
-    text_primary="#212121",
-    text_secondary="#424242",
-    text_disabled="#9e9e9e",
-    
-    # Typing colors
-    text_untyped="#757575",
-    text_correct="#2e7d32",  # Darker green for light bg
-    text_incorrect="#c62828",  # Darker red for light bg
-    text_paused="#f57c00",  # Darker orange for light bg
-    cursor_color="#1976d2",  # Blue cursor
-    
-    # UI colors
-    border_color="#bdbdbd",
-    accent_color="#1976d2",  # Blue accent
-    button_bg="#e0e0e0",
-    button_hover="#d0d0d0",
-    
-    # Status colors
-    success_color="#2e7d32",
-    warning_color="#f57c00",
-    error_color="#c62828",
-    info_color="#0288d1",
-    
-    # Card/List specific
-    card_bg="#f8f9fa",
-    card_border="#e9ecef",
-)
+
 
 
 # Cyberpunk (High contrast neon)
@@ -399,115 +365,7 @@ SOLARIZED_DARK = ColorScheme(
 )
 
 
-# Rose Pine Dawn (Soft warm light)
-ROSE_PINE_DAWN = ColorScheme(
-    # Backgrounds
-    bg_primary="#faf4ed",
-    bg_secondary="#fffaf3",
-    bg_tertiary="#f2e9e1",
-    
-    # Text
-    text_primary="#575279",
-    text_secondary="#797593",
-    text_disabled="#9893a5",
-    
-    # Typing colors
-    text_untyped="#9893a5",
-    text_correct="#286983",  # Pine
-    text_incorrect="#b4637a",  # Love
-    text_paused="#ea9d34",  # Gold
-    cursor_color="#56949f",  # Foam
-    
-    # UI colors
-    border_color="#dfdad9",
-    accent_color="#d7827e",  # Rose
-    button_bg="#fffaf3",
-    button_hover="#f2e9e1",
-    
-    # Status colors
-    success_color="#286983",
-    warning_color="#ea9d34",
-    error_color="#b4637a",
-    info_color="#56949f",
-    
-    # Card/List specific
-    card_bg="#fffaf3",
-    card_border="#dfdad9",
-)
 
-
-# Solarized Light (Precision light)
-SOLARIZED_LIGHT = ColorScheme(
-    # Backgrounds
-    bg_primary="#fdf6e3",
-    bg_secondary="#eee8d5",
-    bg_tertiary="#e0dcc7",
-    
-    # Text
-    text_primary="#657b83",
-    text_secondary="#93a1a1",
-    text_disabled="#a1a1a1",
-    
-    # Typing colors
-    text_untyped="#93a1a1",
-    text_correct="#859900",  # Green
-    text_incorrect="#dc322f",  # Red
-    text_paused="#b58900",  # Yellow
-    cursor_color="#268bd2",  # Blue
-    
-    # UI colors
-    border_color="#d3d0c8",
-    accent_color="#268bd2",  # Blue
-    button_bg="#eee8d5",
-    button_hover="#e0dcc7",
-    
-    # Status colors
-    success_color="#859900",
-    warning_color="#b58900",
-    error_color="#dc322f",
-    info_color="#268bd2",
-    
-    # Card/List specific
-    card_bg="#eee8d5",
-    card_border="#d3d0c8",
-)
-
-
-# Catppuccin Latte (Vibrant light)
-CATPPUCCIN_LATTE = ColorScheme(
-    # Backgrounds
-    bg_primary="#eff1f5",
-    bg_secondary="#e6e9ef",
-    bg_tertiary="#bcc0cc",
-    
-    # Text
-    text_primary="#4c4f69",
-    text_secondary="#6c6f85",
-    text_disabled="#9ca0b0",
-    
-    # Typing colors
-    text_untyped="#9ca0b0",
-    text_correct="#40a02b",  # Green
-    text_incorrect="#d20f39",  # Red
-    text_paused="#df8e1d",  # Yellow
-    cursor_color="#ea76cb",  # Pink
-    
-    # UI colors
-    border_color="#ccd0da",
-    accent_color="#8839ef",  # Mauve
-    button_bg="#e6e9ef",
-    button_hover="#bcc0cc",
-    
-    # Status colors
-    success_color="#40a02b",
-    warning_color="#df8e1d",
-    error_color="#d20f39",
-    info_color="#1e66f5",
-    
-    # Card/List specific
-    card_bg="#e6e9ef",
-    card_border="#ccd0da",
-)
 
 
 # Theme registry
@@ -520,12 +378,6 @@ THEMES: Dict[str, Dict[str, ColorScheme]] = {
         "monokai_pro": MONOKAI_PRO,
         "gruvbox": GRUVBOX_DARK,
         "solarized_dark": SOLARIZED_DARK,
-    },
-    "light": {
-        "default": LIGHT_THEME,
-        "rose_pine_dawn": ROSE_PINE_DAWN,
-        "solarized_light": SOLARIZED_LIGHT,
-        "catppuccin_latte": CATPPUCCIN_LATTE,
     }
 }
 
@@ -559,20 +411,21 @@ def delete_custom_theme(name: str, type: str = "dark"):
         settings.set_setting("custom_themes", json.dumps(customs))
 
 def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
-    """Get a color scheme by theme and scheme name.
+    """Get a color scheme by scheme name.
     
+    Always returns a dark theme as light mode is removed.
     Checks custom themes first, then built-in.
     """
+    # Force dark theme base
+    theme = "dark"
+    
     # Check custom themes first
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
         return ColorScheme.from_dict(customs[theme][scheme])
     
     # Check built-in
-    if theme == "light":
-        scheme_obj = THEMES["light"].get(scheme, LIGHT_THEME)
-    else:
-        scheme_obj = THEMES["dark"].get(scheme, NORD_DARK)
+    scheme_obj = THEMES["dark"].get(scheme, NORD_DARK)
         
     # Return a copy to prevent accidental mutation of global defaults
     return ColorScheme.from_dict(scheme_obj.to_dict())
@@ -580,16 +433,11 @@ def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
 def is_builtin_theme(theme: str, scheme: str) -> bool:
     """Check if a theme is built-in (and unmodified)."""
     # Simply check if it exists in the hardcoded list
-    # Note: If a custom theme exists with same name, this returns True 
-    # for the NAME, but effectively it's overridden.
-    # The logic for "Reset" depends on whether a custom entry exists.
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
         return False # It is overridden by a custom theme
     
-    if theme == "light":
-        return scheme in THEMES["light"]
-    return scheme in THEMES["dark"]
+    return scheme in THEMES.get("dark", {})
 
 
 def generate_app_stylesheet(scheme: ColorScheme) -> str:

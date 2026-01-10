@@ -44,11 +44,8 @@ def format_date_display(date_str: str, short: bool = False) -> str:
 def get_theme_colors() -> Dict[str, QColor]:
     """Get current theme colors for charts."""
     from app.themes import get_color_scheme
-    theme = settings.get_setting("theme", settings.get_default("theme"))
     scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-    if theme == "light":
-        scheme_name = settings.get_setting("light_scheme", settings.get_default("light_scheme"))
-    scheme = get_color_scheme(theme, scheme_name)
+    scheme = get_color_scheme("dark", scheme_name)
     
     return {
         "bg_primary": QColor(scheme.bg_primary),

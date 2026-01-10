@@ -698,9 +698,8 @@ class EditorTab(QWidget):
         from app import settings
         from app.themes import get_color_scheme
         
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         # Apply background to bottom container
         if hasattr(self, 'bottom_container'):
@@ -1350,11 +1349,10 @@ class EditorTab(QWidget):
         from app import settings
         
         # Get current theme settings
-        theme = settings.get_setting("theme", settings.get_default("theme"))
-        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme")) if theme == "dark" else settings.get_setting("light_scheme", settings.get_default("light_scheme"))
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         
         # Get the color scheme
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         # Get user/ghost progress bar colors from settings (these are custom)
         user_progress_color = settings.get_setting("user_progress_bar_color", scheme.success_color)

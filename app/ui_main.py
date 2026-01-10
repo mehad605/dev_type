@@ -167,9 +167,8 @@ class FolderCardWidget(QFrame):
     def _apply_style(self):
         # Get current theme colors
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         # Default state
         base_color = scheme.card_bg
@@ -273,9 +272,8 @@ class FoldersTab(QWidget):
         
         # Get theme colors for buttons
         from app.themes import get_color_scheme
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme(theme, scheme_name)
+        scheme = get_color_scheme("dark", scheme_name)
         
         self.add_btn = QPushButton("➕ Add Folder")
         self.add_btn.setToolTip("Add a new folder")
@@ -483,9 +481,8 @@ class FoldersTab(QWidget):
             
             # Get theme colors
             from app.themes import get_color_scheme
-            theme = settings.get_setting("theme", settings.get_default("theme"))
             scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-            scheme = get_color_scheme(theme, scheme_name)
+            scheme = get_color_scheme("dark", scheme_name)
             
             # Layout
             layout = QVBoxLayout(dialog)
@@ -879,13 +876,9 @@ class MainWindow(QMainWindow):
             # Force Qt to process pending events
             QApplication.processEvents()
             
-            # Ensure combo boxes have correct focus policy and are polished
-            # This helps usually with frozen applications where styles might lag
-            if hasattr(self, 'theme_combo'):
-                self.theme_combo.setFocusPolicy(Qt.StrongFocus)
-                self.theme_combo.style().polish(self.theme_combo)
-                
             if hasattr(self, 'scheme_combo'):
+                self.scheme_combo.setFocusPolicy(Qt.StrongFocus)
+                self.scheme_combo.style().polish(self.scheme_combo)
                 self.scheme_combo.setFocusPolicy(Qt.StrongFocus)
                 self.scheme_combo.style().polish(self.scheme_combo)
             
@@ -1257,52 +1250,38 @@ class MainWindow(QMainWindow):
         explorer_group.setLayout(explorer_layout)
         s_layout.addWidget(explorer_group)
         
-        # Theme settings group
-        theme_group = QGroupBox("Theme")
-        theme_layout = QFormLayout()
+        # Color Scheme settings group
+        color_scheme_group = QGroupBox("Color Scheme")
+        color_scheme_layout = QVBoxLayout()
+        color_scheme_layout.setSpacing(0)
         
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["dark", "light"])
-        cur_theme = settings.get_setting("theme", settings.get_default("theme"))
-        self.theme_combo.setCurrentText(cur_theme)
-        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
-        
-        # Compact row for theme
-        theme_row = QHBoxLayout()
-        theme_row.addWidget(self.theme_combo)
-        theme_row.addStretch()
-        theme_layout.addRow("Theme:", theme_row)
+        # Base Palette Selector (Moved from separate group)
+        palette_row_widget = QWidget()
+        palette_row = QHBoxLayout(palette_row_widget)
+        palette_row.setContentsMargins(5, 5, 5, 10)
+        palette_row.addWidget(QLabel("Base Palette:"))
         
         self.scheme_combo = QComboBox()
-        # Initial population based on current theme
-        self._populate_scheme_combo(cur_theme)
+        self._populate_scheme_combo("dark")
         
         cur_scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        # If we switched themes, this setting might not match, but on_theme_changed handles that
         index = self.scheme_combo.findText(cur_scheme)
         if index >= 0:
             self.scheme_combo.setCurrentIndex(index)
             
         self.scheme_combo.currentTextChanged.connect(self.on_scheme_changed)
+        palette_row.addWidget(self.scheme_combo)
+        palette_row.addStretch()
         
-        # Compact row for scheme
-        scheme_row = QHBoxLayout()
-        scheme_row.addWidget(self.scheme_combo)
-        scheme_row.addStretch()
-        theme_layout.addRow("Color Scheme:", scheme_row)
+        color_scheme_layout.addWidget(palette_row_widget)
         
-        theme_group.setLayout(theme_layout)
-        s_layout.addWidget(theme_group)
-        
-        # Theme Customization Section (Redesigned per reference image)
-        colors_group = QGroupBox("Theme Customization")
-        colors_layout = QVBoxLayout()
-        colors_layout.setSpacing(0) # Tighter spacing for table look
+        # Theme Customization Section (Integrated)
+        color_scheme_layout.addSpacing(10)
         
         # 1. Section Title
         self.theme_settings_title = QLabel("THEME SETTINGS: DRACULA")
         self.theme_settings_title.setStyleSheet("font-weight: bold; font-size: 11pt; padding: 5px;")
-        colors_layout.addWidget(self.theme_settings_title)
+        color_scheme_layout.addWidget(self.theme_settings_title)
         
         # 3. Dynamic Grid for Colors
         # We use a grid to keep columns aligned but wrap it in a container
@@ -1437,7 +1416,7 @@ class MainWindow(QMainWindow):
                 self.color_grid.addWidget(swatch_container, row, 2)
                 row += 1
         
-        colors_layout.addWidget(grid_container)
+        color_scheme_layout.addWidget(grid_container)
         
         # 4. Action Buttons Footer
         footer_widget = QWidget()
@@ -1465,10 +1444,10 @@ class MainWindow(QMainWindow):
         self.btn_new_theme.setStyleSheet("background-color: #5e81ac; color: white; border: none; padding: 8px 20px;")
         footer_layout.addWidget(self.btn_new_theme)
         
-        colors_layout.addWidget(footer_widget)
+        color_scheme_layout.addWidget(footer_widget)
         
-        colors_group.setLayout(colors_layout)
-        s_layout.addWidget(colors_group)
+        color_scheme_group.setLayout(color_scheme_layout)
+        s_layout.addWidget(color_scheme_group)
         
         # Initialize working scheme state
         self._colors_dirty = False
@@ -2093,30 +2072,9 @@ class MainWindow(QMainWindow):
         self.scheme_combo.addItems(items)
         self.scheme_combo.blockSignals(False)
 
-    def on_theme_changed(self, theme: str):
-        """Handle theme change (dark/light)."""
-        settings.set_setting("theme", theme)
-        
-        # Update scheme options for the new theme
-        self._populate_scheme_combo(theme)
-        
-        # Determine the new scheme to use
-        current_scheme = self.scheme_combo.currentText()
-        
-        # If no valid scheme selected (e.g. list empty?), force a default
-        if not current_scheme:
-            default_scheme = "default" if theme == "light" else "dracula"
-            self.scheme_combo.setCurrentText(default_scheme)
-            current_scheme = default_scheme
-            
-        # force update the setting because _populate_scheme_combo blocked signals
-        settings.set_setting("dark_scheme", current_scheme)
-        
-        self.apply_current_theme()
-        self.update_color_buttons_from_theme()
-
     def on_scheme_changed(self, scheme: str):
         """Handle scheme change."""
+        if not scheme: return
         settings.set_setting("dark_scheme", scheme)
         self.apply_current_theme()
         self.update_color_buttons_from_theme()
@@ -2517,11 +2475,10 @@ class MainWindow(QMainWindow):
         from app.themes import get_color_scheme, apply_theme_to_app
         
         # Get current theme settings
-        theme = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         
-        # Get the color scheme
-        scheme = get_color_scheme(theme, scheme_name)
+        # Get the color scheme (always dark mode)
+        scheme = get_color_scheme("dark", scheme_name)
         
         # Apply to application
         if DEBUG_STARTUP_TIMING:
@@ -2572,7 +2529,6 @@ class MainWindow(QMainWindow):
         from app.themes import get_color_scheme, is_builtin_theme
         
         # Get current theme settings
-        theme_type = settings.get_setting("theme", settings.get_default("theme"))
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         
         # Update Section Title
@@ -2580,7 +2536,7 @@ class MainWindow(QMainWindow):
             self.theme_settings_title.setText(f"THEME SETTINGS: {scheme_name.upper()}")
         
         # Get scheme object
-        self.working_scheme = get_color_scheme(theme_type, scheme_name)
+        self.working_scheme = get_color_scheme("dark", scheme_name)
         
         # Update swatches and text labels
         for key, btn in self.color_buttons.items():
@@ -2602,7 +2558,7 @@ class MainWindow(QMainWindow):
                     self.color_hex_labels[key].setText(col.upper())
         
         # Update Reset Button State
-        is_builtin = is_builtin_theme(theme_type, scheme_name)
+        is_builtin = is_builtin_theme("dark", scheme_name)
         if is_builtin:
              self.btn_reset_theme.setEnabled(False)
              self.btn_reset_theme.setToolTip("Current theme is at default values.")
@@ -2616,13 +2572,6 @@ class MainWindow(QMainWindow):
     
     def refresh_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
-        if not hasattr(self, 'theme_combo'):
-            return  # Settings tab not loaded yet
-            
-        # Theme settings
-        theme = settings.get_setting("theme", settings.get_default("theme"))
-        self.theme_combo.setCurrentText(theme)
-        
         scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         self.scheme_combo.setCurrentText(scheme)
         
@@ -2964,11 +2913,8 @@ class MainWindow(QMainWindow):
     def on_save_theme(self):
         """Save current colors to the current theme name (overwrite)."""
         from app.themes import save_custom_theme
-        
-        theme_type = settings.get_setting("theme", "dark")
         scheme_name = settings.get_setting("dark_scheme", "dracula")
-        
-        save_custom_theme(scheme_name, self.working_scheme, theme_type)
+        save_custom_theme(scheme_name, self.working_scheme, "dark")
         
         self._colors_dirty = False
         self.btn_save_theme.setStyleSheet("") # Reset style
@@ -2989,19 +2935,14 @@ class MainWindow(QMainWindow):
             if not clean_name:
                 return
             
-            theme_type = settings.get_setting("theme", "dark")
-            
             # Save
-            save_custom_theme(clean_name, self.working_scheme, theme_type)
+            save_custom_theme(clean_name, self.working_scheme, "dark")
             
             # Switch to new theme in settings
-            if theme_type == "dark":
-                settings.set_setting("dark_scheme", clean_name)
-            else:
-                settings.set_setting("light_scheme", clean_name)
+            settings.set_setting("dark_scheme", clean_name)
             
             # Refresh combination box
-            self._populate_scheme_combo(theme_type)
+            self._populate_scheme_combo("dark")
             # Select the new item
             index = self.scheme_combo.findText(clean_name)
             if index >= 0:
@@ -3015,10 +2956,9 @@ class MainWindow(QMainWindow):
         from app.themes import delete_custom_theme, is_builtin_theme, get_color_scheme
         from app.themes import apply_theme_to_app
         
-        theme_type = settings.get_setting("theme", "dark")
         scheme_name = settings.get_setting("dark_scheme", "dracula")
         
-        if is_builtin_theme(theme_type, scheme_name):
+        if is_builtin_theme("dark", scheme_name):
             return
             
         reply = QMessageBox.question(
@@ -3028,7 +2968,7 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
-            delete_custom_theme(scheme_name, theme_type)
+            delete_custom_theme(scheme_name, "dark")
             
             # Refresh everything
             self.apply_current_theme()
@@ -3045,9 +2985,8 @@ def create_splash_screen(app):
     from app.themes import get_color_scheme
     
     # Get current theme for splash
-    theme = settings.get_setting("theme", settings.get_default("theme"))
     scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-    scheme = get_color_scheme(theme, scheme_name)
+    scheme = get_color_scheme("dark", scheme_name)
     
     # Create a simple splash widget
     splash_widget = QWidget()
