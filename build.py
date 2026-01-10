@@ -217,8 +217,8 @@ class Builder:
             
             return False
     
-    def build_linux(self, appimage: bool = False):
-        """Build Linux executable and optionally package as AppImage."""
+    def build_linux(self):
+        """Build Linux standalone executable."""
         print("Building Linux executable...\n")
         
         icon_path = self.get_icon_path()
@@ -235,13 +235,13 @@ if __name__ == "__main__":
         cmd = [
             "pyinstaller",
             "--name=dev_type",
-            "--onefile" if not appimage else "--onedir",  # onedir is better for AppImage
+            "--onefile",
             f"--icon={icon_path}",
             
             # Add data files
             "--add-data=assets/icon.svg:assets",
             "--add-data=assets/icon.png:assets",
-            "--add-data=assets/sounds:assets/sounds",  # Include sounds directory
+            "--add-data=assets/sounds:assets/sounds",
             
             # Hidden imports
             "--hidden-import=PySide6.QtSvg",
@@ -274,13 +274,8 @@ if __name__ == "__main__":
             "--hidden-import=tkinter.font",
             "--hidden-import=tkinter.ttk",
             
-            # Disable UPX compression to avoid antivirus false positives
             "--noupx",
-            
-            # Clean build
             "--clean",
-            
-            # Entry point
             str(entry_script)
         ]
         
@@ -288,116 +283,19 @@ if __name__ == "__main__":
         
         try:
             result = subprocess.run(cmd, check=True, cwd=self.root)
-            
-            # Clean up temporary entry script
             if entry_script.exists():
                 entry_script.unlink()
-            
-            if appimage:
-                return self.create_appimage()
             
             print("\n[SUCCESS] Linux build complete!")
             print(f"   Executable: {self.dist_dir / 'dev_type'}")
-            
             return True
         except subprocess.CalledProcessError as e:
             print(f"\n[ERROR] Build failed with error code {e.returncode}")
-            
-            # Clean up temporary entry script
             if entry_script.exists():
                 entry_script.unlink()
-            
             return False
 
-    def create_appimage(self):
-        """Package the dist/dev_type directory into an AppImage."""
-        print("\nPackaging as AppImage...")
-        
-        appdir = self.root / "AppDir"
-        if appdir.exists():
-            shutil.rmtree(appdir)
-        
-        # 1. Create structure
-        (appdir / "usr" / "bin").mkdir(parents=True)
-        
-        # 2. Copy PyInstaller output
-        source_dir = self.dist_dir / "dev_type"
-        if not source_dir.exists():
-            # Fallback for --onefile output
-            source_bin = self.dist_dir / "dev_type"
-            if not source_bin.exists():
-                print("[ERROR] Could not find PyInstaller output!")
-                return False
-            shutil.copy2(source_bin, appdir / "usr" / "bin" / "dev_type")
-        else:
-            # Copy entire onedir contents to usr/bin
-            for item in source_dir.iterdir():
-                if item.is_dir():
-                    shutil.copytree(item, appdir / "usr" / "bin" / item.name)
-                else:
-                    shutil.copy2(item, appdir / "usr" / "bin" / item.name)
-        
-        # 3. Create Desktop file
-        desktop_content = """[Desktop Entry]
-Name=Dev Type
-Exec=dev_type
-Icon=dev_type
-Type=Application
-Categories=Development;Education;
-Comment=Master touch typing while coding
-Terminal=false
-"""
-        (appdir / "dev_type.desktop").write_text(desktop_content)
-        
-        # 4. Copy Icon
-        icon_source = self.root / "assets" / "icon.png"
-        shutil.copy2(icon_source, appdir / "dev_type.png")
-        
-        # 5. Create AppRun script
-        apprun_content = """#!/bin/sh
-SELF=$(readlink -f "$0")
-HERE=${SELF%/*}
-export PATH="${HERE}/usr/bin:${PATH}"
-exec "${HERE}/usr/bin/dev_type" "$@"
-"""
-        apprun_file = appdir / "AppRun"
-        apprun_file.write_text(apprun_content)
-        try:
-            subprocess.run(["chmod", "+x", str(apprun_file)], check=False)
-        except:
-            pass # Might fail on Windows
-        
-        # 6. Call appimagetool if available
-        appimagetool = shutil.which("appimagetool") or shutil.which("appimagetool-x86_64.AppImage")
-        
-        if not appimagetool:
-            print("\n[INFO] AppDir structure created at ./AppDir")
-            print("To finish AppImage creation, download appimagetool and run:")
-            print("   ./appimagetool AppDir dev_type.AppImage")
-            return True
-        
-        try:
-            print(f"Running {appimagetool}...")
-            env = os.environ.copy()
-            if "ARCH" not in env:
-                import platform
-                machine = platform.machine().lower()
-                if "x86_64" in machine or "amd64" in machine:
-                    env["ARCH"] = "x86_64"
-                elif "arm64" in machine or "aarch64" in machine:
-                    env["ARCH"] = "aarch64"
-                else:
-                    env["ARCH"] = machine
-            
-            subprocess.run([appimagetool, str(appdir), str(self.dist_dir / "dev_type.AppImage")], 
-                           check=True, env=env)
-            print(f"\n[SUCCESS] AppImage created: {self.dist_dir / 'dev_type.AppImage'}")
-            return True
-        except Exception as e:
-            print(f"\n[ERROR] AppImage packaging failed: {e}")
-            return False
-    
-    def build(self, target: str = "current", appimage: bool = False):
+    def build(self, target: str = "current"):
         """Build for specified target platform."""
         if self.clean_first:
             self.clean()
@@ -414,10 +312,9 @@ exec "${HERE}/usr/bin/dev_type" "$@"
             if self.is_windows:
                 success = self.build_windows()
             elif self.is_linux:
-                success = self.build_linux(appimage=appimage)
+                success = self.build_linux()
             elif self.is_mac:
                 print("[WARN] macOS build not yet implemented")
-                print("   Linux build process should work with minor adjustments")
                 success = False
             else:
                 print(f"[ERROR] Unsupported platform: {self.system}")
@@ -427,17 +324,14 @@ exec "${HERE}/usr/bin/dev_type" "$@"
             success = self.build_windows()
         
         elif target == "linux":
-            success = self.build_linux(appimage=appimage)
+            success = self.build_linux()
         
         elif target == "all":
             print("Building for all platforms...\n")
             if self.is_windows:
                 success = self.build_windows()
-            elif self.is_linux:
-                success = self.build_linux(appimage=appimage)
-            else:
-                print("[WARN] Building for multiple platforms from this OS not supported")
-                success = False
+            if self.is_linux:
+                success = self.build_linux()
         
         return success
 
@@ -447,7 +341,6 @@ def main():
     parser = argparse.ArgumentParser(description="Build portable executables for dev_type")
     parser.add_argument("--windows", action="store_true", help="Build Windows executable")
     parser.add_argument("--linux", action="store_true", help="Build Linux executable")
-    parser.add_argument("--appimage", action="store_true", help="Package Linux build as AppImage")
     parser.add_argument("--all", action="store_true", help="Build for all platforms")
     parser.add_argument("--clean", action="store_true", help="Clean build directories first")
     
@@ -470,7 +363,7 @@ def main():
     print("=" * 60)
     print()
     
-    success = builder.build(target, appimage=args.appimage)
+    success = builder.build(target)
     
     if success:
         print("\n" + "=" * 60)

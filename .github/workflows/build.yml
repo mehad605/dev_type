@@ -10,7 +10,7 @@ on:
         description: 'Manual release notes. (Optional)'
         required: false
       auto_generate:
-        description: 'Auto-generate notes from commits? (Ignored if manual notes are provided)'
+        description: 'Auto-generate notes from commits?'
         type: boolean
         default: true
   push:
@@ -35,39 +35,29 @@ jobs:
           name: dev_type-windows
           path: dist/dev_type.exe
 
-  build-linux:
-    name: Build Linux
+  build-flatpak:
+    name: Build Flatpak
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.7 # Matches our manifest runtime
+      options: --privileged
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - name: Install System Dependencies
+
+      - name: Build Flatpak
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libxcb-cursor0 libxkbcommon-x11-0 libdbus-1-3
-      - name: Download appimagetool
-        run: |
-          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
-      - name: Build AppImage
-        env:
-          ARCH: x86_64
-          APPIMAGE_EXTRACT_AND_RUN: 1
-        run: uv run python build.py --linux --appimage --clean
+          flatpak-builder --repo=repo --force-clean build-dir org.mehad605.DevType.yml
+          flatpak build-bundle repo dev_type.flatpak org.mehad605.DevType
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dev_type-linux
-          path: dist/dev_type.AppImage
+          name: dev_type-flatpak
+          path: dev_type.flatpak
 
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-linux]
-    # Run if tagged push OR if workflow_dispatch provides a version_tag
+    needs: [build-windows, build-flatpak]
     if: |
       startsWith(github.ref, 'refs/tags/v') || 
       (github.event_name == 'workflow_dispatch' && github.event.inputs.version_tag != '')
@@ -81,10 +71,10 @@ jobs:
           name: dev_type-windows
           path: release_assets/
 
-      - name: Download Linux AppImage
+      - name: Download Flatpak
         uses: actions/download-artifact@v4
         with:
-          name: dev_type-linux
+          name: dev_type-flatpak
           path: release_assets/
 
       - name: Create Release
@@ -93,10 +83,9 @@ jobs:
           tag_name: ${{ github.event.inputs.version_tag || github.ref_name }}
           name: ${{ github.event.inputs.version_tag || github.ref_name }}
           body: ${{ github.event.inputs.release_notes }}
-          # Only auto-generate if manual notes are NOT provided and user asked for it
-          generate_release_notes: ${{ github.event.inputs.release_notes == '' && (github.event.inputs.auto_generate == 'true' || github.event_name == 'push') }} # Auto-gen default to true for pushed tags
+          generate_release_notes: ${{ github.event.inputs.release_notes == '' && (github.event.inputs.auto_generate == 'true' || github.event_name == 'push') }}
           files: |
             release_assets/dev_type.exe
-            release_assets/dev_type.AppImage
+            release_assets/dev_type.flatpak
           draft: false
           prerelease: false

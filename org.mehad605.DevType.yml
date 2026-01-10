@@ -1,0 +1,50 @@
+app-id: org.mehad605.DevType
+runtime: org.kde.Platform
+runtime-version: '6.7' # Standard Qt6 runtime
+sdk: org.kde.Sdk
+command: dev_type
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: python3-dependencies
+    buildsystem: simple
+    build-commands:
+      # We install dependencies to /app
+      # In a real Flathub submission, we would use pre-generated manifest for dependencies
+      # For personal builds, we can use pip if network is allowed (handled in GH Action)
+      - pip3 install --prefix=/app PySide6 pillow matplotlib
+
+  - name: dev-type
+    buildsystem: simple
+    build-commands:
+        - install -D main.py /app/bin/dev_type_main.py
+        - cp -r app /app/bin/app
+        - cp -r assets /app/bin/assets
+        # Create a wrapper script
+        - echo '#!/bin/sh' > /app/bin/dev_type
+        - echo 'export PYTHONPATH=$PYTHONPATH:/app/bin' >> /app/bin/dev_type
+        - echo 'exec python3 /app/bin/dev_type_main.py "$@"' >> /app/bin/dev_type
+        - chmod +x /app/bin/dev_type
+        
+        # Desktop file and Icon
+        - install -Dm644 assets/icon.png /app/share/icons/hicolor/256x256/apps/org.mehad605.DevType.png
+        - |
+          cat > org.mehad605.DevType.desktop <<EOF
+          [Desktop Entry]
+          Name=Dev Type
+          Exec=dev_type
+          Icon=org.mehad605.DevType
+          Type=Application
+          Categories=Development;Education;
+          Comment=Master touch typing while coding
+          EOF
+        - install -Dm644 org.mehad605.DevType.desktop /app/share/applications/org.mehad605.DevType.desktop
+    sources:
+      - type: dir
+        path: .

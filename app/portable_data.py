@@ -84,22 +84,26 @@ class PortableDataManager:
         # 1. Check for User Custom Path in AppData/Config
         self._load_custom_data_dir()
         
-        # 2. Check for Local Portable Folder (Dev_Type_Data next to exe)
+        # 2. Determine default data directory based on platform
         local_data = self._base_dir / "Dev_Type_Data"
         
         # DECISION:
-        # If user explicitly set a custom path in settings (global config), honor it.
+        # 1. If user explicitly set a custom path in settings, honor it.
         if self._custom_data_dir and self._custom_data_dir.exists():
              self._data_dir = self._custom_data_dir
              
-        # Otherwise, check if local folder exists (Standard Portable Mode)
-        elif local_data.exists():
+        # 2. Platform-specific defaults
+        elif platform.system() == "Windows":
+            # Windows stays portable by default (local folder next to exe)
             self._data_dir = local_data
-            
-        # If neither exists strings attached, assume we should be portable
-        # and create local folder. (First run scenario)
         else:
-            self._data_dir = local_data
+            # Linux/Mac: Default to user home directory to avoid read-only AppImage folder issues.
+            # However, we still allow local portable mode if the folder already exists and is writable.
+            if local_data.exists() and os.access(local_data, os.W_OK):
+                self._data_dir = local_data
+            else:
+                # Use ~/.local/share/Dev_Type_App as standard Linux app data location
+                self._data_dir = Path.home() / ".local" / "share" / "Dev_Type_App"
         
         # Create data directory and subdirectories if they don't exist
         self._ensure_directories()
