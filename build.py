@@ -16,6 +16,7 @@ Requirements:
     pip install pyinstaller
 """
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -62,21 +63,39 @@ class Builder:
             return False
     
     def check_assets(self):
-        """Verify required asset files exist."""
+        """Verify required asset files exist, attempt generation if possible."""
         print("Checking required assets...")
         
+        assets_dir = self.root / "assets"
+        svg_path = assets_dir / "icon.svg"
+        
         required_files = [
-            self.root / "assets" / "icon.png",
-            self.root / "assets" / "sounds",
+            assets_dir / "icon.png",
+            assets_dir / "sounds",
         ]
         
         if self.is_windows:
-            required_files.append(self.root / "assets" / "icon.ico")
+            required_files.append(assets_dir / "icon.ico")
         
-        missing = []
+        missing = [f for f in required_files if not f.exists()]
+        
+        if missing and svg_path.exists():
+            print("   [INFO] Some icons are missing, attempting to generate from icon.svg...")
+            try:
+                # Use the current python interpreter to run the generator
+                # Set QT_QPA_PLATFORM=offscreen to avoid needing a display
+                env = os.environ.copy()
+                env["QT_QPA_PLATFORM"] = "offscreen"
+                subprocess.run([sys.executable, str(self.root / "app" / "generate_icon.py")], 
+                               check=True, env=env, cwd=self.root)
+                print("   [OK] Icons generated successfully")
+                # Re-check missing
+                missing = [f for f in required_files if not f.exists()]
+            except Exception as e:
+                print(f"   [WARN] Icon generation failed: {e}")
+        
         for file_path in required_files:
             if not file_path.exists():
-                missing.append(file_path)
                 print(f"   [MISSING] Missing: {file_path}")
             else:
                 print(f"   [OK] Found: {file_path.name}")
