@@ -219,17 +219,18 @@ class EditorTab(QWidget):
         user_progress_widget = QWidget()
         user_progress_layout = QHBoxLayout(user_progress_widget)
         user_progress_layout.setContentsMargins(5, 3, 5, 3)
+        user_progress_layout.setSpacing(10)
         
         self.user_label = QLabel("You:")
         self.user_label.setStyleSheet("color: #888888; font-weight: bold;")
-        self.user_label.setMinimumWidth(35)
+        self.user_label.setFixedWidth(60)
         user_progress_layout.addWidget(self.user_label, stretch=0)
         
         self.user_progress_bar = ProgressBarWidget(bar_type="user")
         user_progress_layout.addWidget(self.user_progress_bar, stretch=1)
         
         self.user_progress_label = QLabel("0%")
-        self.user_progress_label.setMinimumWidth(45)
+        self.user_progress_label.setFixedWidth(50)
         self.user_progress_label.setAlignment(Qt.AlignCenter)
         self.user_progress_label.setStyleSheet("color: #888888; font-weight: bold;")
         user_progress_layout.addWidget(self.user_progress_label, stretch=0)
@@ -240,18 +241,19 @@ class EditorTab(QWidget):
         ghost_progress_widget = QWidget()
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
         ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
+        ghost_progress_layout.setSpacing(10)
         
         self.ghost_label = QLabel("Ghost:")
         ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
         self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
-        self.ghost_label.setMinimumWidth(35)
+        self.ghost_label.setFixedWidth(60)
         ghost_progress_layout.addWidget(self.ghost_label, stretch=0)
         
         self.ghost_progress_bar = ProgressBarWidget(bar_type="ghost")
         ghost_progress_layout.addWidget(self.ghost_progress_bar, stretch=1)
         
         self.ghost_progress_label = QLabel("0%")
-        self.ghost_progress_label.setMinimumWidth(45)
+        self.ghost_progress_label.setFixedWidth(50)
         self.ghost_progress_label.setAlignment(Qt.AlignCenter)
         self.ghost_progress_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
         ghost_progress_layout.addWidget(self.ghost_progress_label, stretch=0)
