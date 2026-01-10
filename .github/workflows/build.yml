@@ -50,8 +50,9 @@ jobs:
           dbus-uuidgen > /var/lib/dbus/machine-id
           ln -sf /var/lib/dbus/machine-id /etc/machine-id
           
-          # Build using flatpak-builder with FUSE disabled
-          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse build-dir org.mehad605.DevType.yml
+          # Build using flatpak-builder
+          # --unshare-all and --share=network are needed for pip to work inside bwrap in some CI environments
+          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse --unshare-all --share=network build-dir org.mehad605.DevType.yml
           
           # Create bundle
           flatpak build-bundle repo dev_type.flatpak org.mehad605.DevType
