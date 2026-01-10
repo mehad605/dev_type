@@ -21,6 +21,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import re
 from pathlib import Path
 
 
@@ -295,6 +296,101 @@ if __name__ == "__main__":
                 entry_script.unlink()
             return False
 
+    def build_deb(self):
+        """Build Debian package (.deb)."""
+        if not self.is_linux:
+            print("[ERROR] .deb package can only be built on Linux!")
+            return False
+
+        print("Building Debian package...\n")
+
+        # 1. Build the Linux binary first
+        if not self.build_linux():
+            return False
+
+        # 2. Get version from pyproject.toml
+        version = "0.1.0"
+        pyproject_path = self.root / "pyproject.toml"
+        if pyproject_path.exists():
+            content = pyproject_path.read_text()
+            match = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if match:
+                version = match.group(1)
+
+        # 3. Create package structure
+        pkg_dir = self.build_dir / "deb_package"
+        if pkg_dir.exists():
+            shutil.rmtree(pkg_dir)
+        
+        # Paths
+        bin_dir = pkg_dir / "usr" / "bin"
+        apps_dir = pkg_dir / "usr" / "share" / "applications"
+        icons_dir = pkg_dir / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps"
+        debian_dir = pkg_dir / "DEBIAN"
+
+        for d in [bin_dir, apps_dir, icons_dir, debian_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        # 4. Copy binary
+        shutil.copy2(self.dist_dir / "dev_type", bin_dir / "dev_type")
+
+        # 5. Copy icon
+        icon_src = self.root / "assets" / "icon.png"
+        if icon_src.exists():
+            shutil.copy2(icon_src, icons_dir / "dev_type.png")
+
+        # 6. Create desktop file
+        desktop_content = f"""[Desktop Entry]
+Name=Dev Type
+Exec=dev_type
+Icon=dev_type
+Type=Application
+Categories=Development;Education;
+Comment=Master touch typing while coding
+Terminal=false
+"""
+        (apps_dir / "dev_type.desktop").write_text(desktop_content)
+
+        # 7. Create control file
+        control_content = f"""Package: dev-type
+Version: {version}
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Mehad <mehad605@example.com>
+Description: Master touch typing while coding
+ Dev Type is a desktop application designed to help developers 
+ improve their typing speed by practicing with real code snippets.
+"""
+        (debian_dir / "control").write_text(control_content)
+
+        # 8. Set permissions (essential for debian packages)
+        # Binary should be executable
+        os.chmod(bin_dir / "dev_type", 0o755)
+        # DEBIAN/control should be readable
+        os.chmod(debian_dir / "control", 0o644)
+
+        # 9. Build the package using dpkg-deb
+        deb_file = self.dist_dir / f"dev_type_{version}_amd64.deb"
+        try:
+            print(f"Running dpkg-deb to create {deb_file.name}...")
+            subprocess.run(["dpkg-deb", "--build", str(pkg_dir), str(deb_file)], check=True)
+            print(f"\n[SUCCESS] Debian package built: {deb_file}")
+            
+            # Create a generic symlink for easier access in CI
+            generic_deb = self.dist_dir / "dev_type.deb"
+            if generic_deb.exists():
+                generic_deb.unlink()
+            shutil.copy2(deb_file, generic_deb)
+            
+            return True
+        except FileNotFoundError:
+            print("[ERROR] 'dpkg-deb' not found. Please install 'dpkg' package.")
+            return False
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] dpkg-deb failed with error code {e.returncode}")
+            return False
+
     def build(self, target: str = "current"):
         """Build for specified target platform."""
         if self.clean_first:
@@ -312,7 +408,7 @@ if __name__ == "__main__":
             if self.is_windows:
                 success = self.build_windows()
             elif self.is_linux:
-                success = self.build_linux()
+                success = self.build_deb() # Default to .deb on Linux
             elif self.is_mac:
                 print("[WARN] macOS build not yet implemented")
                 success = False
@@ -324,14 +420,14 @@ if __name__ == "__main__":
             success = self.build_windows()
         
         elif target == "linux":
-            success = self.build_linux()
+            success = self.build_deb()
         
         elif target == "all":
             print("Building for all platforms...\n")
             if self.is_windows:
                 success = self.build_windows()
             if self.is_linux:
-                success = self.build_linux()
+                success = self.build_deb()
         
         return success
 
@@ -340,8 +436,9 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Build portable executables for dev_type")
     parser.add_argument("--windows", action="store_true", help="Build Windows executable")
-    parser.add_argument("--linux", action="store_true", help="Build Linux executable")
+    parser.add_argument("--linux", action="store_true", help="Build Linux .deb package")
     parser.add_argument("--all", action="store_true", help="Build for all platforms")
+    parser.add_argument("--deb", action="store_true", help="Build Debian package (synonym for --linux)")
     parser.add_argument("--clean", action="store_true", help="Clean build directories first")
     
     args = parser.parse_args()
@@ -349,7 +446,7 @@ def main():
     # Determine target
     if args.windows:
         target = "windows"
-    elif args.linux:
+    elif args.linux or args.deb:
         target = "linux"
     elif args.all:
         target = "all"

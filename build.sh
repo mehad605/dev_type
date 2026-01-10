@@ -25,9 +25,8 @@ else
     python3 build.py --linux --clean
 fi
 
-echo ""
-echo "Note: To build a Flatpak, use GitHub Actions or run:"
-echo "flatpak-builder --force-clean build-dir org.mehad605.DevType.yml"
+echo "Note: This script now builds a Debian package (.deb) by default."
+echo "Check the dist/ folder for your .deb file."
 echo ""
 echo "========================================"
 echo "  Build Process Complete!"

@@ -35,37 +35,30 @@ jobs:
           name: dev_type-windows
           path: dist/dev_type.exe
 
-  build-flatpak:
-    name: Build Flatpak
+  build-debian:
+    name: Build Debian Package
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.7
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build Flatpak
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install Dependencies
         run: |
-          # Fix machine-id for dbus
-          mkdir -p /var/lib/dbus
-          dbus-uuidgen > /var/lib/dbus/machine-id
-          ln -sf /var/lib/dbus/machine-id /etc/machine-id
-          
-          # Build using flatpak-builder
-          # --unshare-all and --share=network are needed for pip to work inside bwrap in some CI environments
-          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse --share=network build-dir org.mehad605.DevType.yml
-          
-          # Create bundle
-          flatpak build-bundle repo dev_type.flatpak org.mehad605.DevType
-
+          sudo apt-get update
+          sudo apt-get install -y dpkg python3-pip
+      - name: Build DEB
+        run: uv run python build.py --linux --clean
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dev_type-flatpak
-          path: dev_type.flatpak
+          name: dev_type-debian
+          path: dist/*.deb
 
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-flatpak]
+    needs: [build-windows, build-debian]
     if: |
       startsWith(github.ref, 'refs/tags/v') || 
       (github.event_name == 'workflow_dispatch' && github.event.inputs.version_tag != '')
@@ -79,10 +72,10 @@ jobs:
           name: dev_type-windows
           path: release_assets/
 
-      - name: Download Flatpak
+      - name: Download Debian Package
         uses: actions/download-artifact@v4
         with:
-          name: dev_type-flatpak
+          name: dev_type-debian
           path: release_assets/
 
       - name: Create Release
@@ -94,6 +87,6 @@ jobs:
           generate_release_notes: ${{ github.event.inputs.release_notes == '' && (github.event.inputs.auto_generate == 'true' || github.event_name == 'push') }}
           files: |
             release_assets/dev_type.exe
-            release_assets/dev_type.flatpak
+            release_assets/dev_type*.deb
           draft: false
           prerelease: false

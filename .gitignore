@@ -43,6 +43,8 @@ data_location.txt
 dev_type.spec
 version_info.txt
 AppDir/
+.flatpak-builder/
+build-dir/
 ghosts/
 typing_stats.db
 data.db
