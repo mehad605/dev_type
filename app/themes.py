@@ -451,8 +451,13 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     Returns:
         Complete Qt stylesheet string
     """
-    # Create cache key from all scheme colors to ensure updates when any color changes
-    cache_key = "|".join(f"{k}:{v}" for k, v in sorted(scheme.to_dict().items()))
+    # Fetch font settings
+    ui_family = settings.get_setting("ui_font_family", settings.get_default("ui_font_family"))
+    ui_size = settings.get_setting("ui_font_size", settings.get_default("ui_font_size"))
+    
+    # Create cache key from all scheme colors and fonts to ensure updates
+    colors_key = "|".join(f"{k}:{v}" for k, v in sorted(scheme.to_dict().items()))
+    cache_key = f"{colors_key}|font:{ui_family}|size:{ui_size}"
     
     # Return cached stylesheet if available
     if cache_key in _stylesheet_cache:
@@ -464,7 +469,8 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QMainWindow, QWidget {{
         background-color: {scheme.bg_primary};
         color: {scheme.text_primary};
-        font-family: "Segoe UI", "Roboto", sans-serif;
+        font-family: "{ui_family}", "Segoe UI", "Roboto", sans-serif;
+        font-size: {ui_size}pt;
     }}
     
     /* Tabs - Minimal underline style */

@@ -42,6 +42,7 @@ ICON_PATHS = {
     "USER": {"color": "blue", "path": '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>'},
     "SUM": {"color": "purple", "path": '<path d="M18 7H6l6 5-6 5h12"></path>'},
     "FILES": {"color": "gray", "path": '<path d="M20 7h-3a2 2 0 0 1-2-2V2"></path><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"></path><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"></path>'},
+    "DOWNLOAD": {"color": "blue", "path": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>'},
     "TERMINAL": {"color": "blue", "path": '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'},
 }
 

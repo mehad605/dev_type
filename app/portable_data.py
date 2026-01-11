@@ -222,7 +222,7 @@ class PortableDataManager:
                 return False
             
             # Create subdirectories
-            subdirs = ['ghosts', 'custom_sounds', 'settings', 'logs']
+            subdirs = ['ghosts', 'custom_sounds', 'settings', 'logs', 'fonts']
             for subdir in subdirs:
                 subdir_path = self._data_dir / subdir
                 if not subdir_path.exists():
@@ -383,6 +383,10 @@ class PortableDataManager:
         """Get path to the logs directory."""
         return self._data_dir / "logs"
     
+    def get_fonts_dir(self) -> Path:
+        """Get path to the fonts directory."""
+        return self._data_dir / "fonts"
+    
     def get_info(self) -> dict:
         """Get information about the portable setup."""
         return {
@@ -439,6 +443,11 @@ def get_ghosts_dir() -> Path:
 def get_custom_sounds_dir() -> Path:
     """Get path to the custom sounds directory."""
     return _portable_data_manager.get_custom_sounds_dir()
+
+
+def get_fonts_dir() -> Path:
+    """Get path to the fonts directory."""
+    return _portable_data_manager.get_fonts_dir()
 
 
 def is_portable() -> bool:

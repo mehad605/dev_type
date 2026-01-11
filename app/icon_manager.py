@@ -8,9 +8,10 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from typing import Optional, Dict
-from PySide6.QtGui import QPixmap, QIcon
-from PySide6.QtCore import QSize, QObject, Signal, QUrl
+from PySide6.QtGui import QPixmap, QIcon, QPainter
+from PySide6.QtCore import QSize, QObject, Signal, QUrl, QByteArray, Qt
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PySide6.QtSvg import QSvgRenderer
 from app.settings import get_data_dir
 
 logger = logging.getLogger(__name__)
@@ -218,10 +219,23 @@ class IconManager(QObject):
         
         # Load icon if available
         if icon_path and icon_path.exists():
+            if icon_path.suffix.lower() == ".svg":
+                # Sharp rendering for SVGs
+                renderer = QSvgRenderer(str(icon_path))
+                if renderer.isValid():
+                    pixmap = QPixmap(size, size)
+                    pixmap.fill(Qt.transparent)
+                    painter = QPainter(pixmap)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    renderer.render(painter)
+                    painter.end()
+                    self._icon_cache[cache_key] = pixmap
+                    return pixmap
+            
+            # Fallback for non-SVG or failed SVG
             pixmap = QPixmap(str(icon_path))
             if not pixmap.isNull():
                 # Scale to desired size
-                from PySide6.QtCore import Qt
                 pixmap = pixmap.scaled(
                     size, size,
                     Qt.AspectRatioMode.KeepAspectRatio,

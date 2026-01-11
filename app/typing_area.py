@@ -866,8 +866,7 @@ class TypingAreaWidget(QTextEdit):
     def update_font(self, family: str, size: int, ligatures: bool):
         """Update font settings dynamically."""
         font = QFont(family, size)
-        if ligatures:
-            font.setStyleHint(QFont.StyleHint.Monospace)
+        # Ligatures support removed
         self.setFont(font)
         self._update_cursor_geometry()
     

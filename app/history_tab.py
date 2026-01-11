@@ -21,8 +21,9 @@ from PySide6.QtWidgets import (
     QFileDialog,
 )
 
-from app import stats_db
+from app import stats_db, settings
 from app.ui_icons import get_icon
+from app.themes import get_color_scheme
 
 
 class HistoryTab(QWidget):
@@ -36,29 +37,29 @@ class HistoryTab(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
-        header = QLabel("Session History")
-        header.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(header)
+        self.header = QLabel("Session History")
+        self.header.setObjectName("historyHeader")
+        layout.addWidget(self.header)
 
         filter_row = QHBoxLayout()
         filter_row.setSpacing(8)
 
-        language_label = QLabel("Language")
-        filter_row.addWidget(language_label)
+        self.language_label = QLabel("Language")
+        filter_row.addWidget(self.language_label)
 
         self.language_combo = QComboBox()
         self.language_combo.setMinimumWidth(150)
         filter_row.addWidget(self.language_combo)
 
-        name_label = QLabel("File")
-        filter_row.addWidget(name_label)
+        self.name_label = QLabel("File")
+        filter_row.addWidget(self.name_label)
 
         self.name_filter_input = QLineEdit()
         self.name_filter_input.setPlaceholderText("Contains")
         filter_row.addWidget(self.name_filter_input)
 
-        wpm_label = QLabel("WPM")
-        filter_row.addWidget(wpm_label)
+        self.wpm_label = QLabel("WPM")
+        filter_row.addWidget(self.wpm_label)
 
         self.min_wpm_input = self._create_numeric_input("Min")
         filter_row.addWidget(self.min_wpm_input)
@@ -66,8 +67,8 @@ class HistoryTab(QWidget):
         self.max_wpm_input = self._create_numeric_input("Max")
         filter_row.addWidget(self.max_wpm_input)
 
-        duration_label = QLabel("Duration (s)")
-        filter_row.addWidget(duration_label)
+        self.duration_label = QLabel("Duration (s)")
+        filter_row.addWidget(self.duration_label)
 
         self.min_duration_input = self._create_numeric_input("Min")
         filter_row.addWidget(self.min_duration_input)
@@ -133,33 +134,120 @@ class HistoryTab(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSortingEnabled(True)
         self.table.setShowGrid(True)
-        self.table.setStyleSheet(
-            "QTableWidget {"
-            "gridline-color: rgba(236, 239, 244, 0.25);"
-            "background-color: transparent;"
-            "border: 1px solid rgba(236, 239, 244, 0.20);"
-            "border-radius: 8px;"
-            "}"
-            "QHeaderView::section {"
-            "background-color: rgba(129, 161, 193, 0.18);"
-            "color: #eceff4;"
-            "padding: 6px;"
-            "border: none;"
-            "}"
-            "QTableWidget::item {"
-            "color: #e5e9f0;"
-            "border-right: 1px solid rgba(236, 239, 244, 0.1);"
-            "border-bottom: 1px solid rgba(236, 239, 244, 0.1);"
-            "}"
-            "QTableWidget::item:selected {"
-            "background-color: rgba(136, 192, 208, 0.28);"
-            "color: #eceff4;"
-            "}"
-        )
         layout.addWidget(self.table)
 
+        self.apply_theme()
         self.refresh_filters()
         self.apply_filters()
+
+    def apply_theme(self):
+        """Apply current theme colors to all history tab widgets."""
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        bg_primary = scheme.bg_primary
+        bg_secondary = scheme.bg_secondary
+        bg_tertiary = scheme.bg_tertiary
+        text_primary = scheme.text_primary
+        text_secondary = scheme.text_secondary
+        accent = scheme.accent_color
+        border = scheme.border_color
+        
+        self.setStyleSheet(f"background-color: {bg_primary}; color: {text_primary};")
+        
+        # Labels
+        self.header.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {text_primary};")
+        label_style = f"color: {text_secondary}; font-weight: 500;"
+        self.language_label.setStyleSheet(label_style)
+        self.name_label.setStyleSheet(label_style)
+        self.wpm_label.setStyleSheet(label_style)
+        self.duration_label.setStyleSheet(label_style)
+        self.count_label.setStyleSheet(f"color: {text_secondary};")
+        
+        # Table
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                gridline-color: {border};
+                background-color: {bg_secondary};
+                border: 1px solid {border};
+                border-radius: 8px;
+                color: {text_primary};
+            }}
+            QHeaderView::section {{
+                background-color: {bg_tertiary};
+                color: {text_primary};
+                padding: 6px;
+                border: none;
+                font-weight: bold;
+            }}
+            QTableWidget::item {{
+                color: {text_primary};
+                padding: 5px;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {accent};
+                color: #ffffff;
+            }}
+        """)
+        
+        # Update Horizontal Header as well
+        header = self.table.horizontalHeader()
+        header.setStyleSheet(f"""
+            QHeaderView::section {{
+                background-color: {bg_tertiary};
+                color: {text_primary};
+                border-bottom: 1px solid {border};
+                padding: 4px;
+            }}
+        """)
+        
+        # Buttons
+        btn_style = f"""
+            QPushButton {{
+                background-color: {bg_tertiary};
+                color: {text_primary};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 5px 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {accent if accent != bg_tertiary else '#444'};
+                color: white;
+            }}
+            QPushButton:disabled {{
+                color: {scheme.text_disabled};
+                background-color: {bg_secondary};
+            }}
+        """
+        self.apply_filters_btn.setStyleSheet(btn_style)
+        self.clear_filters_btn.setStyleSheet(btn_style)
+        self.export_btn.setStyleSheet(btn_style)
+        self.delete_btn.setStyleSheet(btn_style)
+        
+        edit_btn_style = btn_style + f"""
+            QPushButton:checked {{
+                background-color: {accent};
+                color: white;
+            }}
+        """
+        self.edit_mode_btn.setStyleSheet(edit_btn_style)
+        
+        # Inputs
+        input_style = f"""
+            QLineEdit, QComboBox {{
+                background-color: {bg_tertiary};
+                color: {text_primary};
+                border: 1px solid {border};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+        """
+        self.language_combo.setStyleSheet(input_style)
+        self.name_filter_input.setStyleSheet(input_style)
+        self.min_wpm_input.setStyleSheet(input_style)
+        self.max_wpm_input.setStyleSheet(input_style)
+        self.min_duration_input.setStyleSheet(input_style)
+        self.max_duration_input.setStyleSheet(input_style)
 
     def _create_numeric_input(self, placeholder: str) -> QLineEdit:
         """Create a numeric line edit accepting floats with optional blank value."""

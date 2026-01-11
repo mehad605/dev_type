@@ -41,9 +41,11 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QInputDialog,
 )
-from PySide6.QtGui import QIcon, QColor
+from PySide6.QtGui import QIcon, QColor, QFontDatabase
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
 import sys
+import json
+import shutil
 from pathlib import Path
 from typing import Optional
 import app.settings as settings
@@ -988,6 +990,9 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Connect signals: {time.time() - t:.3f}s")
         
+        # Load custom fonts
+        self._load_custom_fonts()
+        
         # Emit initial settings to apply them to the typing area
         # (This might need to be re-emitted when editor loads, but safe to do now)
         if DEBUG_STARTUP_TIMING:
@@ -1754,36 +1759,191 @@ class MainWindow(QMainWindow):
             self._settings_cursor_timer.start()
         
         # Font settings group
-        font_group = QGroupBox("Font")
-        font_layout = QFormLayout()
+        font_group = QGroupBox("Fonts")
+        font_layout = QVBoxLayout()
+        font_layout.setContentsMargins(15, 20, 15, 15)
+        font_layout.setSpacing(10)
         
+        # Helper for flat styling
+        font_control_style = """
+            QComboBox, QSpinBox {
+                background-color: #2e3440;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding-left: 10px;
+            }
+            QComboBox:hover, QSpinBox:hover {
+                border: 1px solid #88c0d0;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+        """
+        
+        # --- Typing Font Section ---
+        typing_sec = QVBoxLayout()
+        typing_label = QLabel("TYPING AREA FONT")
+        typing_label.setStyleSheet("color: #88c0d0; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; margin-bottom: 5px;")
+        typing_sec.addWidget(typing_label)
+        
+        typing_grid = QGridLayout()
+        typing_grid.setContentsMargins(10, 0, 0, 10)
+        typing_grid.setHorizontalSpacing(20)
+        
+        # Family
         self.font_family_combo = QComboBox()
-        self.font_family_combo.addItems([
-            "Consolas", "Courier New", "Monaco", "Menlo", 
-            "DejaVu Sans Mono", "Liberation Mono", "Fira Code",
-            "JetBrains Mono", "Source Code Pro"
-        ])
-        font_family = settings.get_setting("font_family", settings.get_default("font_family"))
-        self.font_family_combo.setCurrentText(font_family)
+        self.font_family_combo.setMinimumWidth(260)
+        self.font_family_combo.setFixedHeight(36)
+        self.font_family_combo.setStyleSheet(font_control_style)
+        self._populate_font_families(self.font_family_combo)
+        self.font_family_combo.setCurrentText(settings.get_setting("font_family", settings.get_default("font_family")))
         self.font_family_combo.currentTextChanged.connect(self.on_font_family_changed)
         
-        # Compact row for font family
-        font_family_row = QHBoxLayout()
-        font_family_row.addWidget(self.font_family_combo)
-        font_family_row.addStretch()
-        font_layout.addRow("Family:", font_family_row)
+        family_label = QLabel("Family:")
+        family_label.setStyleSheet("font-weight: 500;")
+        typing_grid.addWidget(family_label, 0, 0)
+        typing_grid.addWidget(self.font_family_combo, 0, 1)
         
+        # Size Stepper
+        size_row = QHBoxLayout()
         self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(8, 32)
-        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
-        self.font_size_spin.setValue(font_size)
+        self.font_size_spin.setRange(8, 48)
+        self.font_size_spin.setButtonSymbols(QSpinBox.NoButtons)
+        self.font_size_spin.setAlignment(Qt.AlignCenter)
+        self.font_size_spin.setFixedWidth(60)
+        self.font_size_spin.setFixedHeight(36)
+        self.font_size_spin.setStyleSheet(font_control_style + "QSpinBox { padding-left: 0; }")
+        self.font_size_spin.setValue(settings.get_setting_int("font_size", 12))
         self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
+
+        btn_style = """
+            QPushButton {
+                font-size: 20px;
+                font-weight: 900;
+                background: #3b4252;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: #4c566a;
+                border-color: #88c0d0;
+            }
+            QPushButton:pressed {
+                background: #88c0d0;
+                color: #2e3440;
+            }
+        """
+
+        btn_minus = QPushButton("−")  # Using a proper minus sign character
+        btn_plus = QPushButton("+")
+        for btn in [btn_minus, btn_plus]:
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(btn_style)
         
-        # Compact row for font size
-        font_size_row = QHBoxLayout()
-        font_size_row.addWidget(self.font_size_spin)
-        font_size_row.addStretch()
-        font_layout.addRow("Size:", font_size_row)
+        btn_minus.clicked.connect(lambda: self.font_size_spin.setValue(self.font_size_spin.value() - 1))
+        btn_plus.clicked.connect(lambda: self.font_size_spin.setValue(self.font_size_spin.value() + 1))
+        
+        size_row.addWidget(btn_minus)
+        size_row.addWidget(self.font_size_spin)
+        size_row.addWidget(btn_plus)
+        size_row.addStretch()
+        
+        size_label = QLabel("Size:")
+        size_label.setStyleSheet("font-weight: 500;")
+        typing_grid.addWidget(size_label, 1, 0)
+        typing_grid.addLayout(size_row, 1, 1)
+        
+        typing_sec.addLayout(typing_grid)
+        font_layout.addLayout(typing_sec)
+        
+        # Separator
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setStyleSheet("background: rgba(255,255,255,0.08); margin: 10px 0;")
+        font_layout.addWidget(line)
+
+        # --- UI Font Section ---
+        ui_sec = QVBoxLayout()
+        ui_label = QLabel("USER INTERFACE FONT")
+        ui_label.setStyleSheet("color: #88c0d0; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; margin-bottom: 5px;")
+        ui_sec.addWidget(ui_label)
+        
+        ui_grid = QGridLayout()
+        ui_grid.setContentsMargins(10, 0, 0, 10)
+        ui_grid.setHorizontalSpacing(20)
+        
+        # UI Family
+        self.ui_font_family_combo = QComboBox()
+        self.ui_font_family_combo.setMinimumWidth(260)
+        self.ui_font_family_combo.setFixedHeight(36)
+        self.ui_font_family_combo.setStyleSheet(font_control_style)
+        self._populate_font_families(self.ui_font_family_combo)
+        self.ui_font_family_combo.setCurrentText(settings.get_setting("ui_font_family", settings.get_default("ui_font_family")))
+        self.ui_font_family_combo.currentTextChanged.connect(self.on_ui_font_family_changed)
+        
+        ui_family_label = QLabel("Family:")
+        ui_family_label.setStyleSheet("font-weight: 500;")
+        ui_grid.addWidget(ui_family_label, 0, 0)
+        ui_grid.addWidget(self.ui_font_family_combo, 0, 1)
+        
+        # UI Size Stepper
+        ui_size_row = QHBoxLayout()
+        self.ui_font_size_spin = QSpinBox()
+        self.ui_font_size_spin.setRange(8, 24)
+        self.ui_font_size_spin.setButtonSymbols(QSpinBox.NoButtons)
+        self.ui_font_size_spin.setAlignment(Qt.AlignCenter)
+        self.ui_font_size_spin.setFixedWidth(60)
+        self.ui_font_size_spin.setFixedHeight(36)
+        self.ui_font_size_spin.setStyleSheet(font_control_style + "QSpinBox { padding-left: 0; }")
+        self.ui_font_size_spin.setValue(settings.get_setting_int("ui_font_size", 10))
+        self.ui_font_size_spin.valueChanged.connect(self.on_ui_font_size_changed)
+
+        ui_btn_minus = QPushButton("-")
+        ui_btn_plus = QPushButton("+")
+        for btn in [ui_btn_minus, ui_btn_plus]:
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(btn_style)
+        
+        ui_btn_minus.clicked.connect(lambda: self.ui_font_size_spin.setValue(self.ui_font_size_spin.value() - 1))
+        ui_btn_plus.clicked.connect(lambda: self.ui_font_size_spin.setValue(self.ui_font_size_spin.value() + 1))
+        
+        ui_size_row.addWidget(ui_btn_minus)
+        ui_size_row.addWidget(self.ui_font_size_spin)
+        ui_size_row.addWidget(ui_btn_plus)
+        ui_size_row.addStretch()
+        
+        ui_size_label = QLabel("Size:")
+        ui_size_label.setStyleSheet("font-weight: 500;")
+        ui_grid.addWidget(ui_size_label, 1, 0)
+        ui_grid.addLayout(ui_size_row, 1, 1)
+        
+        ui_sec.addLayout(ui_grid)
+        font_layout.addLayout(ui_sec)
+        
+        # --- Add Font Button at the bottom ---
+        self.add_font_btn = QPushButton("  + Import Custom Font File")
+        self.add_font_btn.clicked.connect(self.on_add_font_file)
+        self.add_font_btn.setMinimumHeight(44)
+        self.add_font_btn.setCursor(Qt.PointingHandCursor)
+        self.add_font_btn.setStyleSheet("""
+            QPushButton { 
+                background: #4c566a; 
+                color: #eceff4; 
+                border: 1px solid #5e81ac; 
+                border-radius: 8px; 
+                font-weight: bold; 
+                margin-top: 15px; 
+            } 
+            QPushButton:hover { 
+                background: #5e81ac; 
+            }
+        """)
+        font_layout.addWidget(self.add_font_btn)
         
         font_group.setLayout(font_layout)
         s_layout.addWidget(font_group)
@@ -2361,12 +2521,22 @@ class MainWindow(QMainWindow):
     def on_font_size_changed(self, font_size: int):
         settings.set_setting("font_size", str(font_size))
         self._emit_font_changed()
+
+    def on_ui_font_family_changed(self, font_family: str):
+        """Handle UI font family change."""
+        settings.set_setting("ui_font_family", font_family)
+        self.apply_current_theme()
+        
+    def on_ui_font_size_changed(self, font_size: int):
+        """Handle UI font size change."""
+        settings.set_setting("ui_font_size", str(font_size))
+        self.apply_current_theme()
     
     def _emit_font_changed(self):
-        """Helper to emit font_changed signal with current font settings."""
+        """Helper to emit font_changed signal for the TYPING AREA."""
         family = settings.get_setting("font_family", settings.get_default("font_family"))
-        size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
-        self.font_changed.emit(family, size, False)  # Ligatures removed, always False
+        size = settings.get_setting_int("font_size", 12, min_val=8, max_val=48)
+        self.font_changed.emit(family, size, False)  # Ligatures removed
     
     def on_space_char_changed(self, char_option: str):
         """Handle space character dropdown change."""
@@ -2394,6 +2564,131 @@ class MainWindow(QMainWindow):
         """Handle tab width change."""
         settings.set_setting("tab_width", str(width))
         self.tab_width_changed.emit(width)
+    
+    def _load_custom_fonts(self):
+        """Load custom fonts from settings and register them with QFontDatabase."""
+        import json
+        custom_fonts_raw = settings.get_setting("custom_fonts", "[]")
+        try:
+            custom_fonts = json.loads(custom_fonts_raw)
+        except (ValueError, TypeError):
+            custom_fonts = []
+            
+        from app.portable_data import get_fonts_dir
+        fonts_dir = get_fonts_dir()
+        
+        for font_file in custom_fonts:
+            font_path = fonts_dir / font_file
+            if font_path.exists():
+                font_id = QFontDatabase.addApplicationFont(str(font_path))
+                if font_id == -1:
+                    print(f"Failed to load custom font: {font_file}")
+            else:
+                print(f"Custom font file not found: {font_file}")
+
+    def _populate_font_families(self, combo=None):
+        """Populate a font family combo box with system and custom fonts."""
+        target_combo = combo if combo else (self.font_family_combo if hasattr(self, 'font_family_combo') else None)
+        if not target_combo:
+            return
+            
+        current_text = target_combo.currentText()
+        target_combo.blockSignals(True)
+        target_combo.clear()
+        
+        # Priority fonts first
+        priority_fonts = [
+            "JetBrains Mono", "Fira Code", "Source Code Pro", 
+            "Consolas", "Courier New", "Monaco", "Menlo", 
+            "DejaVu Sans Mono", "Liberation Mono", "Segoe UI", "Roboto", "Inter", "Ubuntu"
+        ]
+        
+        all_families = QFontDatabase.families()
+        
+        # Add priority fonts that are available
+        available_priority = [f for f in priority_fonts if f in all_families]
+        target_combo.addItems(available_priority)
+        
+        # Add all other fonts
+        other_fonts = [f for f in all_families if f not in available_priority]
+        target_combo.addItems(sorted(other_fonts))
+        
+        if current_text in all_families:
+            target_combo.setCurrentText(current_text)
+        else:
+            # Fallback based on setting if generic
+            setting_key = "ui_font_family" if target_combo == getattr(self, 'ui_font_family_combo', None) else "font_family"
+            default_font = settings.get_setting(setting_key, settings.get_default(setting_key))
+            if default_font in all_families:
+                target_combo.setCurrentText(default_font)
+            elif target_combo.count() > 0:
+                target_combo.setCurrentIndex(0)
+            
+        target_combo.blockSignals(False)
+
+    def on_add_font_file(self):
+        """Open a file dialog to add a new font file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Font File",
+            "",
+            "Font Files (*.ttf *.otf *.woff2 *.woff);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+            
+        path = Path(file_path)
+        from app.portable_data import get_fonts_dir
+        fonts_dir = get_fonts_dir()
+        dest_path = fonts_dir / path.name
+        
+        try:
+            # Copy file to data directory
+            if not dest_path.exists() or dest_path.resolve() != path.resolve():
+                shutil.copy2(file_path, dest_path)
+            
+            # Register font
+            font_id = QFontDatabase.addApplicationFont(str(dest_path))
+            if font_id == -1:
+                QMessageBox.warning(self, "Font Error", f"Failed to load font: {path.name}\nIt might be an unsupported format.")
+                return
+                
+            # Get font families from this file
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if not families:
+                QMessageBox.warning(self, "Font Error", "Loaded font has no families?")
+                return
+                
+            family_name = families[0]
+            
+            # Update settings
+            import json
+            custom_fonts_raw = settings.get_setting("custom_fonts", "[]")
+            try:
+                custom_fonts = json.loads(custom_fonts_raw)
+            except:
+                custom_fonts = []
+                
+            if path.name not in custom_fonts:
+                custom_fonts.append(path.name)
+                settings.set_setting("custom_fonts", json.dumps(custom_fonts))
+            
+            # Refresh UI
+            if hasattr(self, 'font_family_combo'):
+                self._populate_font_families(self.font_family_combo)
+            if hasattr(self, 'ui_font_family_combo'):
+                self._populate_font_families(self.ui_font_family_combo)
+                
+            # For now, apply to editor if that's what user likely expects
+            if hasattr(self, 'font_family_combo'):
+                self.font_family_combo.setCurrentText(family_name)
+                self.on_font_family_changed(family_name)
+            
+            QMessageBox.information(self, "Font Added", f"Successfully added font: {family_name}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add font: {e}")
     
     def _load_sound_profiles(self):
         """Load sound profiles into combo box."""
@@ -2690,6 +2985,10 @@ class MainWindow(QMainWindow):
         # Update languages tab theme
         if hasattr(self, 'languages_tab') and hasattr(self.languages_tab, 'apply_theme'):
             self.languages_tab.apply_theme()
+            
+        # Update history tab theme (if loaded)
+        if hasattr(self, 'history_tab') and hasattr(self.history_tab, 'apply_theme'):
+            self.history_tab.apply_theme()
         
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] TOTAL apply_current_theme: {time.time() - t_total:.3f}s")
@@ -2770,11 +3069,20 @@ class MainWindow(QMainWindow):
         self._update_cursor_style_buttons(cursor_style)
         
         # Font settings
+        self._populate_font_families(self.font_family_combo)
         font_family = settings.get_setting("font_family", settings.get_default("font_family"))
         self.font_family_combo.setCurrentText(font_family)
         
-        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
+        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=48)
         self.font_size_spin.setValue(font_size)
+        
+        # UI Font settings
+        self._populate_font_families(self.ui_font_family_combo)
+        ui_font_family = settings.get_setting("ui_font_family", settings.get_default("ui_font_family"))
+        self.ui_font_family_combo.setCurrentText(ui_font_family)
+        
+        ui_font_size = settings.get_setting_int("ui_font_size", 10, min_val=8, max_val=24)
+        self.ui_font_size_spin.setValue(ui_font_size)
         
         # Typing settings
         space_char = settings.get_setting("space_char", settings.get_default("space_char"))

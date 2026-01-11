@@ -60,7 +60,9 @@ SETTING_DEFAULTS: Dict[str, str] = {
     # Font settings
     "font_family": "JetBrains Mono",
     "font_size": "12",
-    "font_ligatures": "0",
+    "ui_font_family": "Segoe UI",
+    "ui_font_size": "10",
+    "custom_fonts": "[]",
     
     # Display characters
     "space_char": "␣",
