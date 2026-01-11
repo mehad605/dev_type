@@ -1,6 +1,6 @@
 """Editor/Typing tab with file tree, typing area, and stats display."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication, QFrame
 )
 from PySide6.QtCore import Qt, QTimer, QSize, QEvent
 from PySide6.QtGui import QKeyEvent
@@ -82,94 +82,154 @@ class EditorTab(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         
-        # Horizontal splitter: file tree | typing area
+        # Main Horizontal splitter: [Left Pane (Header + Tree)] | [Right Pane (Header + Typing Area)]
         h_splitter = QSplitter(Qt.Horizontal)
         
-        # Left side: File tree
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
-        self.file_tree = FileTreeWidget()
-        if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab-LAZY] FileTreeWidget: {time.time() - t:.3f}s")
+        # Consistent Button Style for Local Headers
+        header_btn_style = """
+            QPushButton {
+                 background-color: #3b4252;
+                 color: #eceff4;
+                 border: 1px solid #434c5e;
+                 border-radius: 6px;
+                 padding: 6px 14px;
+                 font-weight: 500;
+             }
+             QPushButton:hover {
+                 background-color: #434c5e;
+                 border-color: #88c0d0;
+             }
+            QPushButton:pressed {
+                background-color: #4c566a;
+            }
+            QPushButton:checked {
+                background-color: #88c0d0;
+                color: #2e3440;
+                border-color: #88c0d0;
+            }
+        """
+
+        # ==========================================
+        # LEFT PANE: Search Tools + File Tree
+        # ==========================================
+        left_pane = QWidget()
+        left_layout = QVBoxLayout(left_pane)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        
+        # Instance of FileTreeWidget (header hidden manually)
+        if DEBUG_STARTUP_TIMING: t = time.time()
+        self.file_tree = FileTreeWidget(show_header=False)
+        if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] FileTreeWidget: {time.time() - t:.3f}s")
         self.file_tree.file_selected.connect(self.on_file_selected)
-        h_splitter.addWidget(self.file_tree)
+
+        # Left Local Header
+        left_header_widget = QWidget()
+        left_header_layout = QHBoxLayout(left_header_widget)
+        left_header_layout.setContentsMargins(15, 8, 10, 8)
+        left_header_layout.setSpacing(10)
+
+        self.file_tree.search_bar.setFixedHeight(34)
+        self.file_tree.search_bar.setMaximumWidth(16777215) # Remove any previous constraint
+        self.file_tree.search_bar.setStyleSheet("""
+            QLineEdit {
+                padding: 5px 12px;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                background-color: #2e3440;
+                color: #eceff4;
+            }
+            QLineEdit:focus { border-color: #88c0d0; }
+        """)
+        self.file_tree.random_button.setFixedHeight(34)
+        self.file_tree.random_button.setStyleSheet(header_btn_style)
+
+        # Set stretch: Search bar takes all space (1), Random button stays compact (0)
+        left_header_layout.addWidget(self.file_tree.search_bar, 1)
+        left_header_layout.addWidget(self.file_tree.random_button, 0)
+
+        left_layout.addWidget(left_header_widget)
         
-        # Right side: Typing area + stats
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(5, 5, 5, 5)
+        # Separator line for left side
+        left_sep = QFrame()
+        left_sep.setFrameShape(QFrame.HLine)
+        left_sep.setFrameShadow(QFrame.Plain)
+        left_sep.setFixedHeight(1)
+        left_sep.setStyleSheet("background-color: #3b4252; border: none;")
+        left_layout.addWidget(left_sep)
+        left_layout.addWidget(self.file_tree)
+
+        h_splitter.addWidget(left_pane)
         
-        # Top toolbar
-        toolbar = QHBoxLayout()
+        # ==========================================
+        # RIGHT PANE: Action Buttons + Typing Area
+        # ==========================================
+        right_pane = QWidget()
+        right_layout = QVBoxLayout(right_pane)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # Right Local Header
+        right_header_widget = QWidget()
+        right_header_layout = QHBoxLayout(right_header_widget)
+        right_header_layout.setContentsMargins(5, 8, 15, 8)
+        right_header_layout.setSpacing(10)
+
+        # Action Buttons setup
         self.reset_btn = QPushButton("Reset to Top")
         self.reset_btn.setIcon(get_icon("ROTATE_CCW"))
+        self.reset_btn.setStyleSheet(header_btn_style)
+        self.reset_btn.setFixedHeight(34)
         self.reset_btn.setToolTip("Reset cursor to beginning of file")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
-        toolbar.addWidget(self.reset_btn)
-        
-        # Instant Death mode toggle
+
         from app import settings
-        
-        # Crash recovery: If app crashed during a ghost race, restore original instant death mode
-        backup_mode = settings.get_setting("_race_instant_death_backup")
-        if backup_mode is not None:
-            # Crash happened during race - restore user's original preference
-            settings.set_setting("instant_death_mode", backup_mode)
-            settings.remove_setting("_race_instant_death_backup")
-        
         instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
-        self.instant_death_btn = QPushButton("Instant Death: Enabled" if instant_death_enabled else "Instant Death: Disabled")
+        self.instant_death_btn = QPushButton("Instant Death")
         self.instant_death_btn.setIcon(get_icon("DEATH"))
         self.instant_death_btn.setCheckable(True)
         self.instant_death_btn.setChecked(instant_death_enabled)
+        self.instant_death_btn.setFixedHeight(34)
         self.instant_death_btn.setToolTip("Reset to top on any mistake")
         self.instant_death_btn.clicked.connect(self.on_instant_death_toggled)
-        self._update_instant_death_style()
-        toolbar.addWidget(self.instant_death_btn)
-        
-        toolbar.addStretch()
-        
-        # Ghost replay button
+
         self.ghost_btn = QPushButton()
         self.ghost_btn.setIcon(get_icon("GHOST"))
-        self.ghost_btn.setIconSize(QSize(24, 24))
+        self.ghost_btn.setIconSize(QSize(22, 22))
         self.ghost_btn.setToolTip("Race against your ghost (Best Run)")
         self.ghost_btn.setFixedHeight(34)
-        self.ghost_btn.setMinimumWidth(70)
+        self.ghost_btn.setMinimumWidth(50)
         self.ghost_btn.clicked.connect(self.on_ghost_clicked)
-        self.ghost_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4c566a;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #5e81ac;
-            }
-            QPushButton:disabled {
-                background-color: #3b4252;
-                color: #666666;
-            }
-        """)
-        toolbar.addWidget(self.ghost_btn)
-        
-        # Sound volume widget
+        self.ghost_btn.setStyleSheet(header_btn_style)
+
         self.sound_widget = SoundVolumeWidget()
+        self.sound_widget.setFixedHeight(34)
         self.sound_widget.volume_changed.connect(self.on_sound_volume_changed)
         self.sound_widget.enabled_changed.connect(self.on_sound_enabled_changed)
-        toolbar.addWidget(self.sound_widget)
+
+        right_header_layout.addStretch()
+        right_header_layout.addWidget(self.reset_btn)
+        right_header_layout.addWidget(self.instant_death_btn)
+        right_header_layout.addWidget(self.ghost_btn)
+        right_header_layout.addWidget(self.sound_widget)
+
+        right_layout.addWidget(right_header_widget)
         
-        right_layout.addLayout(toolbar)
-        
-        # Vertical splitter: typing area | stats
+        # Separator line for right side
+        right_sep = QFrame()
+        right_sep.setFrameShape(QFrame.HLine)
+        right_sep.setFrameShadow(QFrame.Plain)
+        right_sep.setFixedHeight(1)
+        right_sep.setStyleSheet("background-color: #3b4252; border: none;")
+        right_layout.addWidget(right_sep)
+
+        # Vertical Splitter: Typing Area | Stats/Progress
         v_splitter = QSplitter(Qt.Vertical)
         
-        # Typing area (larger)
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
+        # Typing area setup
+        if DEBUG_STARTUP_TIMING: t = time.time()
         self.typing_area = TypingAreaWidget()
-        if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
+        if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
@@ -177,13 +237,13 @@ class EditorTab(QWidget):
         self.typing_area.typing_resumed.connect(self._on_typing_resumed)
         self.typing_area.typing_paused.connect(self._on_typing_paused)
         v_splitter.addWidget(self.typing_area)
+        
         # Ensure engine matches current instant death state
         self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
         
         # Connect to parent window signals for dynamic updates
         window = self.window()
         if hasattr(window, 'cursor_changed'):
-            # Connect signals
             window.cursor_changed.connect(self.typing_area.update_cursor)
             window.font_changed.connect(self.typing_area.update_font)
             window.colors_changed.connect(self.typing_area.update_colors)
@@ -191,103 +251,93 @@ class EditorTab(QWidget):
             window.pause_delay_changed.connect(self.typing_area.update_pause_delay)
             window.allow_continue_changed.connect(self.typing_area.update_allow_continue)
             window.show_typed_changed.connect(self.typing_area.update_show_typed_characters)
-            
-            # Also connect progress bar color
             window.colors_changed.connect(self.apply_theme)
             
-            # Apply current settings immediately
+            # Apply initial settings
             from app import settings
-            
-            # Cursor
             c_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
             c_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
             self.typing_area.update_cursor(c_type, c_style)
             
-            # Font
             f_family = settings.get_setting("font_family", settings.get_default("font_family"))
             f_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
             self.typing_area.update_font(f_family, f_size, False)
             
-            # Colors
             self.typing_area.update_colors()
             self.update_progress_bar_color()
 
-        
-        # Container for progress bar and stats
+        # Bottom section: Progress Bars + Stats Display
         self.bottom_container = QWidget()
         bottom_layout = QVBoxLayout(self.bottom_container)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setContentsMargins(0, 5, 0, 0)
         bottom_layout.setSpacing(5)
         
-        # User progress bar section
+        # User progress bar
         user_progress_widget = QWidget()
         user_progress_layout = QHBoxLayout(user_progress_widget)
         user_progress_layout.setContentsMargins(5, 3, 5, 3)
         user_progress_layout.setSpacing(10)
-        
         self.user_label = QLabel("You:")
         self.user_label.setStyleSheet("color: #888888; font-weight: bold;")
         self.user_label.setFixedWidth(60)
         user_progress_layout.addWidget(self.user_label, stretch=0)
-        
         self.user_progress_bar = ProgressBarWidget(bar_type="user")
         user_progress_layout.addWidget(self.user_progress_bar, stretch=1)
-        
         self.user_progress_label = QLabel("0%")
         self.user_progress_label.setFixedWidth(50)
         self.user_progress_label.setAlignment(Qt.AlignCenter)
         self.user_progress_label.setStyleSheet("color: #888888; font-weight: bold;")
         user_progress_layout.addWidget(self.user_progress_label, stretch=0)
-        
         bottom_layout.addWidget(user_progress_widget)
         
-        # Ghost progress bar section (initially hidden)
+        # Ghost progress bar
         ghost_progress_widget = QWidget()
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
         ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
         ghost_progress_layout.setSpacing(10)
-        
         self.ghost_label = QLabel("Ghost:")
         ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
         self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
         self.ghost_label.setFixedWidth(60)
         ghost_progress_layout.addWidget(self.ghost_label, stretch=0)
-        
         self.ghost_progress_bar = ProgressBarWidget(bar_type="ghost")
         ghost_progress_layout.addWidget(self.ghost_progress_bar, stretch=1)
-        
         self.ghost_progress_label = QLabel("0%")
         self.ghost_progress_label.setFixedWidth(50)
         self.ghost_progress_label.setAlignment(Qt.AlignCenter)
         self.ghost_progress_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
         ghost_progress_layout.addWidget(self.ghost_progress_label, stretch=0)
-        
         self.ghost_progress_widget = ghost_progress_widget
         self.ghost_progress_widget.setVisible(False)
         bottom_layout.addWidget(ghost_progress_widget)
         
         # Stats display
-        if DEBUG_STARTUP_TIMING:
-            t = time.time()
+        if DEBUG_STARTUP_TIMING: t = time.time()
         self.stats_display = StatsDisplayWidget()
         self.stats_display.pause_requested.connect(self.toggle_pause)
         self.stats_display.reset_requested.connect(self.on_reset_clicked)
-        if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
+        if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
         bottom_layout.addWidget(self.stats_display)
         
         v_splitter.addWidget(self.bottom_container)
-        
-        # Set initial sizes (75% typing, 25% bottom section with progress+stats)
         v_splitter.setSizes([750, 250])
         
         right_layout.addWidget(v_splitter)
-        h_splitter.addWidget(right_widget)
-        
-        # Set initial sizes (30% tree, 70% typing)
+        h_splitter.addWidget(right_pane)
+
+        # Apply final layout parameters
         h_splitter.setSizes([300, 700])
-        
+        self.layout().setContentsMargins(0, 0, 0, 0)
+        self.layout().setSpacing(0)
         self.layout().addWidget(h_splitter)
+
+        # Crash recovery logic
+        backup_mode = settings.get_setting("_race_instant_death_backup")
+        if backup_mode is not None:
+            self._set_instant_death_mode(backup_mode == "1", persist=True)
+            settings.remove_setting("_race_instant_death_backup")
+        else:
+            self._update_instant_death_style()
         
         # Timer for updating stats display
         self.update_timer = QTimer()
@@ -438,35 +488,41 @@ class EditorTab(QWidget):
     
     def _update_instant_death_style(self):
         """Update instant death button styling based on state."""
-        if self.instant_death_btn.isChecked():
-            # Enabled - green/success color
-            self.instant_death_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #a3be8c;
-                    color: #2e3440;
-                    border: none;
-                    padding: 8px 12px;
-                    font-weight: bold;
-                    border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #b4d0a0;
-                }
-            """)
-        else:
-            # Disabled - same as reset button (neutral)
-            self.instant_death_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #4c566a;
-                    color: #eceff4;
-                    border: none;
-                    padding: 8px 12px;
-                    border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #5e81ac;
-                }
-            """)
+        is_enabled = self.instant_death_btn.isChecked()
+        
+        # Consistent Base Style
+        base_style = """
+            QPushButton {
+                background-color: #3b4252;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #434c5e;
+                border-color: #88c0d0;
+            }
+            QPushButton:pressed {
+                background-color: #4c566a;
+            }
+        """
+        
+        enabled_style = base_style + """
+            QPushButton {
+                background-color: #a3be8c;
+                color: #2e3440;
+                border-color: #a3be8c;
+            }
+            QPushButton:hover {
+                background-color: #b48ead;
+                border-color: #b48ead;
+            }
+        """
+        
+        self.instant_death_btn.setStyleSheet(enabled_style if is_enabled else base_style)
+        self.instant_death_btn.setText("Instant Death: ON" if is_enabled else "Instant Death: OFF")
     
     def on_mistake_occurred(self):
         """Handle mistake in typing area - reset if instant death mode is enabled."""

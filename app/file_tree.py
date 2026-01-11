@@ -523,19 +523,14 @@ class FileTreeWidget(QWidget):
     
     file_selected = Signal(str)
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, show_header=True):
         super().__init__(parent)
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
         
-        # Top bar with search and random button
-        top_bar_layout = QHBoxLayout()
-        top_bar_layout.setSpacing(4)
-        top_bar_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Search bar
+        # Search bar (always create so it can be used externally)
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search files... (glob or regex)")
         self.search_bar.setClearButtonEnabled(True)
@@ -552,10 +547,8 @@ class FileTreeWidget(QWidget):
                 border: 1px solid #88c0d0;
             }
         """)
-        top_bar_layout.addWidget(self.search_bar)
         
-        # Random button
-        # Random button
+        # Random button (always create)
         self.random_button = QPushButton("Random")
         self.random_button.setIcon(get_icon("TARGET"))
         self.random_button.setToolTip("Open a random file from the tree")
@@ -577,9 +570,14 @@ class FileTreeWidget(QWidget):
                 background-color: #434c5e;
             }
         """)
-        top_bar_layout.addWidget(self.random_button)
         
-        layout.addLayout(top_bar_layout)
+        if show_header:
+            top_bar_layout = QHBoxLayout()
+            top_bar_layout.setSpacing(4)
+            top_bar_layout.setContentsMargins(0, 0, 0, 0)
+            top_bar_layout.addWidget(self.search_bar)
+            top_bar_layout.addWidget(self.random_button)
+            layout.addLayout(top_bar_layout)
         
         # Internal tree
         self.tree = InternalFileTree()
