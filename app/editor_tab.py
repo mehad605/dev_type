@@ -2,7 +2,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication
 )
-from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtCore import Qt, QTimer, QSize, QEvent
 from PySide6.QtGui import QKeyEvent
 from typing import Optional, List
 from app.file_tree import FileTreeWidget
@@ -14,6 +14,7 @@ from app.session_result_dialog import SessionResultDialog
 from app import stats_db
 from app.file_scanner import get_language_for_file
 from app.typing_engine import TypingEngine
+from app.ui_icons import get_icon
 import time
 
 # Debug timing flag - should match ui_main.DEBUG_STARTUP_TIMING
@@ -100,7 +101,8 @@ class EditorTab(QWidget):
         
         # Top toolbar
         toolbar = QHBoxLayout()
-        self.reset_btn = QPushButton("⟲ Reset to Top")
+        self.reset_btn = QPushButton("Reset to Top")
+        self.reset_btn.setIcon(get_icon("ROTATE_CCW"))
         self.reset_btn.setToolTip("Reset cursor to beginning of file")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
         toolbar.addWidget(self.reset_btn)
@@ -116,7 +118,8 @@ class EditorTab(QWidget):
             settings.remove_setting("_race_instant_death_backup")
         
         instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
-        self.instant_death_btn = QPushButton("💀 Instant Death: Enabled" if instant_death_enabled else "💀 Instant Death: Disabled")
+        self.instant_death_btn = QPushButton("Instant Death: Enabled" if instant_death_enabled else "Instant Death: Disabled")
+        self.instant_death_btn.setIcon(get_icon("DEATH"))
         self.instant_death_btn.setCheckable(True)
         self.instant_death_btn.setChecked(instant_death_enabled)
         self.instant_death_btn.setToolTip("Reset to top on any mistake")
@@ -127,7 +130,9 @@ class EditorTab(QWidget):
         toolbar.addStretch()
         
         # Ghost replay button
-        self.ghost_btn = QPushButton("👻")
+        self.ghost_btn = QPushButton()
+        self.ghost_btn.setIcon(get_icon("GHOST"))
+        self.ghost_btn.setIconSize(QSize(24, 24))
         self.ghost_btn.setToolTip("Watch Ghost Replay (Best Run)")
         self.ghost_btn.setFixedHeight(34)
         self.ghost_btn.setMinimumWidth(70)
@@ -137,7 +142,6 @@ class EditorTab(QWidget):
                 background-color: #4c566a;
                 border: none;
                 border-radius: 4px;
-                font-size: 18px;
             }
             QPushButton:hover {
                 background-color: #5e81ac;
@@ -423,7 +427,7 @@ class EditorTab(QWidget):
         self.instant_death_btn.blockSignals(True)
         self.instant_death_btn.setChecked(enabled)
         self.instant_death_btn.blockSignals(False)
-        self.instant_death_btn.setText("💀 Instant Death: Enabled" if enabled else "💀 Instant Death: Disabled")
+        self.instant_death_btn.setText("Instant Death: Enabled" if enabled else "Instant Death: Disabled")
         self._update_instant_death_style()
         if hasattr(self, 'typing_area') and self.typing_area.engine:
             self.typing_area.engine.instant_death_mode = enabled
@@ -488,7 +492,7 @@ class EditorTab(QWidget):
                 # The ghost timer keeps advancing, user can just start typing again
                 if self.is_racing:
                     # Race is still active, ghost keeps going
-                    self.reset_btn.setText("⟲ Reset to Top")
+                    self.reset_btn.setText("Reset to Top")
                 
                 self.typing_area.setFocus()
                 self._update_progress_indicator()
@@ -883,8 +887,9 @@ class EditorTab(QWidget):
         
         self.file_tree.setEnabled(False)
         self.reset_btn.setEnabled(False)
-        self.reset_btn.setText("⏳ Waiting for Start")
-        self.ghost_btn.setText("🛑 Cancel")
+        self.reset_btn.setText("Waiting for Start...")
+        self.ghost_btn.setIcon(get_icon("STOP"))
+        self.ghost_btn.setText(" Cancel")
         self.ghost_btn.setToolTip("Cancel the current ghost race")
         
         recorded_instant_death = ghost_data.get("instant_death_mode")
@@ -913,7 +918,7 @@ class EditorTab(QWidget):
         
         self._race_pending_start = False
         self.is_racing = True
-        self.reset_btn.setText("⟲ Reset to Top")
+        self.reset_btn.setText("Reset to Top")
         self.reset_btn.setEnabled(False)
         self._race_start_perf = time.perf_counter()
         
@@ -1148,7 +1153,8 @@ class EditorTab(QWidget):
         self.reset_btn.setEnabled(True)
         self.reset_btn.setText("⟲ Reset to Top")
         
-        self.ghost_btn.setText("👻")
+        self.ghost_btn.setIcon(get_icon("GHOST"))
+        self.ghost_btn.setText("") # Reset text as it might have been set to "🛑 Cancel"
         self._update_ghost_button()
         
         self.instant_death_btn.setEnabled(True)

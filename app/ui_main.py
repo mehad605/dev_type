@@ -51,6 +51,7 @@ from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
 from app.stats_tab import StatsTab
+from app.ui_icons import get_pixmap, get_icon
 
 # Toggle for startup timing debug output - set to False in production
 DEBUG_STARTUP_TIMING = True
@@ -65,78 +66,91 @@ class FolderCardWidget(QFrame):
         super().__init__(parent)
         self.setObjectName("folderCard")
         self.folder_path = folder_path
-        self._list_widget: Optional[QListWidget] = None
-        self._list_item: Optional[QListWidgetItem] = None
+        self._list_widget = None
+        self._list_item = None
         self._selected = False
         self._remove_mode = False
         self._folder_exists = Path(folder_path).exists()
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumHeight(80) # Two rows is shorter
         
-        # Main layout
+        # Main layout (Horizontal)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 8, 16, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(14)
 
-        # Icon - show warning if folder doesn't exist
-        self.icon_label = QLabel("📁" if self._folder_exists else "⚠️")
+        # 1. Icon on the left
+        self.icon_label = QLabel()
         self.icon_label.setObjectName("folderIcon")
-        self.icon_label.setStyleSheet("font-size: 22px; background: transparent; border: none;")
+        self.icon_label.setFixedSize(48, 48) # Fixed size to ensure alignment
+        self.icon_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.icon_label)
 
-        # Text details
-        text_layout = QVBoxLayout()
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(2)
+        # 2. Left side stack: Title on top, Metadata Row below
+        details_layout = QVBoxLayout()
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(4)
         
         self.name_label = QLabel(Path(folder_path).name or folder_path)
         self.name_label.setObjectName("folderName")
-        self.name_label.setStyleSheet("background: transparent; border: none;")
-        
-        # Show path or error message
-        if self._folder_exists:
-            self.path_label = QLabel(folder_path)
-        else:
-            self.path_label = QLabel("⚠️ Folder not found - may have been moved or renamed. Please remove and re-add.")
-            self.path_label.setToolTip(f"Original path: {folder_path}")
-        self.path_label.setObjectName("folderPath")
-        self.path_label.setStyleSheet("background: transparent; border: none;")
-        
-        # Stats row (file count, languages, sessions)
-        self.stats_label = QLabel("")
-        self.stats_label.setObjectName("folderStats")
-        self.stats_label.setStyleSheet("background: transparent; border: none;")
-        
-        text_layout.addWidget(self.name_label)
-        text_layout.addWidget(self.path_label)
-        text_layout.addWidget(self.stats_label)
-        layout.addLayout(text_layout, stretch=1)
+        details_layout.addWidget(self.name_label)
 
-        # Remove button (Trash Can)
-        self.remove_btn = QPushButton("🗑️")
+        # NEW: Horizontal layout for Path + Stats
+        meta_row_layout = QHBoxLayout()
+        meta_row_layout.setSpacing(8) # Space between path pill and count pills
+        meta_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Absolute Path Pill
+        self.path_pill = QFrame()
+        self.path_pill.setObjectName("pathPill")
+        path_pill_layout = QHBoxLayout(self.path_pill)
+        path_pill_layout.setContentsMargins(10, 0, 10, 0)
+        
+        self.path_label = QLabel(folder_path if self._folder_exists else "Folder not found")
+        self.path_label.setObjectName("folderPath")
+        path_pill_layout.addWidget(self.path_label)
+        
+        meta_row_layout.addWidget(self.path_pill)
+
+        # Stats Row (Now part of the same horizontal row)
+        self.stats_container = QWidget()
+        self.stats_container.setObjectName("statsContainer")
+        self.stats_layout = QHBoxLayout(self.stats_container)
+        self.stats_layout.setContentsMargins(0, 0, 0, 0)
+        self.stats_layout.setSpacing(6)
+        
+        meta_row_layout.addWidget(self.stats_container)
+        meta_row_layout.addStretch() # Pushes everything to the left
+
+        details_layout.addLayout(meta_row_layout)
+        
+        layout.addLayout(details_layout)
+        layout.addStretch()
+
+        # Remove button
+        self.remove_btn = QPushButton()
+        self.remove_btn.setIcon(get_icon("TRASH"))
+        self.remove_btn.setIconSize(QSize(20, 20))
+        self.remove_btn.setFixedSize(32, 32)
         self.remove_btn.setCursor(Qt.PointingHandCursor)
-        self.remove_btn.setFixedSize(36, 36)
-        self.remove_btn.setToolTip("Remove Folder")
-        self.remove_btn.hide() # Start hidden
-        self.remove_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #e0e0e0;
-                border: none;
-                font-size: 22px;
-                padding: 0px;
-                margin: 0px;
-            }
-            QPushButton:hover {
-                color: #ff4444;
-                background-color: rgba(255, 68, 68, 0.15);
-                border-radius: 18px;
-            }
-        """)
-        self.remove_btn.clicked.connect(self._on_remove_clicked)
+        self.remove_btn.hide()
+        self.remove_btn.setObjectName("removeBtn")
         layout.addWidget(self.remove_btn)
 
         self._apply_style()
+        self._update_icon()
+
+    def sizeHint(self):
+        return QSize(super().sizeHint().width(), 80)
+
+    def _update_icon(self):
+        """Update icon based on existence and size."""
+        # Folder icon scales to match combined height of text stack
+        size = 48
+        icon_name = "FOLDER" if self._folder_exists else "WARNING"
+        color = "orange" if not self._folder_exists else None
+        self.icon_label.setPixmap(get_pixmap(icon_name, size=size, color_override=color))
 
     def attach(self, list_widget: QListWidget, list_item: QListWidgetItem):
         self._list_widget = list_widget
@@ -175,6 +189,7 @@ class FolderCardWidget(QFrame):
         border_color = scheme.card_border
         text_primary = scheme.text_primary
         text_secondary = scheme.text_secondary
+        accent = scheme.accent_color
         
         # Warning state for missing folders
         if not self._folder_exists:
@@ -183,20 +198,59 @@ class FolderCardWidget(QFrame):
         
         if self._selected:
             base_color = scheme.bg_tertiary
-            border_color = scheme.accent_color
+            border_color = accent
         
-        # Outline style requested by user
-        self.setStyleSheet(
-            f"QFrame#folderCard {{"
-            f"background-color: {base_color};"
-            f"border: 1px solid {border_color};"
-            "border-radius: 8px;"
-            "}"
-            f"QFrame#folderCard:hover {{ border-color: {scheme.accent_color}; }}"
-            f"QLabel#folderName {{ color: {text_primary}; font-weight: 600; font-size: 14px; }}"
-            f"QLabel#folderPath {{ color: {text_secondary}; font-size: 11px; }}"
-            f"QLabel#folderStats {{ color: {scheme.text_secondary}; font-size: 10px; }}"
-        )
+        style = f"""
+            /* The main card background */
+            QFrame#folderCard {{
+                background-color: {base_color};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+            }}
+
+            /* KILL ALL NESTED BACKGROUNDS to prevent boxed artifacts */
+            QWidget, QFrame {{
+                background: transparent;
+                border: none;
+            }}
+
+            QLabel#folderName {{ 
+                color: {text_primary}; 
+                font-weight: 700; 
+                font-size: 15px; 
+            }}
+            
+            /* ONLY the pills get a background */
+            QFrame#pathPill, QFrame.statPill {{
+                background-color: rgba(255, 255, 255, 0.06);
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                min-height: 24px;
+                max-height: 24px;
+            }}
+            
+            QLabel#folderPath, QLabel.statText {{ 
+                color: {text_secondary}; 
+                font-size: 10px; 
+                font-weight: 500;
+                padding: 0 4px;
+            }}
+
+            /* Ensure the folder icon has no box */
+            QLabel#folderIcon {{
+                background: transparent;
+            }}
+
+            QPushButton#removeBtn {{
+                background-color: transparent;
+                border: none;
+            }}
+            QPushButton#removeBtn:hover {{
+                background-color: rgba(255, 68, 68, 0.15);
+                border-radius: 14px;
+            }}
+        """
+        self.setStyleSheet(style)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -212,22 +266,54 @@ class FolderCardWidget(QFrame):
     
     def update_stats(self, file_count: int, language_count: int, session_count: int):
         """Update the statistics display for this folder."""
+        # Clear existing items
+        while self.stats_layout.count():
+            item = self.stats_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+                
         if not self._folder_exists:
-            self.stats_label.setText("")
             return
-        
-        parts = []
+            
+        def add_stat(icon_name, text):
+            pill = QFrame()
+            pill.setProperty("class", "statPill")
+            pill_layout = QHBoxLayout(pill)
+            pill_layout.setContentsMargins(10, 0, 10, 0)
+            pill_layout.setSpacing(6)
+            pill_layout.setAlignment(Qt.AlignCenter)
+            
+            icon = QLabel()
+            icon.setObjectName("pillIcon")
+            icon.setPixmap(get_pixmap(icon_name, size=12))
+            pill_layout.addWidget(icon)
+            
+            lbl = QLabel(text)
+            lbl.setProperty("class", "statText")
+            pill_layout.addWidget(lbl)
+            
+            self.stats_layout.addWidget(pill)
+
         if file_count > 0:
-            parts.append(f"📄 {file_count} files")
+            add_stat("FILES", f"{file_count} files")
+            
         if language_count > 0:
-            parts.append(f"💻 {language_count} languages")
+            add_stat("CODE", f"{language_count} languages")
+            
         if session_count > 0:
-            parts.append(f"⌨️ {session_count} sessions")
+            add_stat("TYPING", f"{session_count} sessions")
+            
+        self.stats_layout.addStretch()
         
-        if parts:
-            self.stats_label.setText("  •  ".join(parts))
-        else:
-            self.stats_label.setText("No files scanned yet")
+        # Critical: Update size hints after content changes in lazy-loaded/dynamic widgets
+        QTimer.singleShot(0, self._force_update_size)
+
+    def _force_update_size(self):
+        """Force list widget to recognize new height requirements."""
+        if self._list_item and self._list_widget:
+            self.adjustSize()
+            self._list_item.setSizeHint(self.sizeHint())
+            self._list_widget.updateGeometries()
     
     def folder_exists(self) -> bool:
         """Check if the folder path exists."""
@@ -254,9 +340,23 @@ class FoldersTab(QWidget):
         header_layout.setSpacing(8)
         header_layout.setContentsMargins(0, 0, 0, 12)
         
-        title_label = QLabel("📁 Code Folders")
+        # Title Container
+        title_container = QWidget()
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(10)
+        
+        icon_label = QLabel()
+        icon_label.setPixmap(get_pixmap("FOLDER", size=32))
+        
+        title_label = QLabel("Folders")
         title_label.setStyleSheet("font-size: 18pt; font-weight: bold;")
-        header_layout.addWidget(title_label)
+        
+        title_layout.addWidget(icon_label)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        
+        header_layout.addWidget(title_container)
         
         desc_label = QLabel("Add folders containing code files you want to practice typing.")
         desc_label.setStyleSheet("color: #888888; font-size: 10pt;")
@@ -275,7 +375,9 @@ class FoldersTab(QWidget):
         scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
         scheme = get_color_scheme("dark", scheme_name)
         
-        self.add_btn = QPushButton("➕ Add Folder")
+        self.add_btn = QPushButton("Add Folder")
+        self.add_btn.setIcon(get_icon("PLUS"))
+        self.add_btn.setIconSize(QSize(16, 16))
         self.add_btn.setToolTip("Add a new folder")
         self.add_btn.setMinimumHeight(36)
         # Soft green
@@ -286,6 +388,7 @@ class FoldersTab(QWidget):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
+                text-align: left;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -293,7 +396,9 @@ class FoldersTab(QWidget):
             }
         """)
         
-        self.edit_btn = QPushButton("🗑️ Remove Folder")
+        self.edit_btn = QPushButton("Remove Folder")
+        self.edit_btn.setIcon(get_icon("TRASH"))
+        self.edit_btn.setIconSize(QSize(16, 16))
         self.edit_btn.setCheckable(True)
         self.edit_btn.setMinimumHeight(36)
         # Bright red
@@ -304,6 +409,7 @@ class FoldersTab(QWidget):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
+                text-align: left;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -344,7 +450,7 @@ class FoldersTab(QWidget):
         self.layout.addWidget(self.list)
         
         # Loading indicator (hidden by default)
-        self.loading_label = QLabel("⏳ Scanning folders...")
+        self.loading_label = QLabel("Scanning folders...")
         self.loading_label.setAlignment(Qt.AlignCenter)
         self.loading_label.setStyleSheet("color: #888888; font-size: 12pt; padding: 20px;")
         self.loading_label.hide()
@@ -394,7 +500,6 @@ class FoldersTab(QWidget):
             
             # Create list item
             item = QListWidgetItem(self.list)
-            item.setSizeHint(card.sizeHint())
             item.setData(Qt.UserRole, path_str)
             
             # Attach widget to item
@@ -422,6 +527,15 @@ class FoldersTab(QWidget):
                     card.update_stats(file_count, language_count, session_count)
                 except Exception:
                     card.update_stats(0, 0, 0)
+            else:
+                # Still call update_stats to finalize layout
+                card.update_stats(0, 0, 0)
+
+            # Important: Update size hint after dynamic content is added
+            card.adjustSize()
+            item.setSizeHint(card.sizeHint())
+
+        self.list.updateGeometries()
 
         if DEBUG_STARTUP_TIMING:
             t3 = time.time()
@@ -435,7 +549,7 @@ class FoldersTab(QWidget):
             selected = dlg.selectedFiles()
             
             # Show loading indicator
-            self.loading_label.setText(f"⏳ Adding {len(selected)} folder(s)...")
+            self.loading_label.setText(f"Scanning {len(selected)} folder(s)...")
             self.loading_label.show()
             self.list.hide()
             QApplication.processEvents()  # Force UI update
@@ -519,8 +633,9 @@ class FoldersTab(QWidget):
             header_layout.setContentsMargins(0, 0, 0, 0)
             header_layout.setSpacing(12)
             
-            header_icon = QLabel("🗑️")
-            header_icon.setStyleSheet("font-size: 24px; background: transparent;")
+            header_icon = QLabel()
+            header_icon.setPixmap(get_pixmap("TRASH", size=24, color_override="white"))
+            header_icon.setStyleSheet("background: transparent;")
             header_layout.addWidget(header_icon)
             
             header_title = QLabel("Remove Folder?")
@@ -555,9 +670,11 @@ class FoldersTab(QWidget):
             path_layout.setContentsMargins(0, 0, 0, 0)
             path_layout.setSpacing(10)
             
-            folder_icon = QLabel("📁")
-            folder_icon.setStyleSheet("font-size: 18px; background: transparent;")
+            folder_icon = QLabel()
+            folder_icon.setPixmap(get_pixmap("FOLDER", size=18))
+            folder_icon.setStyleSheet("background: transparent;")
             path_layout.addWidget(folder_icon)
+            
             
             path_text = QLabel(folder_path)
             path_text.setStyleSheet(f"font-family: monospace; font-size: 13px; color: {scheme.text_primary}; background: transparent;")
@@ -618,7 +735,8 @@ class FoldersTab(QWidget):
             """)
             cancel_btn.clicked.connect(dialog.reject)
             
-            remove_btn = QPushButton("🗑️ Remove")
+            remove_btn = QPushButton("Remove")
+            remove_btn.setIcon(get_icon("TRASH"))
             remove_btn.setCursor(Qt.PointingHandCursor)
             remove_btn.setMinimumHeight(36)
             remove_btn.setMinimumWidth(100)
@@ -1754,13 +1872,14 @@ class MainWindow(QMainWindow):
         sound_mgr = get_sound_manager()
         error = sound_mgr.get_last_error()
         if error:
-            self.sound_profile_combo.setToolTip(f"⚠️ {error}")
+            self.sound_profile_combo.setToolTip(f"Warning: {error}")
         
         self.sound_profile_combo.currentIndexChanged.connect(self.on_sound_profile_changed)
         profile_layout.addWidget(self.sound_profile_combo)
         
         # Test button for main settings
-        self.test_sound_btn = QPushButton("🔊 Test")
+        self.test_sound_btn = QPushButton(" Test")
+        self.test_sound_btn.setIcon(get_icon("SOUND"))
         self.test_sound_btn.setMinimumHeight(34)
         self.test_sound_btn.setStyleSheet("padding: 0 10px;")
         self.test_sound_btn.setToolTip("Play the selected sound")
@@ -3022,12 +3141,25 @@ def create_splash_screen(app):
     layout.setSpacing(20)
     
     # Title
-    title = QLabel("⌨️ Dev Typing App")
-    title.setAlignment(Qt.AlignCenter)
-    title_font = QFont("Segoe UI", 22)
+    title_container = QWidget()
+    title_layout = QHBoxLayout(title_container)
+    title_layout.setContentsMargins(0, 0, 0, 0)
+    title_layout.setSpacing(15)
+    title_layout.setAlignment(Qt.AlignCenter)
+    
+    title_icon = QLabel()
+    title_icon.setPixmap(get_pixmap("KEYBOARD", size=48))
+    title_layout.addWidget(title_icon)
+    
+    title_label = QLabel("Dev Typing App")
+    title_label.setAlignment(Qt.AlignCenter)
+    title_font = QFont("Segoe UI", 28)
     title_font.setBold(True)
-    title.setFont(title_font)
-    layout.addWidget(title)
+    title_label.setFont(title_font)
+    title_label.setStyleSheet(f"color: {scheme.text_primary};")
+    title_layout.addWidget(title_label)
+    
+    layout.addWidget(title_container)
     
     # Subtitle
     subtitle = QLabel("Practice coding by typing")

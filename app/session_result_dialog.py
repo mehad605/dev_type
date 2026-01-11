@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QRectF, QPointF, QPoint
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QBrush, QFont, QPixmap, QFontMetrics
 from pathlib import Path
 from typing import List, Dict, Tuple
+from app.ui_icons import get_pixmap
 
 
 class InteractiveWPMGraph(QWidget):
@@ -711,91 +712,30 @@ class InteractiveWPMGraph(QWidget):
             self.ghost_error_rect = QRectF()
 
 
-class IconWidget(QWidget):
-    """Custom widget to draw simple vector icons."""
+class IconWidget(QLabel):
+    """Widget to display SVG icons from ui_icons."""
+    ICON_MAP = {
+        'user': 'USER',
+        'ghost': 'GHOST',
+        'check': 'CHECK',
+        'x': 'CLOSE',
+        'clock': 'CLOCK',
+        'sum': 'SUM'
+    }
+    
     def __init__(self, icon_type, color, size=24, parent=None):
         super().__init__(parent)
         self.icon_type = icon_type
-        self.color = QColor(color)
+        self.icon_color = QColor(color) if isinstance(color, str) else color
+        self.icon_size = size
         self.setFixedSize(size, size)
+        self.setAlignment(Qt.AlignCenter)
+        self.update_icon()
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        w, h = self.width(), self.height()
-        painter.translate(w/2, h/2)
-        scale = min(w, h) / 24.0
-        painter.scale(scale, scale)
-        
-        pen = QPen(self.color, 2)
-        painter.setPen(pen)
-        
-        if self.icon_type == 'user':
-            # Head
-            painter.drawEllipse(QPointF(0, -4), 4, 4)
-            # Body
-            path = QPainterPath()
-            path.arcMoveTo(-8, 12, 16, 16, 0)
-            path.arcTo(-8, 2, 16, 16, 0, 180)
-            painter.drawPath(path)
-            
-        elif self.icon_type == 'ghost':
-            path = QPainterPath()
-            # Head
-            path.moveTo(-6, 8)
-            path.lineTo(-6, 0)
-            path.arcTo(-6, -8, 12, 12, 180, -180)
-            path.lineTo(6, 8)
-            # Wavy bottom
-            path.lineTo(2, 6)
-            path.lineTo(-2, 8)
-            path.lineTo(-6, 6)
-            path.closeSubpath()
-            painter.drawPath(path)
-            # Eyes
-            painter.setBrush(self.color)
-            painter.setPen(Qt.NoPen)
-            painter.drawEllipse(QPointF(-2, -2), 1, 1)
-            painter.drawEllipse(QPointF(2, -2), 1, 1)
-            
-        elif self.icon_type == 'check':
-            # Simple check mark in green
-            painter.setPen(QPen(self.color, 2.5))
-            painter.setBrush(Qt.NoBrush)
-            
-            path = QPainterPath()
-            path.moveTo(-4, 0)
-            path.lineTo(-1, 4)
-            path.lineTo(5, -4)
-            painter.drawPath(path)
-            
-        elif self.icon_type == 'x':
-            # Simple X mark in red
-            painter.setPen(QPen(self.color, 2.5))
-            painter.drawLine(-4, -4, 4, 4)
-            painter.drawLine(-4, 4, 4, -4)
-            
-        elif self.icon_type == 'clock':
-            painter.setPen(QPen(self.color, 1.5))
-            painter.drawEllipse(QPointF(0, 0), 9, 9)
-            painter.drawLine(0, -5, 0, 0)
-            painter.drawLine(0, 0, 3, 3)
-            
-        elif self.icon_type == 'sum':
-            # Summation symbol (Σ)
-            painter.setPen(QPen(self.color, 2))
-            path = QPainterPath()
-            # Top horizontal line
-            path.moveTo(-4, -8)
-            path.lineTo(4, -8)
-            # Diagonal to middle
-            path.lineTo(-2, 0)
-            # Diagonal to bottom
-            path.lineTo(4, 8)
-            # Bottom horizontal line
-            path.lineTo(-4, 8)
-            painter.drawPath(path)
+    def update_icon(self):
+        icon_name = self.ICON_MAP.get(self.icon_type, self.icon_type)
+        pixmap = get_pixmap(icon_name, size=self.icon_size, color_override=self.icon_color.name())
+        self.setPixmap(pixmap)
 
 
 class StatCard(QFrame):

@@ -13,6 +13,7 @@ from PySide6.QtGui import QFont
 from typing import Callable, Dict, List, Optional, Tuple
 from app import settings, stats_db
 from app.language_cache import build_signature, load_cached_snapshot, save_snapshot
+from app.ui_icons import get_pixmap, get_icon
 
 # Debug timing flag
 DEBUG_STARTUP_TIMING = True
@@ -132,10 +133,11 @@ class LanguageCard(QFrame):
             self.icon_label.setPixmap(icon_pixmap)
             self.icon_label.setToolTip("")
         else:
-            # Fallback to emoji
-            emoji = self.icon_manager.get_emoji_fallback(self.language)
-            self.icon_label.setText(emoji)
-            self.icon_label.setStyleSheet("font-size: 56px;")
+            # Fallback to local SVG icon
+            # Use 'CODE' icon for languages without a devicon
+            self.icon_label.setPixmap(get_pixmap("CODE", size=56))
+            self.icon_label.setToolTip("")
+            self.icon_label.setText("") # Clear any text
             
             # Show tooltip if download failed
             error = self.icon_manager.get_download_error(self.language)
@@ -174,7 +176,10 @@ class LanguageCard(QFrame):
             self.wpm_label.setText("No sessions yet")
             self.wpm_label.setStyleSheet("color: gray; font-size: 11px; font-style: italic;")
         else:
-            self.wpm_label.setText(f"⚡ {average_wpm:.0f} WPM avg")
+            # Use ROCKET icon or similar for WPM
+            # Since wpm_label is simple text label, we'll just remove the emoji or use text.
+            # "WPM avg" is sufficient.
+            self.wpm_label.setText(f"{average_wpm:.0f} WPM avg")
             self.wpm_label.setStyleSheet("color: #88c0d0; font-size: 12px; font-weight: 600;")
 
 

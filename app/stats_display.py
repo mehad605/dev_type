@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
 from PySide6.QtCore import Qt, Signal, QPointF
 from PySide6.QtGui import QFont, QCursor, QPainter, QPainterPath, QColor, QPen, QLinearGradient
 from app import settings
+from app.ui_icons import get_pixmap
 
 
 class SparklineWidget(QWidget):
@@ -210,7 +211,7 @@ class KeystrokeBox(QFrame):
         self.correct_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.correct_count.setFont(count_font)
         
-        self.correct_icon = QLabel("✓")
+        self.correct_icon = QLabel()
         self.correct_icon.setAlignment(Qt.AlignCenter)
         
         self.correct_pct = QLabel("0%")
@@ -222,7 +223,7 @@ class KeystrokeBox(QFrame):
         self.incorrect_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.incorrect_count.setFont(count_font)
         
-        self.incorrect_icon = QLabel("✗")
+        self.incorrect_icon = QLabel()
         self.incorrect_icon.setAlignment(Qt.AlignCenter)
         
         self.incorrect_pct = QLabel("0%")
@@ -234,7 +235,7 @@ class KeystrokeBox(QFrame):
         self.total_count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.total_count.setFont(count_font)
         
-        self.total_icon = QLabel("Σ")
+        self.total_icon = QLabel()
         self.total_icon.setAlignment(Qt.AlignCenter)
         
         self.total_pct = QLabel("100%")
@@ -304,9 +305,13 @@ class KeystrokeBox(QFrame):
         self.grid_container.setStyleSheet("background: transparent; border: none;")
         
         # Icons
-        self.correct_icon.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none; font-size: 14px;")
-        self.incorrect_icon.setStyleSheet(f"color: {scheme.error_color}; background: transparent; border: none; font-size: 14px;")
-        self.total_icon.setStyleSheet(f"color: {scheme.info_color}; background: transparent; border: none; font-size: 14px;")
+        self.correct_icon.setPixmap(get_pixmap("CHECK", size=16, color_override=scheme.success_color))
+        self.incorrect_icon.setPixmap(get_pixmap("CLOSE", size=16, color_override=scheme.error_color))
+        self.total_icon.setPixmap(get_pixmap("CHART", size=16, color_override=scheme.info_color))
+        
+        self.correct_icon.setStyleSheet("background: transparent; border: none;")
+        self.incorrect_icon.setStyleSheet("background: transparent; border: none;")
+        self.total_icon.setStyleSheet("background: transparent; border: none;")
         
         # Counts (same color as icons for visual connection)
         self.correct_count.setStyleSheet(f"color: {scheme.success_color}; background: transparent; border: none;")

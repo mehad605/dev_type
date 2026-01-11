@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import stats_db
+from app.ui_icons import get_icon
 
 
 class HistoryTab(QWidget):
@@ -84,12 +85,14 @@ class HistoryTab(QWidget):
 
         filter_row.addStretch()
 
-        self.edit_mode_btn = QPushButton("✏️ Edit Mode")
+        self.edit_mode_btn = QPushButton(" Edit Mode")
+        self.edit_mode_btn.setIcon(get_icon("EDIT"))
         self.edit_mode_btn.setCheckable(True)
         self.edit_mode_btn.clicked.connect(self.toggle_edit_mode)
         filter_row.addWidget(self.edit_mode_btn)
         
-        self.export_btn = QPushButton("📥 Export CSV")
+        self.export_btn = QPushButton(" Export CSV")
+        self.export_btn.setIcon(get_icon("DOWNLOAD"))
         self.export_btn.clicked.connect(self.export_to_csv)
         filter_row.addWidget(self.export_btn)
 
@@ -98,7 +101,8 @@ class HistoryTab(QWidget):
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
 
-        self.delete_btn = QPushButton("🗑 Delete Selected")
+        self.delete_btn = QPushButton(" Delete Selected")
+        self.delete_btn.setIcon(get_icon("TRASH"))
         self.delete_btn.setEnabled(False)
         self.delete_btn.clicked.connect(self.delete_selected)
         action_row.addWidget(self.delete_btn)
@@ -215,7 +219,8 @@ class HistoryTab(QWidget):
         """Toggle multi-select deletion mode."""
         self.table.setSelectionMode(QTableWidget.ExtendedSelection if enabled else QTableWidget.NoSelection)
         self.delete_btn.setEnabled(enabled)
-        self.edit_mode_btn.setText("✅ Done" if enabled else "✏️ Edit Mode")
+        self.edit_mode_btn.setIcon(get_icon("CHECK") if enabled else get_icon("EDIT"))
+        self.edit_mode_btn.setText(" Done" if enabled else " Edit Mode")
         if not enabled:
             self.table.clearSelection()
 

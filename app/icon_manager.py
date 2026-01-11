@@ -53,7 +53,7 @@ DEVICON_MAP = {
     "XML": "xml",
     "JSON": "json",
     "Markdown": "markdown",
-    # Text and TOML don't have standard devicons, wil use emoji fallback
+    # Text and TOML don't have standard devicons
 
 }
 
@@ -80,46 +80,7 @@ def get_devicon_name(language: str) -> Optional[str]:
 
 
 # Emoji fallbacks for languages
-EMOJI_FALLBACK = {
-    "Python": "🐍",
-    "JavaScript": "📜",
-    "TypeScript": "📘",
-    "Java": "☕",
-    "C": "🔷",
-    "C++": "🔷",
-    "C/C++ Header": "📄",
-    "C++ Header": "📄",
-    "C#": "🎯",
-    "Go": "🐹",
-    "Rust": "🦀",
-    "Ruby": "💎",
-    "PHP": "🐘",
-    "Swift": "🕊️",
-    "Kotlin": "🅺",
-    "Objective-C": "🍎",
-    "Scala": "⚡",
-    "R": "📊",
-    "Dart": "🎯",
-    "Lua": "🌙",
-    "Perl": "🐪",
-    "Shell": "🐚",
-    "Bash": "🐚",
-    "Zsh": "🐚",
-    "Fish": "🐠",
-    "PowerShell": "⚡",
-    "SQL": "🗄️",
-    "HTML": "🌐",
-    "CSS": "🎨",
-    "SCSS": "🎨",
-    "Sass": "🎨",
-    "Less": "🎨",
-    "XML": "📰",
-    "JSON": "📋",
-    "YAML": "📋",
-    "TOML": "📋",
-    "Markdown": "📝",
-    "Text": "📄",
-}
+
 
 
 class IconManager(QObject):
@@ -194,7 +155,7 @@ class IconManager(QObject):
 
         if reply.error() != QNetworkReply.NoError:
             # 404s (ContentNotFoundError) are expected for unknown languages/heuristics
-            # We treat them as "no icon available" and fallback to emoji silently.
+            # We treat them as "no icon available".
             error_code = reply.error()
             error_msg = f"Network error ({error_code}): {reply.errorString()}"
             
@@ -273,16 +234,7 @@ class IconManager(QObject):
         self._icon_cache[cache_key] = None
         return None
     
-    def get_emoji_fallback(self, language: str) -> str:
-        """Get emoji fallback for a language.
-        
-        Args:
-            language: Language name (e.g., "Python", "JavaScript")
-            
-        Returns:
-            Emoji string representing the language
-        """
-        return EMOJI_FALLBACK.get(language, "📄")
+
     
     def preload_icons(self, languages: list[str]) -> None:
         """Preload icons for multiple languages in background.

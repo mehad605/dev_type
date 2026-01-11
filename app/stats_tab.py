@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from app import stats_db
 from app import settings
+from app.ui_icons import get_pixmap
 
 
 def format_date_display(date_str: str, short: bool = False) -> str:
@@ -257,21 +258,34 @@ class LanguageFilterBar(QWidget):
 class SummaryStatCard(QFrame):
     """A card displaying a single summary statistic."""
     
-    def __init__(self, title: str, value: str, icon: str = "", parent=None):
+    def __init__(self, title: str, value: str, icon_name: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("summaryCard")
         self.setFixedHeight(80)
         self.setMinimumWidth(150)
+        self.icon_name = icon_name
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(4)
         
         # Title row with optional icon
-        title_text = f"{icon} {title}" if icon else title
-        self.title_label = QLabel(title_text)
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
+        
+        self.icon_label = QLabel()
+        self.icon_label.setObjectName("summaryIcon")
+        if self.icon_name:
+            self.icon_label.setPixmap(get_pixmap(self.icon_name, size=16))
+        header_layout.addWidget(self.icon_label)
+        
+        self.title_label = QLabel(title)
         self.title_label.setObjectName("cardTitle")
-        layout.addWidget(self.title_label)
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch()
+        
+        layout.addLayout(header_layout)
         
         # Value
         self.value_label = QLabel(value)
@@ -287,6 +301,10 @@ class SummaryStatCard(QFrame):
         text_sec = colors["text_secondary"].name()
         text_pri = colors["text_primary"].name()
         
+        if self.icon_name:
+            # Use text secondary color for icon by default to match title
+            self.icon_label.setPixmap(get_pixmap(self.icon_name, size=16, color_override=text_sec))
+
         self.setStyleSheet(f"""
             QFrame#summaryCard {{
                 background-color: {bg};
@@ -303,6 +321,10 @@ class SummaryStatCard(QFrame):
                 color: {text_pri};
                 font-size: 20px;
                 font-weight: bold;
+                background: transparent;
+                border: none;
+            }}
+            QLabel#summaryIcon {{
                 background: transparent;
                 border: none;
             }}
@@ -2162,15 +2184,15 @@ class StatsTab(QWidget):
         row1.setSpacing(12)
         
         cards_row1 = [
-            ("streak", "Current Streak", "🔥"),
-            ("total_completed", "Total Sessions", "✓"),
-            ("avg_wpm", "Average WPM", "📊"),
-            ("highest_wpm", "Best WPM", "🚀"),
-            ("wpm_trend", "WPM Trend (30d)", "📈"),
+            ("streak", "Current Streak", "STREAK"),
+            ("total_completed", "Total Sessions", "CHECK"),
+            ("avg_wpm", "Average WPM", "CHART"),
+            ("highest_wpm", "Best WPM", "ROCKET"),
+            ("wpm_trend", "WPM Trend (30d)", "CHART"),
         ]
         
         for key, title, icon in cards_row1:
-            card = SummaryStatCard(title, "-", icon)
+            card = SummaryStatCard(title, "-", icon_name=icon)
             self.summary_cards[key] = card
             row1.addWidget(card)
         
@@ -2182,15 +2204,15 @@ class StatsTab(QWidget):
         row2.setSpacing(12)
         
         cards_row2 = [
-            ("avg_acc", "Average Accuracy", "🎯"),
-            ("highest_acc", "Best Accuracy", "💯"),
-            ("acc_trend", "Accuracy Trend (30d)", "📉"),
-            ("most_chars_day", "Most Chars/Day", "⌨"),
-            ("most_sessions_day", "Most Sessions/Day", "📅"),
+            ("avg_acc", "Average Accuracy", "TARGET"),
+            ("highest_acc", "Best Accuracy", "TARGET"),
+            ("acc_trend", "Accuracy Trend (30d)", "CHART"),
+            ("most_chars_day", "Most Chars/Day", "KEYBOARD"),
+            ("most_sessions_day", "Most Sessions/Day", "CALENDAR"),
         ]
         
         for key, title, icon in cards_row2:
-            card = SummaryStatCard(title, "-", icon)
+            card = SummaryStatCard(title, "-", icon_name=icon)
             self.summary_cards[key] = card
             row2.addWidget(card)
         

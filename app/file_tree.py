@@ -20,7 +20,9 @@ import fnmatch
 import json
 import random
 from app import settings, stats_db
+from app import settings, stats_db
 from app.file_scanner import LANGUAGE_MAP, should_ignore_file, should_ignore_folder
+from app.ui_icons import get_icon
 
 
 def _get_icon_manager():
@@ -343,8 +345,10 @@ class InternalFileTree(QTreeWidget):
                 item.setBackground(col, brush)
             # Add indicator in the filename (⏸ pause symbol)
             current_text = item.text(0)
-            if not current_text.endswith(" ⏸"):
-                item.setText(0, f"{current_text} ⏸")
+            # Add indicator in the filename
+            current_text = item.text(0)
+            if not current_text.endswith(" (paused)"):
+                item.setText(0, f"{current_text} (paused)")
     
     def refresh_incomplete_sessions(self):
         """Refresh the list of incomplete sessions (call after completing a file)."""
@@ -375,8 +379,9 @@ class InternalFileTree(QTreeWidget):
             for col in range(self.columnCount()):
                 item.setBackground(col, QBrush())
             current_text = item.text(0)
-            if current_text.endswith(" ⏸"):
-                item.setText(0, current_text[:-2])
+            current_text = item.text(0)
+            if current_text.endswith(" (paused)"):
+                item.setText(0, current_text[:-9]) # len(" (paused)") == 9
     
     def _find_file_item(self, file_path: str) -> Optional[QTreeWidgetItem]:
         """Recursively search for a file item by its path."""
@@ -426,8 +431,8 @@ class InternalFileTree(QTreeWidget):
             self._icon_cache[cache_key] = icon
             return icon, None
 
-        emoji = manager.get_emoji_fallback(language)
-        icon = self._emoji_icon(emoji)
+        # Fallback to local 'CODE' icon
+        icon = get_icon("CODE")
         self._icon_cache[cache_key] = icon
         
         # Store any download error for tooltip
@@ -436,24 +441,7 @@ class InternalFileTree(QTreeWidget):
             self._icon_cache[error_key] = error
         return icon, error
 
-    def _emoji_icon(self, emoji: str) -> QIcon:
-        cache_key = f"emoji::{emoji}"
-        if cache_key in self._icon_cache:
-            return self._icon_cache[cache_key]
 
-        pixmap = QPixmap(24, 24)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        font = QFont()
-        font.setPointSize(14)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
-        painter.end()
-
-        icon = QIcon(pixmap)
-        self._icon_cache[cache_key] = icon
-        return icon
     
     def get_all_file_items(self) -> List[QTreeWidgetItem]:
         """Get all file items (not folders) from the tree."""
@@ -567,7 +555,9 @@ class FileTreeWidget(QWidget):
         top_bar_layout.addWidget(self.search_bar)
         
         # Random button
-        self.random_button = QPushButton("🎲 Random")
+        # Random button
+        self.random_button = QPushButton("Random")
+        self.random_button.setIcon(get_icon("TARGET"))
         self.random_button.setToolTip("Open a random file from the tree")
         self.random_button.clicked.connect(self._on_random_clicked)
         self.random_button.setStyleSheet("""
