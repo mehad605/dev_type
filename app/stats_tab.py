@@ -1811,6 +1811,7 @@ class KeyboardHeatmap(QWidget):
 
     def apply_theme(self):
         self._update_colors()
+        self._refresh_display_stats()
         self.update()
 
     def mouseMoveEvent(self, event):
@@ -2026,9 +2027,9 @@ class ErrorTypePieChart(QWidget):
         self.text_primary = colors["text_primary"]
         self.text_secondary = colors["text_secondary"]
         self.slice_colors = [
-            QColor("#ff1744"), # Missed - Red
-            QColor("#ff9100"), # Extra - Orange
-            QColor("#ffea00"), # Swapped - Yellow
+            colors.get("error", QColor("#ff1744")),    # Missed - Red
+            colors.get("warning", QColor("#ff9100")),  # Extra - Orange
+            colors.get("accent", QColor("#ffea00")),   # Swapped - Yellow (using accent as fallback)
         ]
         self.labels = ["Missed Keys", "Extra Keys", "Swapped Keys"]
 
@@ -2551,7 +2552,8 @@ class StatsTab(QWidget):
     
     def apply_theme(self):
         """Apply current theme to all widgets in the Stats tab."""
-        colors = get_theme_colors()
+        self.colors = get_theme_colors()
+        colors = self.colors
         
         # Update main container background
         bg_primary = colors["bg_primary"].name()

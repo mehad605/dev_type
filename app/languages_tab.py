@@ -172,15 +172,47 @@ class LanguageCard(QFrame):
 
     def _set_wpm_display(self, average_wpm: Optional[float], sample_size: int):
         """Update the WPM label contents and styling."""
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
         if average_wpm is None or sample_size == 0:
             self.wpm_label.setText("No sessions yet")
-            self.wpm_label.setStyleSheet("color: gray; font-size: 11px; font-style: italic;")
+            self.wpm_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 11px; font-style: italic;")
         else:
-            # Use ROCKET icon or similar for WPM
-            # Since wpm_label is simple text label, we'll just remove the emoji or use text.
-            # "WPM avg" is sufficient.
             self.wpm_label.setText(f"{average_wpm:.0f} WPM avg")
-            self.wpm_label.setStyleSheet("color: #88c0d0; font-size: 12px; font-weight: 600;")
+            self.wpm_label.setStyleSheet(f"color: {scheme.cursor_color}; font-size: 12px; font-weight: 600;")
+
+    def apply_theme(self):
+        """Apply current theme colors to the card."""
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        # Base card style is mostly handled by global stylesheet via QFrame#LanguageCard
+        # but we need to update internal labels if they have custom colors
+        
+        # Name label
+        layout = self.layout()
+        if layout and layout.count() >= 3:
+            name_label = layout.itemAt(2).widget()
+            if isinstance(name_label, QLabel):
+                name_label.setStyleSheet(f"font-weight: 600; font-size: 16px; margin-top: 6px; color: {scheme.text_primary};")
+            
+            count_label = layout.itemAt(3).widget()
+            if isinstance(count_label, QLabel):
+                count_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 12px; margin-top: 2px;")
+                
+            # WPM label is already updated via _set_wpm_display if we call it
+            # But we need to refresh icons too
+            self._update_icon()
+            
+            # Extract current stats and re-apply styling
+            # (In a real app, storing these as attributes is cleaner, but let's try to infer or re-call)
+            # Actually, _set_wpm_display uses local vars. Let's just update styles.
+            self.wpm_label.setStyleSheet(f"color: {scheme.cursor_color}; font-size: 12px; font-weight: 600;")
+            if "No sessions" in self.wpm_label.text():
+                 self.wpm_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 11px; font-style: italic;")
 
 
 class LanguagesTab(QWidget):
@@ -218,19 +250,24 @@ class LanguagesTab(QWidget):
         header_container = QHBoxLayout()
         header_container.setContentsMargins(20, 16, 20, 12)
         
-        header = QLabel("Languages")
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        self.header_label = QLabel("Languages")
         header_font = QFont()
         header_font.setPointSize(20)
         header_font.setWeight(QFont.Bold)
-        header.setFont(header_font)
-        header_container.addWidget(header)
+        self.header_label.setFont(header_font)
+        self.header_label.setStyleSheet(f"color: {scheme.text_primary};")
+        header_container.addWidget(self.header_label)
         
         header_container.addStretch()
         
         # Subtitle
-        subtitle = QLabel("Click a language to start typing")
-        subtitle.setStyleSheet("color: gray; font-size: 13px; padding-top: 6px;")
-        header_container.addWidget(subtitle)
+        self.subtitle_label = QLabel("Click a language to start typing")
+        self.subtitle_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 13px; padding-top: 6px;")
+        header_container.addWidget(self.subtitle_label)
         
         self.layout.addLayout(header_container)
         
@@ -414,7 +451,7 @@ class LanguagesTab(QWidget):
         
         Args:
             file_path: Optional path to determine which language to refresh.
-                      If None, refreshes all cards.
+                       If None, refreshes all cards.
         """
         if not hasattr(self, '_language_cards'):
             return
@@ -462,3 +499,20 @@ class LanguagesTab(QWidget):
                 count_label = layout.itemAt(3).widget()
                 if isinstance(count_label, QLabel):
                     count_label.setText(count_text)
+
+    def apply_theme(self):
+        """Apply current theme to LanguagesTab and all its children."""
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        # Update header labels
+        if hasattr(self, 'header_label'):
+            self.header_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {scheme.text_primary};")
+        if hasattr(self, 'subtitle_label'):
+            self.subtitle_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 13px; padding-top: 6px;")
+        
+        # Update cards
+        if hasattr(self, '_language_cards'):
+            for card in self._language_cards.values():
+                card.apply_theme()

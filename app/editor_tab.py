@@ -133,7 +133,7 @@ class EditorTab(QWidget):
         self.ghost_btn = QPushButton()
         self.ghost_btn.setIcon(get_icon("GHOST"))
         self.ghost_btn.setIconSize(QSize(24, 24))
-        self.ghost_btn.setToolTip("Watch Ghost Replay (Best Run)")
+        self.ghost_btn.setToolTip("Race against your ghost (Best Run)")
         self.ghost_btn.setFixedHeight(34)
         self.ghost_btn.setMinimumWidth(70)
         self.ghost_btn.clicked.connect(self.on_ghost_clicked)

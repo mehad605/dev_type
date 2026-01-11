@@ -1,6 +1,6 @@
-
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PySide6.QtCore import QByteArray, QSize, Qt
+from PySide6.QtSvg import QSvgRenderer
 
 # Colors from svg.html
 COLORS = {
@@ -58,23 +58,29 @@ def get_svg_content(name: str, color_override=None) -> str:
 stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>"""
 
 def get_pixmap(name: str, size=24, color_override=None) -> QPixmap:
-    """Get a QPixmap for an icon."""
+    """Get a QPixmap for an icon, rendered sharply at the requested size."""
     svg_content = get_svg_content(name, color_override)
     if not svg_content:
         return QPixmap()
     
-    pixmap = QPixmap()
-    pixmap.loadFromData(QByteArray(svg_content.encode('utf-8')))
+    # Use QSvgRenderer to render the vector data directly at the target size
+    # This prevents the blurriness caused by scaling a small rasterized image
+    renderer = QSvgRenderer(QByteArray(svg_content.encode('utf-8')))
     
-    if pixmap.isNull():
-        return pixmap
-        
-    if size != 24:
-        pixmap = pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        
+    # Create pixmap with target size
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    
+    painter = QPainter(pixmap)
+    # Enable anti-aliasing for smoother edges
+    painter.setRenderHint(QPainter.Antialiasing)
+    renderer.render(painter)
+    painter.end()
+    
     return pixmap
 
 def get_icon(name: str, color_override=None) -> QIcon:
-    """Get a QIcon for an icon."""
-    pixmap = get_pixmap(name, color_override=color_override)
+    """Get a QIcon for an icon, using a high-res base for sharpness."""
+    # Use 64x64 as base for icons to stay sharp even on High DPI displays
+    pixmap = get_pixmap(name, size=64, color_override=color_override)
     return QIcon(pixmap)

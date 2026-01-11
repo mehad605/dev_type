@@ -335,6 +335,11 @@ class FoldersTab(QWidget):
         # Modern header section
         if DEBUG_STARTUP_TIMING:
             t = time.time()
+        
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setSpacing(8)
@@ -349,18 +354,20 @@ class FoldersTab(QWidget):
         icon_label = QLabel()
         icon_label.setPixmap(get_pixmap("FOLDER", size=32))
         
-        title_label = QLabel("Folders")
-        title_label.setStyleSheet("font-size: 18pt; font-weight: bold;")
+        self.title_label = QLabel("Folders")
+        self.title_label.setObjectName("folderTabTitle")
+        self.title_label.setStyleSheet("font-size: 18pt; font-weight: bold;")
         
         title_layout.addWidget(icon_label)
-        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.title_label)
         title_layout.addStretch()
         
         header_layout.addWidget(title_container)
         
-        desc_label = QLabel("Add folders containing code files you want to practice typing.")
-        desc_label.setStyleSheet("color: #888888; font-size: 10pt;")
-        header_layout.addWidget(desc_label)
+        self.desc_label = QLabel("Add folders containing code files you want to practice typing.")
+        self.desc_label.setObjectName("folderTabDesc")
+        self.desc_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 10pt;")
+        header_layout.addWidget(self.desc_label)
         
         self.layout.addWidget(header)
         if DEBUG_STARTUP_TIMING:
@@ -802,10 +809,63 @@ class FoldersTab(QWidget):
             return None
         widget = self.list.itemWidget(self.list.item(0))
         return widget.sizeHint() if widget else None
-        if isinstance(widget, FolderCardWidget):
-            return widget.sizeHint()
-        else:
-            return None
+
+    def apply_theme(self):
+        """Apply current theme to FoldersTab and all its children."""
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        # Update header labels
+        if hasattr(self, 'title_label'):
+            self.title_label.setStyleSheet(f"font-size: 18pt; font-weight: bold; color: {scheme.text_primary};")
+        if hasattr(self, 'desc_label'):
+            self.desc_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 10pt;")
+        
+        # Update toolbar buttons
+        self.add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {scheme.success_color};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                text-align: left;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {scheme.success_color};
+                opacity: 0.8;
+            }}
+        """)
+        
+        self.edit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {scheme.error_color};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                text-align: left;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {scheme.error_color};
+                opacity: 0.8;
+            }}
+            QPushButton:checked {{
+                background-color: {scheme.error_color};
+                border: 3px solid {scheme.accent_color};
+            }}
+        """)
+        
+        # Update FolderCardWidgets
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                widget._apply_style()
+                widget._update_icon()
 
 
 class MainWindow(QMainWindow):
@@ -2622,6 +2682,14 @@ class MainWindow(QMainWindow):
         # Update stats tab theme (if loaded)
         if hasattr(self, 'stats_tab') and hasattr(self.stats_tab, 'apply_theme'):
             self.stats_tab.apply_theme()
+        
+        # Update folders tab theme
+        if hasattr(self, 'folders_tab') and hasattr(self.folders_tab, 'apply_theme'):
+            self.folders_tab.apply_theme()
+            
+        # Update languages tab theme
+        if hasattr(self, 'languages_tab') and hasattr(self.languages_tab, 'apply_theme'):
+            self.languages_tab.apply_theme()
         
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] TOTAL apply_current_theme: {time.time() - t_total:.3f}s")
