@@ -636,6 +636,19 @@ class TypingAreaWidget(QTextEdit):
         text = event.text()
         modifiers = event.modifiers()
         
+        if key == Qt.Key_Escape:
+            self.reset_session()
+            event.accept()
+            return
+
+        # Ignore global shortcuts to let them bubble up to MainWindow
+        # We only handle Ctrl+P and Ctrl+Backspace here.
+        if (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
+            if not (key == Qt.Key_P and modifiers & Qt.ControlModifier) and \
+               not (key == Qt.Key_Backspace and modifiers & Qt.ControlModifier):
+                event.ignore()
+                return
+
         # Intercept Ctrl+P for pause/unpause (don't process as typing)
         if key == Qt.Key_P and modifiers == Qt.ControlModifier:
             # Toggle pause state
@@ -648,7 +661,7 @@ class TypingAreaWidget(QTextEdit):
             self.stats_updated.emit()
             event.accept()
             return
-        
+
         self._maybe_emit_first_key(event)
         
         # Check if engine is currently paused before processing keystroke

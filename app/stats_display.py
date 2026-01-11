@@ -6,91 +6,6 @@ from app import settings
 from app.ui_icons import get_pixmap
 
 
-class SparklineWidget(QWidget):
-    """Mini chart widget for visualizing data trends."""
-    
-    def __init__(self, color_hex="#88c0d0", parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.values = []
-        self.color_hex = color_hex
-        self.setFixedHeight(30)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-    def add_value(self, value: float):
-        self.values.append(value)
-        if len(self.values) > 50:  # Keep last 50 points
-            self.values.pop(0)
-        self.update()
-        
-    def set_color(self, color_hex):
-        self.color_hex = color_hex
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        width = self.width()
-        height = self.height()
-        
-        # Draw flat line if not enough data
-        if len(self.values) < 2:
-            color = QColor(self.color_hex)
-            pen = QPen(color, 2)
-            painter.setPen(pen)
-            # Draw a flat line at the bottom
-            y = height - 2
-            painter.drawLine(0, y, width, y)
-            
-            # Fill with very low opacity
-            gradient = QLinearGradient(0, 0, 0, height)
-            gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), 20))
-            gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
-            painter.fillRect(0, int(y), width, int(height - y), gradient)
-            return
-            
-        min_val = min(self.values)
-        max_val = max(self.values)
-        val_range = max_val - min_val if max_val != min_val else 1.0
-        
-        # Create path
-        path = QPainterPath()
-        
-        # Calculate points
-        points = []
-        step_x = width / (len(self.values) - 1)
-        
-        for i, val in enumerate(self.values):
-            x = i * step_x
-            # Normalize value to 0-1 range, then flip Y (0 is top)
-            normalized = (val - min_val) / val_range
-            y = height - (normalized * height)
-            # Add some padding so it doesn't touch edges exactly
-            y = height - 2 - (normalized * (height - 4))
-            points.append(QPointF(x, y))
-            
-        path.moveTo(points[0])
-        for p in points[1:]:
-            path.lineTo(p)
-            
-        # Draw line
-        color = QColor(self.color_hex)
-        pen = QPen(color, 2)
-        painter.setPen(pen)
-        painter.drawPath(path)
-        
-        # Optional: Fill under line
-        fill_path = QPainterPath(path)
-        fill_path.lineTo(width, height)
-        fill_path.lineTo(0, height)
-        fill_path.closeSubpath()
-        
-        gradient = QLinearGradient(0, 0, 0, height)
-        gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), 100))
-        gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
-        
-        painter.fillPath(fill_path, gradient)
 
 
 class StatsBox(QFrame):
@@ -104,7 +19,7 @@ class StatsBox(QFrame):
         self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(2)
         
         # Title
@@ -116,15 +31,11 @@ class StatsBox(QFrame):
         self.title_label.setFont(font)
         layout.addWidget(self.title_label)
         
-        # Sparkline
-        self.sparkline = SparklineWidget()
-        layout.addWidget(self.sparkline)
-        
         # Value
         self.value_label = QLabel("--")
         self.value_label.setAlignment(Qt.AlignCenter)
         value_font = QFont()
-        value_font.setPointSize(22)
+        value_font.setPointSize(28)
         value_font.setBold(True)
         self.value_label.setFont(value_font)
         layout.addWidget(self.value_label)
@@ -132,10 +43,8 @@ class StatsBox(QFrame):
         self.apply_theme()
     
     def set_value(self, value_str: str, raw_value: float = None):
-        """Update the displayed value and sparkline."""
+        """Update the displayed value."""
         self.value_label.setText(value_str)
-        if raw_value is not None:
-            self.sparkline.add_value(raw_value)
     
     def apply_theme(self):
         """Apply current theme colors."""
@@ -166,7 +75,6 @@ class StatsBox(QFrame):
         """)
         self.title_label.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
         self.value_label.setStyleSheet(f"color: {value_color}; background: transparent; border: none;")
-        self.sparkline.set_color(value_color)
 
 
 class KeystrokeBox(QFrame):
@@ -179,8 +87,8 @@ class KeystrokeBox(QFrame):
         self.setFrameShadow(QFrame.Raised)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(2)
         
         # Title
         self.title = QLabel("Keystrokes")
@@ -203,7 +111,7 @@ class KeystrokeBox(QFrame):
         grid.setContentsMargins(0, 0, 0, 0)
         
         count_font = QFont()
-        count_font.setPointSize(11)
+        count_font.setPointSize(13)
         count_font.setBold(True)
         
         # Correct
@@ -341,8 +249,8 @@ class InteractiveStatusBox(QFrame):
         self.is_finished = False
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(4)
         
         self.status_label = QLabel("Status")
         self.status_label.setAlignment(Qt.AlignCenter)
@@ -355,7 +263,7 @@ class InteractiveStatusBox(QFrame):
         self.status_text = QLabel("ACTIVE")
         self.status_text.setAlignment(Qt.AlignCenter)
         status_font = QFont()
-        status_font.setPointSize(14)
+        status_font.setPointSize(20)
         status_font.setBold(True)
         self.status_text.setFont(status_font)
         layout.addWidget(self.status_text)
@@ -363,7 +271,7 @@ class InteractiveStatusBox(QFrame):
         # Pause Button
         self.action_btn = QPushButton("Pause")
         self.action_btn.setCursor(Qt.PointingHandCursor)
-        self.action_btn.setFixedHeight(30)
+        self.action_btn.setFixedHeight(32)
         self.action_btn.clicked.connect(self.pause_clicked.emit)
         layout.addWidget(self.action_btn)
     
@@ -460,8 +368,8 @@ class StatsDisplayWidget(QWidget):
         self.error_history = []  # list of (second, errors_in_that_second)
         
         layout = QHBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 5, 15, 5)
         
         # WPM box
         self.wpm_box = StatsBox("Words Per Minute", value_key="wpm")

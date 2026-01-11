@@ -53,6 +53,7 @@ from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
 from app.stats_tab import StatsTab
+from app.shortcuts_tab import ShortcutsTab
 from app.ui_icons import get_pixmap, get_icon
 
 # Toggle for startup timing debug output - set to False in production
@@ -881,6 +882,8 @@ class MainWindow(QMainWindow):
     allow_continue_changed = Signal(bool)
     show_typed_changed = Signal(bool)
     show_ghost_text_changed = Signal(bool)
+    sound_enabled_changed = Signal(bool)
+    instant_death_changed = Signal(bool)
     ignored_patterns_changed = Signal()
     
     def __init__(self):
@@ -935,7 +938,7 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
             print(f"  [INIT] FoldersTab: {t_add - t:.3f}s")
-        self.tabs.addTab(self.folders_tab, "Folders")
+        self.tabs.addTab(self.folders_tab, get_icon("FOLDER"), "Folders")
         
         # --- Languages Tab (Immediate) ---
         if DEBUG_STARTUP_TIMING:
@@ -944,19 +947,19 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
             print(f"  [INIT] LanguagesTab: {t_add - t:.3f}s")
-        self.tabs.addTab(self.languages_tab, "Languages")
+        self.tabs.addTab(self.languages_tab, get_icon("CODE"), "Languages")
 
         # --- History Tab (Lazy) ---
         self.history_tab = QLabel("Loading History...")
         self.history_tab.setAlignment(Qt.AlignCenter)
         self.history_tab.setStyleSheet("color: #888888; font-size: 14pt;")
-        self.tabs.addTab(self.history_tab, "History")
+        self.tabs.addTab(self.history_tab, get_icon("CLOCK"), "History")
         
         # --- Stats Tab (Lazy) ---
         self.stats_tab = QLabel("Loading Stats...")
         self.stats_tab.setAlignment(Qt.AlignCenter)
         self.stats_tab.setStyleSheet("color: #888888; font-size: 14pt;")
-        self.tabs.addTab(self.stats_tab, "Stats")
+        self.tabs.addTab(self.stats_tab, get_icon("CHART"), "Stats")
         
         # --- Editor/Typing Tab (Lazy) ---
         # EditorTab is lightweight in init, but we want to defer its 'ensure_loaded'
@@ -966,13 +969,17 @@ class MainWindow(QMainWindow):
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
             print(f"  [INIT] EditorTab (init only): {t_add - t:.3f}s")
-        self.tabs.addTab(self.editor_tab, "Typing")
+        self.tabs.addTab(self.editor_tab, get_icon("TYPING"), "Typing")
 
         # --- Settings Tab (Lazy) ---
         self.settings_tab = QLabel("Loading Settings...")
         self.settings_tab.setAlignment(Qt.AlignCenter)
         self.settings_tab.setStyleSheet("color: #888888; font-size: 14pt;")
-        self.tabs.addTab(self.settings_tab, "Settings")
+        self.tabs.addTab(self.settings_tab, get_icon("SETTINGS"), "Settings")
+
+        # --- Shortcuts Tab (Immediate) ---
+        self.shortcuts_tab = ShortcutsTab()
+        self.tabs.addTab(self.shortcuts_tab, get_icon("KEYBOARD"), "Shortcuts")
 
         if DEBUG_STARTUP_TIMING:
             t = time.time()
@@ -1073,8 +1080,9 @@ class MainWindow(QMainWindow):
         index = self.tabs.indexOf(old_widget)
         if index != -1:
             is_current = (self.tabs.currentIndex() == index)
+            icon = self.tabs.tabIcon(index)
             self.tabs.removeTab(index)
-            self.tabs.insertTab(index, new_widget, label)
+            self.tabs.insertTab(index, new_widget, icon, label)
             if is_current:
                 self.tabs.setCurrentIndex(index)
             old_widget.deleteLater()
@@ -1118,6 +1126,136 @@ class MainWindow(QMainWindow):
             self.languages_tab.ensure_loaded()
             
         self._last_tab_index = index
+
+    def keyPressEvent(self, event):
+        """Handle global keyboard shortcuts."""
+        modifiers = event.modifiers()
+        key = event.key()
+        
+        # Ctrl + T: Cycle themes (Global)
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_T:
+            self._cycle_themes()
+            event.accept()
+            return
+            
+        # Alt + 1-7: Direct tab switching
+        if (modifiers & Qt.AltModifier) and not (modifiers & Qt.ControlModifier):
+            tab_index = -1
+            if key == Qt.Key_1: tab_index = 0
+            elif key == Qt.Key_2: tab_index = 1
+            elif key == Qt.Key_3: tab_index = 2
+            elif key == Qt.Key_4: tab_index = 3
+            elif key == Qt.Key_5: tab_index = 4
+            elif key == Qt.Key_6: tab_index = 5
+            elif key == Qt.Key_7: tab_index = 6
+            
+            if tab_index != -1 and tab_index < self.tabs.count():
+                self.tabs.setCurrentIndex(tab_index)
+                event.accept()
+                return
+
+        # Handle shortcuts when Typing Tab is active
+        if self.tabs.currentWidget() == self.editor_tab:
+            if (modifiers & Qt.ControlModifier):
+                if key == Qt.Key_P:
+                    # Toggle Pause/Resume
+                    if hasattr(self.editor_tab, 'toggle_pause'):
+                        self.editor_tab.toggle_pause()
+                    event.accept()
+                    return
+                elif key == Qt.Key_R:
+                    # Random File
+                    if hasattr(self.editor_tab, 'file_tree') and hasattr(self.editor_tab.file_tree, '_on_random_clicked'):
+                        self.editor_tab.file_tree._on_random_clicked()
+                    event.accept()
+                    return
+                elif key == Qt.Key_D:
+                    # Toggle Instant Death
+                    current = settings.get_setting("instant_death_mode", "0") == "1"
+                    self._handle_instant_death_button(not current)
+                    event.accept()
+                    return
+            elif (modifiers & Qt.AltModifier):
+                if key == Qt.Key_R:
+                    # Start Race
+                    if hasattr(self.editor_tab, 'on_ghost_clicked'):
+                        self.editor_tab.on_ghost_clicked()
+                    event.accept()
+                    return
+
+        # Global Toggles
+        if (modifiers & Qt.ControlModifier):
+            if key == Qt.Key_L:
+                # Toggle Lenient Mode
+                current = settings.get_setting("allow_continue_mistakes", "0") == "1"
+                self._handle_allow_continue_button(not current)
+                event.accept()
+                return
+            elif key == Qt.Key_G:
+                # Toggle Show Ghost Text
+                current = settings.get_setting("show_ghost_text", "1") == "1"
+                self._handle_show_ghost_text_button(not current)
+                event.accept()
+                return
+            elif key == Qt.Key_M:
+                # Toggle Sound/Mute
+                current = settings.get_setting("sound_enabled", "1") == "1"
+                self._handle_sound_enabled_button(not current)
+                self.sound_enabled_changed.emit(not current)
+                event.accept()
+                return
+            elif key == Qt.Key_S:
+                # Toggle Show What You Type
+                current = settings.get_setting("show_typed_characters", "0") == "1"
+                self._handle_show_typed_button(not current)
+                event.accept()
+                return
+
+        super().keyPressEvent(event)
+
+    def _cycle_themes(self):
+        """Cycle through all available themes."""
+        from app.themes import THEMES, _get_custom_themes
+        
+        # Get all available schemes
+        scheme_names = list(THEMES.get("dark", {}).keys())
+        customs = _get_custom_themes()
+        if "dark" in customs:
+            scheme_names.extend(list(customs["dark"].keys()))
+        
+        # Deduplicate and sort
+        scheme_names = sorted(list(set(scheme_names)))
+        if not scheme_names:
+            return
+            
+        # Get current scheme
+        current = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        
+        # Find next index
+        try:
+            idx = scheme_names.index(current)
+            next_idx = (idx + 1) % len(scheme_names)
+        except ValueError:
+            next_idx = 0
+            
+        next_scheme = scheme_names[next_idx]
+        
+        # Apply next theme
+        settings.set_setting("dark_scheme", next_scheme)
+        
+        # Update combo box if it exists (is loaded)
+        if hasattr(self, 'scheme_combo'):
+            self.scheme_combo.blockSignals(True)
+            idx = self.scheme_combo.findText(next_scheme)
+            if idx >= 0:
+                self.scheme_combo.setCurrentIndex(idx)
+            self.scheme_combo.blockSignals(False)
+            
+        # Apply theme globally
+        self.apply_current_theme()
+        
+        # Show a momentary notification (optional, but good for feedback)
+        # self.statusBar().showMessage(f"Theme: {next_scheme}", 2000)
 
     def closeEvent(self, event):
         """Ensure active typing progress is saved before exit."""
@@ -1373,6 +1511,39 @@ class MainWindow(QMainWindow):
 
         show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
+        
+        # Instant Death option (also in Settings)
+        death_label = QLabel("Instant Death Mode")
+        death_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(death_label)
+
+        death_description = QLabel(
+            "Immediately reset to the beginning of the file if any mistake is made. Hardcore mode."
+        )
+        death_description.setWordWrap(True)
+        death_description.setStyleSheet("color: #888888; font-size: 9pt;")
+        typing_behavior_layout.addWidget(death_description)
+
+        death_button_row = QHBoxLayout()
+        death_button_row.setSpacing(8)
+
+        self.instant_death_enabled_btn = QPushButton("Enabled")
+        self.instant_death_disabled_btn = QPushButton("Disabled")
+        for btn in (self.instant_death_enabled_btn, self.instant_death_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(34)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.instant_death_enabled_btn.clicked.connect(lambda: self._handle_instant_death_button(True))
+        self.instant_death_disabled_btn.clicked.connect(lambda: self._handle_instant_death_button(False))
+
+        death_button_row.addWidget(self.instant_death_enabled_btn)
+        death_button_row.addWidget(self.instant_death_disabled_btn)
+        death_button_row.addStretch()
+        typing_behavior_layout.addLayout(death_button_row)
+
+        instant_death = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
+        self._update_instant_death_buttons(instant_death)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -2477,6 +2648,26 @@ class MainWindow(QMainWindow):
         self.cursor_blink_btn.setStyleSheet(active_style if is_blinking else inactive_style)
         self.cursor_static_btn.setStyleSheet(active_style if not is_blinking else inactive_style)
 
+    def _update_cursor_style_buttons(self, style_str: str):
+        """Update visual state of cursor style buttons."""
+        active_style = (
+            "QPushButton { background-color: #5e81ac; color: white; border: 2px solid #88c0d0; border-radius: 8px; }"
+        )
+        inactive_style = (
+            "QPushButton { background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 8px; }"
+            "QPushButton:hover { border: 1px solid #88c0d0; }"
+        )
+        
+        btns = {
+            "block": self.cursor_block_btn,
+            "underline": self.cursor_underline_btn,
+            "beam": self.cursor_beam_btn
+        }
+        
+        for k, btn in btns.items():
+            btn.setChecked(k == style_str)
+            btn.setStyleSheet(active_style if k == style_str else inactive_style)
+
     def _handle_cursor_style_button(self, style_str: str):
         """Handle cursor style button click."""
         current = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
@@ -2720,6 +2911,36 @@ class MainWindow(QMainWindow):
         self.sound_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
         self.sound_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
     
+    def _handle_show_ghost_text_button(self, enabled: bool):
+        """Handle clicks on the show-ghost-text buttons."""
+        self._update_show_ghost_text_buttons(enabled)
+        settings.set_setting("show_ghost_text", "1" if enabled else "0")
+        self.show_ghost_text_changed.emit(enabled)
+
+    def _update_instant_death_buttons(self, enabled: bool):
+        """Refresh the button styles for the instant-death setting."""
+        if not hasattr(self, 'instant_death_enabled_btn'): return
+        
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
+        
+        self.instant_death_enabled_btn.setChecked(enabled)
+        self.instant_death_disabled_btn.setChecked(not enabled)
+        
+        self.instant_death_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.instant_death_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_instant_death_button(self, enabled: bool):
+        """Handle clicks on the instant-death buttons."""
+        self._update_instant_death_buttons(enabled)
+        settings.set_setting("instant_death_mode", "1" if enabled else "0")
+        self.instant_death_changed.emit(enabled)
+
     def _handle_sound_enabled_button(self, enabled: bool):
         """Handle sound enabled/disabled button clicks."""
         self._update_sound_enabled_buttons(enabled)
@@ -2727,6 +2948,7 @@ class MainWindow(QMainWindow):
         
         from app.sound_manager import get_sound_manager
         get_sound_manager().set_enabled(enabled)
+        self.sound_enabled_changed.emit(enabled)
     
     def on_sound_profile_changed(self, index):
         """Handle sound profile selection change."""
@@ -2966,32 +3188,45 @@ class MainWindow(QMainWindow):
         # Update typing area colors if editor tab is initialized
         if DEBUG_STARTUP_TIMING:
             t = time.time()
-        if hasattr(self, 'editor_tab') and hasattr(self.editor_tab, 'typing_area'):
-            self.update_typing_colors(scheme)
-            # Update stats display theme
-            if hasattr(self.editor_tab, 'stats_display'):
-                self.editor_tab.stats_display.apply_theme()
+        if hasattr(self, 'editor_tab'):
+            self.editor_tab.apply_theme()
+            if hasattr(self.editor_tab, 'typing_area'):
+                self.update_typing_colors(scheme)
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] update_typing_colors: {time.time() - t:.3f}s")
         
-        # Update stats tab theme (if loaded)
-        if hasattr(self, 'stats_tab') and hasattr(self.stats_tab, 'apply_theme'):
-            self.stats_tab.apply_theme()
-        
-        # Update folders tab theme
+        # Update specific tabs
         if hasattr(self, 'folders_tab') and hasattr(self.folders_tab, 'apply_theme'):
             self.folders_tab.apply_theme()
             
-        # Update languages tab theme
         if hasattr(self, 'languages_tab') and hasattr(self.languages_tab, 'apply_theme'):
             self.languages_tab.apply_theme()
             
-        # Update history tab theme (if loaded)
-        if hasattr(self, 'history_tab') and hasattr(self.history_tab, 'apply_theme'):
+        if hasattr(self, 'history_tab') and not isinstance(self.history_tab, QLabel) and hasattr(self.history_tab, 'apply_theme'):
             self.history_tab.apply_theme()
+            
+        if hasattr(self, 'stats_tab') and not isinstance(self.stats_tab, QLabel) and hasattr(self.stats_tab, 'apply_theme'):
+            self.stats_tab.apply_theme()
         
+        if hasattr(self, 'shortcuts_tab') and hasattr(self.shortcuts_tab, 'apply_theme'):
+            self.shortcuts_tab.apply_theme()
+            
+        if not isinstance(self.settings_tab, QLabel):
+            self.update_color_buttons_from_theme()
+
+        # Update tab icons (ensures icons match theme colors)
+        self.tabs.setTabIcon(self.tabs.indexOf(self.folders_tab), get_icon("FOLDER"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.languages_tab), get_icon("CODE"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.history_tab), get_icon("CLOCK"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.stats_tab), get_icon("CHART"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.editor_tab), get_icon("TYPING"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.settings_tab), get_icon("SETTINGS"))
+        self.tabs.setTabIcon(self.tabs.indexOf(self.shortcuts_tab), get_icon("KEYBOARD"))
+
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] TOTAL apply_current_theme: {time.time() - t_total:.3f}s")
+        
+        self.colors_changed.emit()
     
     def update_typing_colors(self, scheme):
         """Update typing area highlighter colors from scheme."""

@@ -251,6 +251,9 @@ class EditorTab(QWidget):
             window.pause_delay_changed.connect(self.typing_area.update_pause_delay)
             window.allow_continue_changed.connect(self.typing_area.update_allow_continue)
             window.show_typed_changed.connect(self.typing_area.update_show_typed_characters)
+            window.show_ghost_text_changed.connect(self.typing_area.update_show_ghost_text)
+            window.sound_enabled_changed.connect(self.sound_widget.set_enabled)
+            window.instant_death_changed.connect(lambda enabled: self._set_instant_death_mode(enabled, persist=False))
             window.colors_changed.connect(self.apply_theme)
             
             # Apply initial settings
@@ -269,13 +272,13 @@ class EditorTab(QWidget):
         # Bottom section: Progress Bars + Stats Display
         self.bottom_container = QWidget()
         bottom_layout = QVBoxLayout(self.bottom_container)
-        bottom_layout.setContentsMargins(0, 5, 0, 0)
-        bottom_layout.setSpacing(5)
+        bottom_layout.setContentsMargins(0, 2, 0, 0)
+        bottom_layout.setSpacing(2)
         
         # User progress bar
         user_progress_widget = QWidget()
         user_progress_layout = QHBoxLayout(user_progress_widget)
-        user_progress_layout.setContentsMargins(5, 3, 5, 3)
+        user_progress_layout.setContentsMargins(5, 1, 5, 1)
         user_progress_layout.setSpacing(10)
         self.user_label = QLabel("You:")
         self.user_label.setStyleSheet("color: #888888; font-weight: bold;")
@@ -293,7 +296,7 @@ class EditorTab(QWidget):
         # Ghost progress bar
         ghost_progress_widget = QWidget()
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
-        ghost_progress_layout.setContentsMargins(5, 3, 5, 3)
+        ghost_progress_layout.setContentsMargins(5, 1, 5, 1)
         ghost_progress_layout.setSpacing(10)
         self.ghost_label = QLabel("Ghost:")
         ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
@@ -320,7 +323,7 @@ class EditorTab(QWidget):
         bottom_layout.addWidget(self.stats_display)
         
         v_splitter.addWidget(self.bottom_container)
-        v_splitter.setSizes([750, 250])
+        v_splitter.setSizes([920, 80])
         
         right_layout.addWidget(v_splitter)
         h_splitter.addWidget(right_pane)
@@ -484,7 +487,11 @@ class EditorTab(QWidget):
 
     def on_instant_death_toggled(self, enabled: bool):
         """Handle instant death mode toggle."""
-        self._set_instant_death_mode(enabled, persist=True)
+        window = self.window()
+        if hasattr(window, '_handle_instant_death_button'):
+            window._handle_instant_death_button(enabled)
+        else:
+            self._set_instant_death_mode(enabled, persist=True)
     
     def _update_instant_death_style(self):
         """Update instant death button styling based on state."""
@@ -700,11 +707,14 @@ class EditorTab(QWidget):
     
     def on_sound_enabled_changed(self, enabled: bool):
         """Handle sound enabled/disabled from sound widget."""
-        from app import settings
-        from app.sound_manager import get_sound_manager
-        
-        settings.set_setting("sound_enabled", "1" if enabled else "0")
-        get_sound_manager().set_enabled(enabled)
+        window = self.window()
+        if hasattr(window, '_handle_sound_enabled_button'):
+            window._handle_sound_enabled_button(enabled)
+        else:
+            from app import settings
+            from app.sound_manager import get_sound_manager
+            settings.set_setting("sound_enabled", "1" if enabled else "0")
+            get_sound_manager().set_enabled(enabled)
     
     def toggle_pause(self):
         """Toggle pause/unpause state."""
@@ -1207,7 +1217,7 @@ class EditorTab(QWidget):
         
         self.file_tree.setEnabled(True)
         self.reset_btn.setEnabled(True)
-        self.reset_btn.setText("⟲ Reset to Top")
+        self.reset_btn.setText("Reset to Top")
         
         self.ghost_btn.setIcon(get_icon("GHOST"))
         self.ghost_btn.setText("") # Reset text as it might have been set to "🛑 Cancel"
