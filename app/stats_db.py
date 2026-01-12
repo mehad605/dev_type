@@ -2,7 +2,7 @@
 import sqlite3
 from datetime import datetime
 from typing import Any, Optional, Dict, List, Iterable
-from app.settings import _db_file, _connect
+from app.settings import _connect
 import app.settings as settings
 
 

@@ -11,7 +11,8 @@ from app import settings
 
 
 def _cache_path() -> Path:
-    return settings.get_data_dir() / "language_snapshot.json"
+    from app.portable_data import get_data_manager
+    return get_data_manager().get_active_profile_dir() / "language_snapshot.json"
 
 
 def build_signature(folders: Iterable[str]) -> str:

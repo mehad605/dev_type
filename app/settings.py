@@ -129,29 +129,6 @@ _settings_cache_loaded: bool = False
 _db_error_shown: bool = False
 
 
-def _show_db_error(error: Exception):
-    """Show a user-friendly database error dialog (only once per session)."""
-    from PySide6.QtWidgets import QMessageBox, QApplication
-    
-    # Only show if there's an active application
-    app = QApplication.instance()
-    if app is None:
-        return
-    
-    msg = QMessageBox()
-    msg.setIcon(QMessageBox.Icon.Warning)
-    msg.setWindowTitle("Database Error")
-    msg.setText("Dev Type encountered a database error.")
-    msg.setInformativeText(
-        "Your settings and statistics may not be saved. "
-        "The app will continue to work, but changes may be lost.\n\n"
-        "Try restarting the application. If the problem persists, "
-        "check that you have write permissions to the data folder."
-    )
-    msg.setDetailedText(str(error))
-    msg.exec()
-
-
 def _reset_settings_cache():
     """Clear the in-memory settings cache."""
     global _settings_cache_loaded
@@ -195,35 +172,27 @@ def get_data_dir() -> Path:
     return d
 
 
-def _db_file(path: Optional[str] = None) -> Path:
-    global _current_db_path
+def get_current_db_path() -> Optional[Path]:
+    return _current_db_path
+
+
+def init_db(path: Optional[str] = None):
+    """
+    Initialize the database at the given path.
+    If path is None, it tries to use the existing _current_db_path.
+    If that is also None, it falls back to the default location.
+    """
+    global _db_initialized, _current_db_path
+    
     if path:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         _current_db_path = p
-        return p
-    if _current_db_path:
-        return _current_db_path
-    
-    # Always use portable database path
-    if _PORTABLE_MODE_AVAILABLE:
-        portable_db = get_database_path()
-        if portable_db:
-            return portable_db
-    
-    # Fallback
-    return get_data_dir() / "typing_stats.db"
+    elif _current_db_path is None:
+        # Resolve path from portable data manager (Profile aware)
+        _current_db_path = get_database_path()
 
-
-def init_db(path: Optional[str] = None):
-    global _db_initialized
-    db_path = _db_file(path)
-
-    # Avoid re-running initialization work repeatedly for the default DB.
-    if path is None and _db_initialized:
-        return
-
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(_current_db_path)
     cur = conn.cursor()
     cur.execute(
         """
@@ -253,16 +222,19 @@ def init_db(path: Optional[str] = None):
     from app import stats_db
     stats_db.init_stats_tables()
 
-    if path is None:
-        _db_initialized = True
-
+    _db_initialized = True
     _reset_settings_cache()
 
 
-def _connect(path: Optional[str] = None):
-    global _db_error_shown
+def _connect():
+    global _db_error_shown, _current_db_path
+    
+    if _current_db_path is None:
+        # Determine path if not set (first run implicit init)
+        init_db()
+        
     try:
-        conn = sqlite3.connect(_db_file(path), timeout=10.0)
+        conn = sqlite3.connect(_current_db_path, timeout=10.0)
         # Apply pragmatic defaults tuned for interactive desktop apps.
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")

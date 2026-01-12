@@ -100,6 +100,7 @@ class ShortcutsTab(QWidget):
         # Global Shortcuts
         self.add_section("Global", [
             ("Ctrl + T", "Cycle through available themes"),
+            ("Ctrl + Shift + P", "Switch Profile"),
             ("Alt + 1-7", "Switch between tabs"),
             ("Ctrl + L", "Toggle Lenient Mode (No mistake fixing)"),
             ("Ctrl + G", "Toggle Ghost Text visibility"),

@@ -118,11 +118,13 @@ class SoundManager(QObject):
             return False
         
         # Get custom sounds directory from portable data manager
+        # Get custom sounds directory from portable data manager
         try:
-            from app.portable_data import get_data_dir
-            custom_sounds_dir = get_data_dir() / "custom_sounds"
+            from app.portable_data import get_data_manager
+            # Store custom sounds in shared/sounds/custom
+            custom_sounds_dir = get_data_manager().get_shared_dir() / "sounds" / "custom"
         except:
-            # Fallback to old location
+            # Fallback
             custom_sounds_dir = self.sounds_dir / "custom"
         
         custom_sounds_dir.mkdir(parents=True, exist_ok=True)
@@ -178,8 +180,8 @@ class SoundManager(QObject):
         if sound_file and Path(sound_file).exists():
             # Get custom sounds directory
             try:
-                from app.portable_data import get_data_dir
-                custom_sounds_dir = get_data_dir() / "custom_sounds"
+                from app.portable_data import get_data_manager
+                custom_sounds_dir = get_data_manager().get_shared_dir() / "sounds" / "custom"
             except:
                 custom_sounds_dir = self.sounds_dir / "custom"
             
@@ -268,8 +270,8 @@ class SoundManager(QObject):
             elif "file" in profile_data:
                 # Legacy support
                 try:
-                    from app.portable_data import get_data_dir
-                    custom_sounds_dir = get_data_dir() / "custom_sounds"
+                    from app.portable_data import get_data_manager
+                    custom_sounds_dir = get_data_manager().get_shared_dir() / "sounds" / "custom"
                 except:
                     custom_sounds_dir = self.sounds_dir / "custom"
                 sound_path = custom_sounds_dir / profile / profile_data["file"]
@@ -352,8 +354,8 @@ class SoundManager(QObject):
         else:
              # Fallback
             try:
-                from app.portable_data import get_data_dir
-                custom_sounds_dir = get_data_dir() / "custom_sounds"
+                from app.portable_data import get_data_manager
+                custom_sounds_dir = get_data_manager().get_shared_dir() / "sounds" / "custom"
             except:
                 custom_sounds_dir = self.sounds_dir / "custom"
             path = custom_sounds_dir / profile_id / profile_data["file"]

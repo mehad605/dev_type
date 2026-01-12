@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QTextEdit,
     QRadioButton,
+    QLayout,
     QGridLayout,
     QInputDialog,
 )
@@ -54,8 +55,13 @@ from app.history_tab import HistoryTab
 from app.editor_tab import EditorTab
 from app.stats_tab import StatsTab
 from app.shortcuts_tab import ShortcutsTab
+from app.ui_profile_widgets import ProfileTrigger
+from app.ui_profile_selector import ProfileManagerDialog
+from app.profile_manager import get_profile_manager
+from app.profile_transition import ProfileTransitionOverlay # NEW
+from PySide6.QtWidgets import QGraphicsBlurEffect # NEW
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve # NEW
 from app.ui_icons import get_pixmap, get_icon
-
 # Toggle for startup timing debug output - set to False in production
 DEBUG_STARTUP_TIMING = True
 
@@ -926,8 +932,77 @@ class MainWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         
-        self.resize(900, 600)
+        self.resize(1000, 700)
+        
+        # --- Root Layout Strategy for Layers ---
+        self.central_widget_container = QWidget()
+        self.setCentralWidget(self.central_widget_container)
+        
+        self.stack_layout = QStackedLayout(self.central_widget_container)
+        self.stack_layout.setStackingMode(QStackedLayout.StackAll)
+        
+        # Layer 1: Content Container (will be blurred)
+        self.content_container = QWidget()
+        self.content_layout = QVBoxLayout(self.content_container)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
+        
+        # Setup Blur Effect (Attached to PROXY, not content)
+        self.blur_effect = QGraphicsBlurEffect()
+        self.blur_effect.setBlurRadius(0) 
+        
+        self.stack_layout.addWidget(self.content_container)
+        
+        # Layer 2: Proxy Label for High-Fidelity Blur Transition
+        self.proxy_label = QLabel()
+        self.proxy_label.setScaledContents(True) # In case of slight resize
+        self.proxy_label.setGraphicsEffect(self.blur_effect) # Apply blur here
+        self.proxy_label.hide()
+        self.stack_layout.addWidget(self.proxy_label)
+        
+        # Setup Tabs (add to content layer)
         self.tabs = QTabWidget()
+        self.tabs.tabBar().setIconSize(QSize(18, 18))
+        self.content_layout.addWidget(self.tabs)
+        
+        # Layer 3: Transition Overlay (sits on top)
+        self.transition_overlay = ProfileTransitionOverlay(self)
+        self.stack_layout.addWidget(self.transition_overlay)
+        
+        # Profile Trigger (Top Right)
+        self.pm = get_profile_manager()
+        curr_profile = self.pm.get_active_profile()
+        # Find image path for current profile
+        all_profiles = self.pm.get_all_profiles()
+        p_data = next((p for p in all_profiles if p["name"] == curr_profile), None)
+        img_path = p_data["image"] if p_data else None
+        
+        self.profile_trigger = ProfileTrigger(curr_profile, img_path)
+        self.profile_trigger.clicked.connect(self.open_profile_manager)
+        
+        # Wrap in container to add right margin
+        trigger_container = QWidget()
+        # Transparent background ensures no rectangular box appears around the pill
+        trigger_container.setStyleSheet("background: transparent; border: none;")
+
+        trigger_layout = QHBoxLayout(trigger_container)
+
+        # VERTICAL CENTERING:
+        # Margin format: (Left, Top, Right, Bottom)
+        # Tab bar is ~40px high, button is now 36px
+        # (40-36)/2 = 2px for perfect centering
+        # We keep 12px on Right to avoid the window edge.
+        trigger_layout.setContentsMargins(0, 2, 12, 2) 
+        trigger_layout.setSpacing(0)
+        trigger_layout.setAlignment(Qt.AlignVCenter) # Vertical centering
+
+        trigger_layout.addWidget(self.profile_trigger)
+        trigger_layout.setSizeConstraint(QLayout.SetFixedSize)
+
+        self.tabs.setCornerWidget(trigger_container, Qt.TopRightCorner)
+        trigger_container.setAttribute(Qt.WA_TransparentForMouseEvents, False) # Ensure container doesn't block
+
+        # Tabs
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
         
@@ -971,19 +1046,19 @@ class MainWindow(QMainWindow):
             print(f"  [INIT] EditorTab (init only): {t_add - t:.3f}s")
         self.tabs.addTab(self.editor_tab, get_icon("TYPING"), "Typing")
 
+        # --- Shortcuts Tab (Immediate) ---
+        self.shortcuts_tab = ShortcutsTab()
+        self.tabs.addTab(self.shortcuts_tab, get_icon("KEYBOARD"), "Shortcuts")
+
         # --- Settings Tab (Lazy) ---
         self.settings_tab = QLabel("Loading Settings...")
         self.settings_tab.setAlignment(Qt.AlignCenter)
         self.settings_tab.setStyleSheet("color: #888888; font-size: 14pt;")
         self.tabs.addTab(self.settings_tab, get_icon("SETTINGS"), "Settings")
 
-        # --- Shortcuts Tab (Immediate) ---
-        self.shortcuts_tab = ShortcutsTab()
-        self.tabs.addTab(self.shortcuts_tab, get_icon("KEYBOARD"), "Shortcuts")
-
         if DEBUG_STARTUP_TIMING:
             t = time.time()
-        self.setCentralWidget(self.tabs)
+        # self.setCentralWidget(self.tabs) # Already added to content_layout earlier
         self._last_tab_index = self.tabs.currentIndex()
         self.tabs.currentChanged.connect(self._on_tab_changed)
         if DEBUG_STARTUP_TIMING:
@@ -996,6 +1071,9 @@ class MainWindow(QMainWindow):
         self._connect_settings_signals()
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Connect signals: {time.time() - t:.3f}s")
+        
+        # Connect profile manager signals
+        self.pm.profile_updated.connect(self._on_profile_updated)
         
         # Load custom fonts
         self._load_custom_fonts()
@@ -1135,6 +1213,12 @@ class MainWindow(QMainWindow):
         # Ctrl + T: Cycle themes (Global)
         if (modifiers & Qt.ControlModifier) and key == Qt.Key_T:
             self._cycle_themes()
+            event.accept()
+            return
+            
+        # Ctrl + Shift + P: Open Profile Switcher (Global)
+        if (modifiers & Qt.ControlModifier) and (modifiers & Qt.ShiftModifier) and key == Qt.Key_P:
+            self.open_profile_manager()
             event.accept()
             return
             
@@ -1284,12 +1368,12 @@ class MainWindow(QMainWindow):
         # === Search Bar Setup ===
         search_container = QWidget()
         search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(40, 20, 40, 10) # Match settings margins
+        search_layout.setContentsMargins(40, 10, 40, 5) # Match settings margins
         
         self.settings_search_input = QLineEdit()
         self.settings_search_input.setPlaceholderText("Search settings...")
         self.settings_search_input.setClearButtonEnabled(True)
-        self.settings_search_input.setMinimumHeight(36)
+        self.settings_search_input.setMinimumHeight(30)
         # Style similar to VS Code - a bit darker/prominent
         self.settings_search_input.setStyleSheet("""
             QLineEdit {
@@ -1324,7 +1408,7 @@ class MainWindow(QMainWindow):
         self.settings_scroll_widget = settings_widget # Save ref for search
         s_layout = QVBoxLayout(settings_widget)
         # Add padding to sides as requested
-        s_layout.setContentsMargins(40, 20, 40, 20)
+        s_layout.setContentsMargins(40, 10, 40, 10)
         
         if DEBUG_STARTUP_TIMING:
             print(f"    [SettingsTab] Basic setup: {time.time() - t:.3f}s")
@@ -1349,7 +1433,7 @@ class MainWindow(QMainWindow):
         self.confirm_del_disabled_btn = QPushButton("Disabled")
         for btn in (self.confirm_del_enabled_btn, self.confirm_del_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
             
         self.confirm_del_enabled_btn.clicked.connect(lambda: self._handle_confirm_del_button(True))
@@ -1432,7 +1516,7 @@ class MainWindow(QMainWindow):
         self.allow_continue_disabled_btn = QPushButton("Disabled")
         for btn in (self.allow_continue_enabled_btn, self.allow_continue_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
 
         self.allow_continue_enabled_btn.clicked.connect(lambda: self._handle_allow_continue_button(True))
@@ -1465,7 +1549,7 @@ class MainWindow(QMainWindow):
         self.show_typed_disabled_btn = QPushButton("Disabled")
         for btn in (self.show_typed_enabled_btn, self.show_typed_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
 
         self.show_typed_enabled_btn.clicked.connect(lambda: self._handle_show_typed_button(True))
@@ -1498,7 +1582,7 @@ class MainWindow(QMainWindow):
         self.show_ghost_disabled_btn = QPushButton("Disabled")
         for btn in (self.show_ghost_enabled_btn, self.show_ghost_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
 
         self.show_ghost_enabled_btn.clicked.connect(lambda: self._handle_show_ghost_text_button(True))
@@ -1531,7 +1615,7 @@ class MainWindow(QMainWindow):
         self.instant_death_disabled_btn = QPushButton("Disabled")
         for btn in (self.instant_death_enabled_btn, self.instant_death_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
 
         self.instant_death_enabled_btn.clicked.connect(lambda: self._handle_instant_death_button(True))
@@ -1821,7 +1905,7 @@ class MainWindow(QMainWindow):
         
         for btn in (self.cursor_blink_btn, self.cursor_static_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
             
         self.cursor_blink_btn.clicked.connect(lambda: self._handle_cursor_type_button("blinking"))
@@ -2227,7 +2311,7 @@ class MainWindow(QMainWindow):
         self.sound_disabled_btn = QPushButton("Disabled")
         for btn in (self.sound_enabled_btn, self.sound_disabled_btn):
             btn.setCheckable(True)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
         
         self.sound_enabled_btn.clicked.connect(lambda: self._handle_sound_enabled_button(True))
@@ -2377,13 +2461,6 @@ class MainWindow(QMainWindow):
         # Items are mainly GroupBoxes.
         # Inside GroupBoxes are Layouts (Form or VBox).
         # We check if GroupBox title matches OR any internal widget matches.
-        
-        # Retrieve the scroll area's widget (settings_widget)
-        # Note: self.tabs contains the container_widget created above. 
-        # We need to access the scroll area inside it? 
-        # Actually, self.settings_search_input is bound to this method, so 'self' is MainWindow.
-        # We need access to 's_layout' or 'settings_widget'.
-        # We can find it via children or store it as self.settings_widget.
         
         # Let's assume we stored it (we didn't yet, so let's rely on finding it or logic update).
         # BETTER: Save settings_widget as self.settings_scroll_widget
@@ -3207,6 +3284,9 @@ class MainWindow(QMainWindow):
             
         if hasattr(self, 'stats_tab') and not isinstance(self.stats_tab, QLabel) and hasattr(self.stats_tab, 'apply_theme'):
             self.stats_tab.apply_theme()
+            
+        if hasattr(self, 'profile_trigger') and hasattr(self.profile_trigger, 'apply_theme'):
+            self.profile_trigger.apply_theme()
         
         if hasattr(self, 'shortcuts_tab') and hasattr(self.shortcuts_tab, 'apply_theme'):
             self.shortcuts_tab.apply_theme()
@@ -3464,6 +3544,153 @@ class MainWindow(QMainWindow):
             
         if hasattr(self, 'stats_tab') and not isinstance(self.stats_tab, QLabel):
             self.stats_tab.refresh()
+
+
+
+
+    def start_profile_transition(self, target_profile: str):
+        """Start the high-fidelity focus-switch transition."""
+        if target_profile == self.pm.get_active_profile():
+            return
+            
+        # Get image for overlay
+        all_p = self.pm.get_all_profiles()
+        p_data = next((p for p in all_p if p["name"] == target_profile), None)
+        img_path = p_data["image"] if p_data else None
+        
+        # 1. Prepare Proxy with Screenshot of CURRENT state
+        QApplication.processEvents() # Ensure rendering is current
+        screenshot = self.content_container.grab()
+        self.proxy_label.setPixmap(screenshot)
+        self.proxy_label.resize(self.content_container.size())
+        self.proxy_label.show()
+        self.proxy_label.raise_() # Ensure it sits above content
+        
+        # 2. Blur Animation (0 -> 20px) on PROXY
+        self.blur_anim = QPropertyAnimation(self.blur_effect, b"blurRadius")
+        self.blur_anim.setDuration(400)
+        self.blur_anim.setStartValue(0)
+        self.blur_anim.setEndValue(20)
+        self.blur_anim.setEasingCurve(QEasingCurve.OutQuad)
+        self.blur_anim.start()
+        
+        # 3. Start Overlay
+        self.transition_overlay.start_transition(
+            target_profile, 
+            img_path, 
+            lambda: self._finish_profile_switch(target_profile)
+        )
+
+    def _finish_profile_switch(self, target_profile: str):
+        """Called when overlay animation completes."""
+        # 4. Data Swap (In-Place)
+        self.switch_profile(target_profile)
+        
+        # Force layout update to ensure new theme/data is rendered
+        QApplication.processEvents()
+        
+        # 5. Capture NEW state for unblurring
+        # We need to make sure content_container has updated its look
+        screenshot = self.content_container.grab()
+        self.proxy_label.setPixmap(screenshot)
+        
+        # 6. Reverse Blur (20 -> 0px)
+        self.unblur_anim = QPropertyAnimation(self.blur_effect, b"blurRadius")
+        self.unblur_anim.setDuration(400)
+        self.unblur_anim.setStartValue(20)
+        self.unblur_anim.setEndValue(0)
+        self.unblur_anim.setEasingCurve(QEasingCurve.InQuad)
+        
+        # Hide BOTH proxy and overlay when done
+        self.unblur_anim.finished.connect(self.proxy_label.hide)
+        self.unblur_anim.finished.connect(self.transition_overlay.hide)
+        
+        self.unblur_anim.start()
+        
+        # 7. Switch to Folders Tab (index 0)
+        self.tabs.setCurrentIndex(0)
+
+    def open_profile_manager(self):
+        """Open the profile manager dialog."""
+        dialog = ProfileManagerDialog(parent=self)
+        
+        # Variable to capture selection
+        selection = {"name": None}
+        
+        def on_selected(name):
+            selection["name"] = name
+            
+        dialog.profile_selected.connect(on_selected)
+        dialog.exec()
+        
+        if selection["name"]:
+            self.start_profile_transition(selection["name"])
+        
+    def _on_profile_updated(self, name):
+        """Handle profile information (name/image) updates."""
+        # Only update if it's the active profile
+        if name == self.pm.get_active_profile():
+            all_profiles = self.pm.get_all_profiles()
+            p_data = next((p for p in all_profiles if p["name"] == name), None)
+            img_path = p_data["image"] if p_data else None
+            self.profile_trigger.update_profile(name, img_path)
+            
+    def switch_profile(self, name):
+        """Switch profile and reload data in-place."""
+        if name == self.pm.get_active_profile():
+            return
+            
+        # 1. Switch Backend & DB
+        self.pm.switch_profile(name)
+        db_path = self.pm.get_current_db_path()
+        settings.init_db(str(db_path))
+        
+        # 2. Update Profile Trigger
+        all_profiles = self.pm.get_all_profiles()
+        p_data = next((p for p in all_profiles if p["name"] == name), None)
+        img_path = p_data["image"] if p_data else None
+        self.profile_trigger.update_profile(name, img_path)
+        
+        # 3. Reload Tabs
+        
+        # Folders
+        if hasattr(self, 'folders_tab'):
+            self.folders_tab.load_folders()
+            
+        # Languages
+        if hasattr(self, 'languages_tab'):
+            self.languages_tab.ensure_loaded(force=True)
+            
+        # History
+        if hasattr(self, 'history_tab') and not isinstance(self.history_tab, QLabel):
+            if hasattr(self.history_tab, 'refresh'):
+                self.history_tab.refresh()
+            else:
+                # Reset to lazy state if refresh not supported
+                # For now just assume it handles itself or user won't notice until click
+                pass
+
+        # Stats
+        if hasattr(self, 'stats_tab') and not isinstance(self.stats_tab, QLabel):
+            if hasattr(self.stats_tab, 'refresh'):
+                self.stats_tab.refresh()
+                
+        # Settings - Reload values from new DB
+        if hasattr(self, 'settings_tab'):
+            # Reset Settings Tab UI State
+            if hasattr(self, 'settings_search_input'):
+                self.settings_search_input.clear()
+            if hasattr(self, 'settings_scroll_area'):
+                self.settings_scroll_area.verticalScrollBar().setValue(0)
+                
+            # Note: Settings values update automatically via _emit_initial_settings below
+
+        # 4. Refresh Editor Settings & THEME
+        self.apply_current_theme() # Apply theme for the new profile
+        self._emit_initial_settings()
+        
+        # 5. Reset Editor Session if needed
+        # The editor logic listens to settings changes, so it should be fine.
 
     def _update_allow_continue_buttons(self, enabled: bool):
         """Refresh the button styles for the allow-continue setting."""
@@ -3840,11 +4067,17 @@ def run_app_with_splash(splash=None):
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] QApplication created: {time.time() - t1:.3f}s")
     
+    # Initialize Profile System
+    update("Loading profile...", 30)
+    from app.profile_manager import get_profile_manager
+    pm = get_profile_manager()
+    active_db = pm.get_current_db_path()
+
     # Initialize database
     if DEBUG_STARTUP_TIMING:
         t_db = time.time()
     update("Loading settings...", 40)
-    settings.init_db()
+    settings.init_db(str(active_db))
     if DEBUG_STARTUP_TIMING:
         print(f"[STARTUP] Database initialized: {time.time() - t_db:.3f}s")
     

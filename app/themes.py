@@ -477,7 +477,7 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QTabWidget::pane {{
         border: none;
         background-color: {scheme.bg_primary};
-        border-top: 2px solid {scheme.border_color};
+        border-top: 1px solid {scheme.border_color};
     }}
 
     QTabBar {{
@@ -488,17 +488,16 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QTabBar::tab {{
         background-color: transparent;
         color: {scheme.text_secondary};
-        padding: 12px 24px;
-        border: 2px solid transparent;
-        border-radius: 6px;
-        margin-right: 8px;
+        padding: 6px 12px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        margin-right: 2px;
         font-weight: 500;
-        min-width: 80px;
     }}
 
     QTabBar::tab:selected {{
         color: {scheme.accent_color};
-        border: 2px solid {scheme.accent_color};
+        border: 1px solid {scheme.accent_color};
         background-color: rgba(255, 255, 255, 0.03);
         font-weight: 600;
     }}
@@ -506,7 +505,7 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
     QTabBar::tab:hover:!selected {{
         color: {scheme.text_primary};
         background-color: rgba(255, 255, 255, 0.05);
-        border: 2px solid {scheme.border_color};
+        border: 1px solid {scheme.border_color};
     }}
 
     QTabBar::tab:focus {{

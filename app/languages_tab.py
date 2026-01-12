@@ -308,6 +308,7 @@ class LanguagesTab(QWidget):
             if widget:
                 widget.deleteLater()
         self._status_label = None
+        self._language_cards = {} # Clear references to doomed widgets
 
     def _show_message(self, message: str):
         self._clear_cards()

@@ -91,8 +91,8 @@ class EditorTab(QWidget):
                  background-color: #3b4252;
                  color: #eceff4;
                  border: 1px solid #434c5e;
-                 border-radius: 6px;
-                 padding: 6px 14px;
+                 border-radius: 4px;
+                 padding: 4px 10px;
                  font-weight: 500;
              }
              QPushButton:hover {
@@ -126,10 +126,10 @@ class EditorTab(QWidget):
         # Left Local Header
         left_header_widget = QWidget()
         left_header_layout = QHBoxLayout(left_header_widget)
-        left_header_layout.setContentsMargins(15, 8, 10, 8)
-        left_header_layout.setSpacing(10)
+        left_header_layout.setContentsMargins(10, 4, 10, 4)
+        left_header_layout.setSpacing(8)
 
-        self.file_tree.search_bar.setFixedHeight(34)
+        self.file_tree.search_bar.setFixedHeight(30)
         self.file_tree.search_bar.setMaximumWidth(16777215) # Remove any previous constraint
         self.file_tree.search_bar.setStyleSheet("""
             QLineEdit {
@@ -172,14 +172,14 @@ class EditorTab(QWidget):
         # Right Local Header
         right_header_widget = QWidget()
         right_header_layout = QHBoxLayout(right_header_widget)
-        right_header_layout.setContentsMargins(5, 8, 15, 8)
-        right_header_layout.setSpacing(10)
+        right_header_layout.setContentsMargins(10, 4, 10, 4)
+        right_header_layout.setSpacing(8)
 
         # Action Buttons setup
         self.reset_btn = QPushButton("Reset to Top")
         self.reset_btn.setIcon(get_icon("ROTATE_CCW"))
         self.reset_btn.setStyleSheet(header_btn_style)
-        self.reset_btn.setFixedHeight(34)
+        self.reset_btn.setFixedHeight(30)
         self.reset_btn.setToolTip("Reset cursor to beginning of file")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
 
@@ -189,21 +189,21 @@ class EditorTab(QWidget):
         self.instant_death_btn.setIcon(get_icon("DEATH"))
         self.instant_death_btn.setCheckable(True)
         self.instant_death_btn.setChecked(instant_death_enabled)
-        self.instant_death_btn.setFixedHeight(34)
+        self.instant_death_btn.setFixedHeight(30)
         self.instant_death_btn.setToolTip("Reset to top on any mistake")
         self.instant_death_btn.clicked.connect(self.on_instant_death_toggled)
 
         self.ghost_btn = QPushButton()
         self.ghost_btn.setIcon(get_icon("GHOST"))
-        self.ghost_btn.setIconSize(QSize(22, 22))
+        self.ghost_btn.setIconSize(QSize(20, 20))
         self.ghost_btn.setToolTip("Race against your ghost (Best Run)")
-        self.ghost_btn.setFixedHeight(34)
-        self.ghost_btn.setMinimumWidth(50)
+        self.ghost_btn.setFixedHeight(30)
+        self.ghost_btn.setMinimumWidth(40)
         self.ghost_btn.clicked.connect(self.on_ghost_clicked)
         self.ghost_btn.setStyleSheet(header_btn_style)
 
         self.sound_widget = SoundVolumeWidget()
-        self.sound_widget.setFixedHeight(34)
+        self.sound_widget.setFixedHeight(30)
         self.sound_widget.volume_changed.connect(self.on_sound_volume_changed)
         self.sound_widget.enabled_changed.connect(self.on_sound_enabled_changed)
 
