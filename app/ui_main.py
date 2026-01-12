@@ -1002,7 +1002,11 @@ class MainWindow(QMainWindow):
         self.tabs.setCornerWidget(trigger_container, Qt.TopRightCorner)
         trigger_container.setAttribute(Qt.WA_TransparentForMouseEvents, False) # Ensure container doesn't block
 
-        # Tabs
+        # Connect Profile Signals
+        self.pm.profile_updated.connect(self._on_profile_updated)
+        self.pm.profile_switched.connect(self.switch_profile)
+    
+    # Tabs
         if DEBUG_STARTUP_TIMING:
             print(f"  [INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
         
@@ -3630,11 +3634,16 @@ class MainWindow(QMainWindow):
         """Handle profile information (name/image) updates."""
         # Only update if it's the active profile
         if name == self.pm.get_active_profile():
+            # Re-initialize DB path because the folder name might have changed
+            db_path = self.pm.get_current_db_path()
+            settings.init_db(str(db_path))
+
             all_profiles = self.pm.get_all_profiles()
             p_data = next((p for p in all_profiles if p["name"] == name), None)
             img_path = p_data["image"] if p_data else None
             self.profile_trigger.update_profile(name, img_path)
-            
+            logger.info(f"Active profile updated: {name}. DB path refreshed.")
+
     def switch_profile(self, name):
         """Switch profile and reload data in-place."""
         if name == self.pm.get_active_profile():
@@ -3651,7 +3660,13 @@ class MainWindow(QMainWindow):
         img_path = p_data["image"] if p_data else None
         self.profile_trigger.update_profile(name, img_path)
         
-        # 3. Reload Tabs
+        # 3. Reload Managers
+        from app.ghost_manager import get_ghost_manager
+        from app.sound_manager import get_sound_manager
+        get_ghost_manager().refresh()
+        get_sound_manager().refresh()
+
+        # 4. Reload Tabs
         
         # Folders
         if hasattr(self, 'folders_tab'):

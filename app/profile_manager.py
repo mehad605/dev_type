@@ -69,6 +69,7 @@ class ProfileManager(QObject):
         self._shared_dir.mkdir(parents=True, exist_ok=True)
         (self._shared_dir / "sounds").mkdir(exist_ok=True)
         (self._shared_dir / "fonts").mkdir(exist_ok=True)
+        (self._shared_dir / "icons").mkdir(exist_ok=True)
 
     def _migrate_legacy_data_if_needed(self):
         """

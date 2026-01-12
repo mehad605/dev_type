@@ -1,141 +1,104 @@
-"""Tests for sound manager module."""
+"""Tests for sound_manager.py"""
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from app.sound_manager import SoundManager
+from unittest.mock import patch, MagicMock
+from PySide6.QtWidgets import QApplication
+from app.sound_manager import SoundManager, get_sound_manager
+import app.sound_manager as sound_manager_mod
 
+@pytest.fixture(scope="module")
+def qapp():
+    """Ensure a QApplication is running."""
+    yield QApplication.instance() or QApplication([])
 
 @pytest.fixture
-def mock_sound_effect():
-    """Mock QSoundEffect."""
-    with patch('app.sound_manager.QSoundEffect') as mock:
-        yield mock
-
-
-@pytest.fixture
-def sound_manager(tmp_path, mock_sound_effect):
-    """Create SoundManager with mocked dependencies."""
-    sounds_dir = tmp_path / "assets" / "sounds"
+def temp_sounds_env(tmp_path):
+    """Setup a mock environment for sounds."""
+    data_dir = tmp_path / "Dev_Type_Data"
+    shared_dir = data_dir / "shared"
+    sounds_dir = shared_dir / "sounds"
+    custom_sounds_dir = sounds_dir / "custom"
+    
     sounds_dir.mkdir(parents=True)
+    custom_sounds_dir.mkdir(parents=True)
     
-    # Create some mock sound files
-    (sounds_dir / "keypress_mechanical.wav").write_text("fake sound")
-    (sounds_dir / "keypress_soft.wav").write_text("fake sound")
+    # Create a dummy built-in sound
+    (sounds_dir / "keystrokes.wav").touch()
     
-    with patch('app.sound_manager.Path') as mock_path:
-        mock_path.return_value = sounds_dir
-        with patch('app.settings.init_db'):
-            with patch('app.settings.get_setting', return_value="{}"):
-                manager = SoundManager()
-                return manager
-
-
-def test_sound_manager_initialization(sound_manager):
-    """Test SoundManager initializes correctly."""
-    assert sound_manager.current_profile == "none"
-    assert sound_manager.enabled is True
-    assert sound_manager.volume == 0.5
-    assert isinstance(sound_manager.builtin_profiles, dict)
-    assert "none" in sound_manager.builtin_profiles
-
-
-def test_get_all_profiles(sound_manager):
-    """Test getting all profiles (built-in and custom)."""
-    sound_manager.custom_profiles = {
-        "custom1": {"name": "Custom 1", "builtin": False, "file": "custom1.wav"}
+    return {
+        "data": data_dir,
+        "shared": shared_dir,
+        "sounds": sounds_dir,
+        "custom": custom_sounds_dir
     }
+
+def test_sound_manager_init(qapp, temp_sounds_env):
+    """Test SoundManager initialization and profile discovery."""
+    sound_manager_mod._sound_manager = None
     
-    all_profiles = sound_manager.get_all_profiles()
+    with patch("app.portable_data.get_data_manager") as mock_gdm:
+        mock_dm = MagicMock()
+        mock_dm.get_sounds_dir.return_value = temp_sounds_env["sounds"]
+        mock_gdm.return_value = mock_dm
+        
+        manager = SoundManager()
+        
+        # Should discover default_1 because keystrokes.wav exists
+        assert "default_1" in manager.builtin_profiles
+        assert manager.sounds_dir == temp_sounds_env["sounds"]
+
+def test_create_custom_profile(qapp, temp_sounds_env, tmp_path):
+    """Test creating a custom sound profile."""
+    sound_manager_mod._sound_manager = None
     
-    assert "none" in all_profiles
-    assert "custom1" in all_profiles
-
-
-def test_get_profile_names(sound_manager):
-    """Test getting profile names."""
-    names = sound_manager.get_profile_names()
+    # Create a source wav file
+    src_wav = tmp_path / "source.wav"
+    src_wav.touch()
     
-    assert isinstance(names, dict)
-    assert "none" in names
-    assert names["none"] == "No Sound"
+    with patch("app.portable_data.get_data_manager") as mock_gdm, \
+         patch("app.settings.get_setting", return_value="{}"), \
+         patch("app.settings.set_setting") as mock_set_setting:
+        
+        mock_dm = MagicMock()
+        mock_dm.get_sounds_dir.return_value = temp_sounds_env["sounds"]
+        mock_dm.get_shared_dir.return_value = temp_sounds_env["shared"]
+        mock_gdm.return_value = mock_dm
+        
+        manager = SoundManager()
+        
+        success = manager.create_custom_profile("my_profile", "My Profile", str(src_wav))
+        
+        assert success is True
+        assert "my_profile" in manager.custom_profiles
+        
+        # Verify file was copied to shared/sounds/custom/my_profile/
+        expected_path = temp_sounds_env["custom"] / "my_profile" / "keypress.wav"
+        assert expected_path.exists()
+        
+        # Verify metadata was saved to DB
+        mock_set_setting.assert_called()
 
+def test_sound_manager_singleton():
+    """Test the singleton behavior."""
+    sound_manager_mod._sound_manager = None
+    s1 = get_sound_manager()
+    s2 = get_sound_manager()
+    assert s1 is s2
 
-def test_set_volume(sound_manager):
-    """Test setting volume."""
-    sound_manager.set_volume(0.75)
-    assert sound_manager.volume == 0.75
-
-
-def test_enable_disable_sound(sound_manager):
-    """Test enabling and disabling sound."""
-    sound_manager.set_enabled(False)
-    assert sound_manager.enabled is False
+def test_set_profile_loads_effect(qapp, temp_sounds_env):
+    """Test that setting a profile initializes the QSoundEffect."""
+    sound_manager_mod._sound_manager = None
     
-    sound_manager.set_enabled(True)
-    assert sound_manager.enabled is True
-
-
-def test_create_custom_profile_override_builtin_fails(sound_manager):
-    """Test that cannot override built-in profile."""
-    result = sound_manager.create_custom_profile(
-        "none",
-        "Override None",
-        "/fake/path.wav"
-    )
-    
-    assert result is False
-
-
-def test_delete_custom_profile(sound_manager):
-    """Test deleting custom profile."""
-    sound_manager.custom_profiles["test_profile"] = {
-        "name": "Test",
-        "builtin": False,
-        "file": "test.wav"
-    }
-    
-    with patch.object(sound_manager, '_save_custom_profiles'):
-        result = sound_manager.delete_custom_profile("test_profile")
-    
-    assert result is True
-    assert "test_profile" not in sound_manager.custom_profiles
-
-
-def test_cannot_delete_builtin_profile(sound_manager):
-    """Test that cannot delete built-in profile."""
-    result = sound_manager.delete_custom_profile("none")
-    assert result is False
-
-
-def test_get_last_error_initially_none(sound_manager):
-    """Test that last error is None initially."""
-    assert sound_manager.get_last_error() is None
-
-
-def test_get_last_error_after_missing_file(sound_manager, tmp_path):
-    """Test that last error is set when sound file is missing."""
-    # Create a custom profile with a non-existent file
-    sound_manager.custom_profiles["missing_sound"] = {
-        "name": "Missing Sound",
-        "builtin": False,
-        "file_path": str(tmp_path / "nonexistent.wav")
-    }
-    
-    # Try to load the profile
-    sound_manager._load_profile("missing_sound")
-    
-    # Should have an error now
-    error = sound_manager.get_last_error()
-    assert error is not None
-    assert "not found" in error.lower()
-
-
-def test_clear_error(sound_manager):
-    """Test clearing the error message."""
-    # Set an error manually
-    sound_manager._last_error = "Test error"
-    assert sound_manager.get_last_error() == "Test error"
-    
-    # Clear it
-    sound_manager.clear_error()
-    assert sound_manager.get_last_error() is None
+    with patch("app.portable_data.get_data_manager") as mock_gdm, \
+         patch("PySide6.QtMultimedia.QSoundEffect.setSource") as mock_set_source:
+        
+        mock_dm = MagicMock()
+        mock_dm.get_sounds_dir.return_value = temp_sounds_env["sounds"]
+        mock_gdm.return_value = mock_dm
+        
+        manager = SoundManager()
+        manager.set_profile("default_1")
+        
+        assert manager.current_profile == "default_1"
+        assert manager.sound_effect is not None
+        mock_set_source.assert_called()

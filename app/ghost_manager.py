@@ -239,6 +239,18 @@ class GhostManager:
         return None
 
 
+    def refresh(self):
+        """Refresh the ghosts directory, typically called after a profile switch."""
+        if _PORTABLE_MODE_AVAILABLE:
+            from app.portable_data import get_ghosts_dir
+            self.ghosts_dir = get_ghosts_dir()
+        else:
+            self.ghosts_dir = Path("ghosts")
+        
+        self.ghosts_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"GhostManager refreshed. Current ghosts dir: {self.ghosts_dir}")
+
+
 # Global instance
 _ghost_manager: Optional[GhostManager] = None
 

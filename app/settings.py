@@ -16,7 +16,7 @@ from typing import Optional, List, Dict
 
 # Import portable data manager for exe/AppImage builds
 try:
-    from app.portable_data import get_data_dir as get_portable_data_dir, get_database_path, is_portable
+    from app.portable_data import get_data_dir as get_portable_data_dir, get_database_path, is_portable, get_icons_dir as get_portable_icons_dir
     _PORTABLE_MODE_AVAILABLE = True
 except ImportError:
     _PORTABLE_MODE_AVAILABLE = False
@@ -168,6 +168,17 @@ def get_data_dir() -> Path:
     
     # Fallback if portable_data module not available (should never happen)
     d = Path(__file__).parent.parent / "Dev_Type_Data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_icons_dir() -> Path:
+    """Get the directory where shared language icons are stored."""
+    if _PORTABLE_MODE_AVAILABLE:
+        return get_portable_icons_dir()
+    
+    # Fallback
+    d = get_data_dir() / "shared" / "icons"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

@@ -92,8 +92,29 @@ class IconManager(QObject):
     
     def __init__(self):
         super().__init__()
-        self.icon_dir = get_data_dir() / "icons"
+        from app.settings import get_icons_dir, get_data_dir
+        
+        self.icon_dir = get_icons_dir()
         self.icon_dir.mkdir(parents=True, exist_ok=True)
+        
+        # MIGRATION: Move icons from legacy location (Dev_Type_Data/icons) to shared location
+        legacy_icon_dir = get_data_dir() / "icons"
+        if legacy_icon_dir.exists() and legacy_icon_dir.is_dir() and legacy_icon_dir != self.icon_dir:
+            try:
+                import shutil
+                logger.info(f"Migrating icons from legacy location: {legacy_icon_dir} -> {self.icon_dir}")
+                for icon_file in legacy_icon_dir.glob("*.svg"):
+                    dest_file = self.icon_dir / icon_file.name
+                    if not dest_file.exists():
+                        shutil.move(str(icon_file), str(dest_file))
+                
+                # Cleanup legacy folder if empty
+                if not any(legacy_icon_dir.iterdir()):
+                    legacy_icon_dir.rmdir()
+                    logger.info("Removed empty legacy icons folder")
+            except Exception as e:
+                logger.warning(f"Failed to migrate legacy icons: {e}")
+
         self._icon_cache: Dict[str, Optional[QPixmap]] = {}
         self._download_errors: Dict[str, str] = {}  # Track download failures for tooltips
         self._network_manager = QNetworkAccessManager(self)

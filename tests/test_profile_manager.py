@@ -1,0 +1,199 @@
+"""Tests for profile management and multi-user support."""
+import pytest
+import shutil
+import json
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+from app.profile_manager import ProfileManager, get_profile_manager
+from app.portable_data import get_data_manager
+
+@pytest.fixture
+def temp_data_dir(tmp_path):
+    """Set up a temporary Dev_Type_Data directory structure with full isolation."""
+    import app.profile_manager
+    import app.portable_data
+    
+    data_dir = tmp_path / "Dev_Type_Data"
+    data_dir.mkdir()
+    (data_dir / "profiles").mkdir()
+    (data_dir / "shared").mkdir()
+    
+    # Mock data manager instance
+    mock_dm_instance = MagicMock()
+    mock_dm_instance.get_data_dir.return_value = data_dir
+    mock_dm_instance.get_profiles_dir.return_value = data_dir / "profiles"
+    mock_dm_instance.get_shared_dir.return_value = data_dir / "shared"
+    mock_dm_instance.get_database_path.return_value = data_dir / "profiles" / "Default" / "typing_stats.db"
+    
+    # Patch both the getter in portable_data and the one imported in profile_manager
+    with patch('app.portable_data.get_data_manager', return_value=mock_dm_instance), \
+         patch('app.profile_manager.get_data_manager', return_value=mock_dm_instance):
+        
+        # Reset Singletons
+        app.profile_manager._profile_manager = None
+        app.profile_manager.ProfileManager._instance = None
+        
+        manager = app.profile_manager.ProfileManager()
+        yield manager, data_dir
+
+def test_profile_manager_singleton():
+    """Test that ProfileManager follows singleton pattern."""
+    ProfileManager._instance = None
+    m1 = get_profile_manager()
+    m2 = get_profile_manager()
+    assert m1 is m2
+
+def test_initial_structure_creation(temp_data_dir):
+    """Test that basic profile structure is created on init."""
+    manager, data_dir = temp_data_dir
+    assert (data_dir / "profiles").exists()
+    assert (data_dir / "shared").exists()
+    assert (data_dir / "shared" / "global_config.json").exists()
+    # Default profile should be created by migration logic if none exists
+    assert (data_dir / "profiles" / "Default").exists()
+
+def test_create_profile(temp_data_dir):
+    """Test creating a new profile."""
+    manager, data_dir = temp_data_dir
+    success = manager.create_profile("Zoof", "avatar.png")
+    
+    assert success is True
+    assert (data_dir / "profiles" / "Zoof").exists()
+    assert (data_dir / "profiles" / "Zoof" / "profile.json").exists()
+    
+    # Verify metadata
+    with open(data_dir / "profiles" / "Zoof" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] == "avatar.png"
+
+def test_create_duplicate_profile(temp_data_dir):
+    """Test that duplicate profiles cannot be created."""
+    manager, _ = temp_data_dir
+    manager.create_profile("Duplicate")
+    success = manager.create_profile("Duplicate")
+    assert success is False
+
+def test_get_all_profiles(temp_data_dir):
+    """Test retrieving lists of profiles in order."""
+    manager, _ = temp_data_dir
+    manager.create_profile("A")
+    manager.create_profile("B")
+    
+    profiles = manager.get_all_profiles()
+    # Default + A + B = 3
+    assert len(profiles) == 3
+    names = [p["name"] for p in profiles]
+    assert "Default" in names
+    assert "A" in names
+    assert "B" in names
+
+def test_switch_profile(temp_data_dir):
+    """Test switching active profiles."""
+    manager, data_dir = temp_data_dir
+    manager.create_profile("Gamer")
+    
+    with patch.object(manager, 'profile_switched') as mock_signal:
+        manager.switch_profile("Gamer")
+        assert manager.active_profile == "Gamer"
+        mock_signal.emit.assert_called_with("Gamer")
+        
+    # Verify persistence in config
+    with open(data_dir / "shared" / "global_config.json", "r") as f:
+        config = json.load(f)
+        assert config["active_profile"] == "Gamer"
+
+def test_delete_profile(temp_data_dir):
+    """Test deleting profiles."""
+    manager, data_dir = temp_data_dir
+    manager.create_profile("Temporary")
+    
+    success = manager.delete_profile("Temporary")
+    assert success is True
+    assert not (data_dir / "profiles" / "Temporary").exists()
+
+def test_delete_only_profile_fails(temp_data_dir):
+    """Test that you cannot delete the only profile."""
+    manager, _ = temp_data_dir
+    # Initially only "Default" exists
+    success = manager.delete_profile("Default")
+    assert success is False
+
+def test_delete_active_profile_switches_to_default(temp_data_dir):
+    """Test that deleting the active profile falls back to Default."""
+    manager, _ = temp_data_dir
+    manager.create_profile("ActiveOne")
+    manager.switch_profile("ActiveOne")
+    
+    manager.delete_profile("ActiveOne")
+    assert manager.active_profile == "Default"
+
+def test_rename_profile(temp_data_dir):
+    """Test renaming a profile folder and metadata."""
+    manager, data_dir = temp_data_dir
+    manager.create_profile("OldName")
+    
+    success = manager.rename_profile("OldName", "NewName")
+    assert success is True
+    assert not (data_dir / "profiles" / "OldName").exists()
+    assert (data_dir / "profiles" / "NewName").exists()
+    
+    # If it was active, it should stay active with new name
+    manager.switch_profile("NewName")
+    manager.rename_profile("NewName", "RenamedActive")
+    assert manager.active_profile == "RenamedActive"
+
+def test_update_profile_image(temp_data_dir):
+    """Test updating only the profile image."""
+    manager, data_dir = temp_data_dir
+    manager.create_profile("User", "old.png")
+    
+    manager.update_profile_image("User", "new.png")
+    
+    with open(data_dir / "profiles" / "User" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] == "new.png"
+
+def test_migration_logic(tmp_path):
+    """Test legacy data migration on first run."""
+    data_dir = tmp_path / "MigrationData"
+    data_dir.mkdir()
+    
+    # Simulate legacy state (typing_stats.db in root)
+    legacy_db = data_dir / "typing_stats.db"
+    legacy_db.write_text("dummy database content")
+    
+    legacy_ghosts = data_dir / "ghosts"
+    legacy_ghosts.mkdir()
+    (legacy_ghosts / "replay.json").write_text("{}")
+    legacy_sounds = data_dir / "custom_sounds"
+    legacy_sounds.mkdir()
+    (legacy_sounds / "click.wav").touch()
+
+    legacy_snapshot = data_dir / "language_snapshot.json"
+    legacy_snapshot.write_text("{}")
+    
+    # Mock data manager
+    with patch('app.profile_manager.get_data_manager') as mock_dm:
+        mock_instance = MagicMock()
+        mock_instance.get_data_dir.return_value = data_dir
+        mock_instance.get_profiles_dir.return_value = data_dir / "profiles"
+        mock_instance.get_shared_dir.return_value = data_dir / "shared"
+        mock_dm.return_value = mock_instance
+        
+        import app.profile_manager
+        app.profile_manager._profile_manager = None
+        ProfileManager._instance = None
+        manager = ProfileManager()
+        
+        # Verify migration
+        assert (data_dir / "profiles" / "Default" / "typing_stats.db").exists()
+        assert (data_dir / "profiles" / "Default" / "ghosts" / "replay.json").exists()
+        assert (data_dir / "profiles" / "Default" / "language_snapshot.json").exists()
+        assert (data_dir / "shared" / "sounds" / "custom" / "click.wav").exists()
+        
+        # Original should be gone
+        assert not legacy_db.exists()
+        assert not (data_dir / "ghosts").exists()
+        assert not legacy_sounds.exists()
+        assert not legacy_snapshot.exists()

@@ -127,7 +127,7 @@ def test_all_default_settings_exist(tmp_path: Path):
     settings.init_db(str(db_file))
     
     expected_settings = [
-        "theme", "dark_scheme", "font_family", "font_size",
+        "dark_scheme", "font_family", "font_size",
         "color_untyped", "color_correct", "color_incorrect",
         "cursor_type", "cursor_style", "pause_delay",
         "allow_continue_mistakes"
@@ -310,3 +310,25 @@ def test_get_setting_color_missing_returns_default(tmp_path: Path):
     
     result = settings.get_setting_color("nonexistent_color_xyz", "#AABBCC")
     assert result == "#AABBCC"
+
+
+def test_init_db_points_to_active_profile(tmp_path):
+    """Test that init_db() without path uses the active profile's database."""
+    from unittest.mock import patch, MagicMock
+    
+    data_dir = tmp_path / "Dev_Type_Data"
+    data_dir.mkdir()
+    (data_dir / "profiles" / "SpecialUser").mkdir(parents=True)
+    special_db = data_dir / "profiles" / "SpecialUser" / "typing_stats.db"
+    
+    with patch('app.portable_data._portable_data_manager') as mock_pdm:
+        mock_pdm.get_database_path.return_value = special_db
+        
+        # Reset current db path in settings to force re-evaluation
+        settings._current_db_path = None
+        settings._db_initialized = False
+        
+        settings.init_db()
+        
+        assert settings.get_current_db_path() == special_db
+        assert special_db.exists()

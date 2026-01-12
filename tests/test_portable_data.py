@@ -22,19 +22,31 @@ def test_get_data_dir():
 
 
 def test_get_ghosts_dir():
-    """Test get_ghosts_dir function."""
+    """Test get_ghosts_dir function - should be profile specific."""
     ghosts_dir = get_ghosts_dir()
     assert isinstance(ghosts_dir, Path)
     assert ghosts_dir.name == "ghosts"
+    assert "profiles" in str(ghosts_dir)
 
 
 def test_get_custom_sounds_dir():
-    """Test getting custom sounds directory."""
+    """Test getting custom sounds directory - should be in shared."""
     from app.portable_data import get_custom_sounds_dir
     
     sounds_dir = get_custom_sounds_dir()
     assert isinstance(sounds_dir, Path)
-    assert sounds_dir.name == "custom_sounds"
+    assert sounds_dir.name == "custom"
+    assert "shared" in str(sounds_dir)
+
+
+def test_get_icons_dir():
+    """Test getting shared icons directory."""
+    from app.portable_data import get_icons_dir
+    
+    icons_dir = get_icons_dir()
+    assert isinstance(icons_dir, Path)
+    assert icons_dir.name == "icons"
+    assert "shared" in str(icons_dir)
 
 
 def test_portable_mode_detection_frozen():
@@ -59,15 +71,22 @@ def test_portable_mode_detection_dev():
 
 
 def test_subdirectories_created():
-    """Test that all subdirectories are created."""
+    """Test that all subdirectories are created in new structure."""
     from app.portable_data import get_data_dir
     data_dir = get_data_dir()
     
-    # Check that key subdirectories exist
-    assert (data_dir / "ghosts").exists()
-    assert (data_dir / "custom_sounds").exists()
-    assert (data_dir / "settings").exists()
-    assert (data_dir / "logs").exists()
+    # Check that root-level profile/shared dirs exist
+    assert (data_dir / "profiles").exists()
+    assert (data_dir / "shared").exists()
+    
+    # Check shared subdirs
+    assert (data_dir / "shared" / "sounds").exists()
+    assert (data_dir / "shared" / "icons").exists()
+    assert (data_dir / "shared" / "logs").exists()
+    
+    # Check default profile-specific structure (Default profile is created on profile manager init)
+    # The portable data manager itself creates the 'profiles' folder.
+    # The profile manager (tested elsewhere) creates the actual 'Default' folder.
 
 
 def test_get_last_error_initially_none():

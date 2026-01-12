@@ -233,6 +233,26 @@ class SoundManager(QObject):
         
         return True
     
+    def refresh(self):
+        """Refresh sound profiles and directory, typically after a profile switch."""
+        try:
+             from app.portable_data import get_data_manager
+             self.sounds_dir = get_data_manager().get_sounds_dir()
+        except ImportError:
+             self.sounds_dir = Path(__file__).parent.parent / "assets" / "sounds"
+             
+        self.builtin_profiles = self._discover_builtin_profiles()
+        self.custom_profiles = self._load_custom_profiles()
+        
+        # Restore current profile if it still exists, else none
+        old_profile = self.current_profile
+        if old_profile in self.get_all_profiles():
+            self._load_profile(old_profile)
+        else:
+            self.set_profile("none")
+        
+        logger.info(f"SoundManager refreshed. Custom profiles: {len(self.custom_profiles)}")
+
     def _load_profile(self, profile: str):
         """Load sound file for a profile."""
         # Clean up old sound

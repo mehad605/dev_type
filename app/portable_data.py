@@ -237,7 +237,7 @@ class PortableDataManager:
                     d.mkdir(parents=True, exist_ok=True)
             
             # Create subdirectories in shared
-            shared_subdirs = ['fonts', 'sounds', 'logs']
+            shared_subdirs = ['fonts', 'sounds', 'icons', 'logs']
             for subdir in shared_subdirs:
                 subdir_path = shared_dir / subdir
                 if not subdir_path.exists():
@@ -431,6 +431,10 @@ class PortableDataManager:
         """Get path to the shared fonts directory."""
         return self.get_shared_dir() / "fonts"
 
+    def get_icons_dir(self) -> Path:
+        """Get the directory where shared language icons are stored."""
+        return self.get_shared_dir() / "icons"
+
     def get_sounds_dir(self) -> Path:
         """Get the directory where sound files are stored."""
         # Use shared sounds
@@ -466,6 +470,11 @@ def get_custom_sounds_dir() -> Path:
 def get_fonts_dir() -> Path:
     """Get path to the fonts directory."""
     return _portable_data_manager.get_fonts_dir()
+
+
+def get_icons_dir() -> Path:
+    """Get path to the icons directory."""
+    return _portable_data_manager.get_icons_dir()
 
 
 def is_portable() -> bool:
