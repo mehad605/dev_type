@@ -73,8 +73,20 @@ class StatsBox(QFrame):
                 border-radius: 12px;
             }}
         """)
-        self.title_label.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
-        self.value_label.setStyleSheet(f"color: {value_color}; background: transparent; border: none;")
+        self.title_label.setStyleSheet(f"""
+            color: {title_color}; 
+            background: transparent; 
+            border: none;
+            font-size: 12px;
+            font-weight: 500;
+        """)
+        self.value_label.setStyleSheet(f"""
+            color: {value_color}; 
+            background: transparent; 
+            border: none;
+            font-size: 32px;
+            font-weight: bold;
+        """)
 
 
 class KeystrokeBox(QFrame):
@@ -321,8 +333,8 @@ class InteractiveStatusBox(QFrame):
             }}
         """)
         
-        self.status_label.setStyleSheet(f"color: {text_color}; background: transparent; border: none;")
-        self.status_text.setStyleSheet(f"color: {status_color}; background: transparent; border: none;")
+        self.status_label.setStyleSheet(f"color: {text_color}; background: transparent; border: none; font-size: 12px;")
+        self.status_text.setStyleSheet(f"color: {status_color}; background: transparent; border: none; font-size: 22px; font-weight: bold;")
         
         self.action_btn.setStyleSheet(f"""
             QPushButton {{
@@ -331,6 +343,7 @@ class InteractiveStatusBox(QFrame):
                 border: 1px solid {btn_border};
                 border-radius: 15px;
                 font-weight: bold;
+                font-size: 14px;
             }}
             QPushButton:hover {{
                 background-color: {btn_border};
