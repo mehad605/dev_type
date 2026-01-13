@@ -26,6 +26,7 @@ class TypingHighlighter(QSyntaxHighlighter):
     def __init__(self, parent: QTextDocument, engine: TypingEngine):
         super().__init__(parent)
         self.engine = engine
+        self.display_offset = 0  # Offset from start of file for sliding window
         
         # Color formats - load from settings
         self.untyped_format = QTextCharFormat()
@@ -75,7 +76,8 @@ class TypingHighlighter(QSyntaxHighlighter):
         block_start = self.currentBlock().position()
         
         for i, char in enumerate(text):
-            pos = block_start + i
+            # Map relative document position to absolute file position
+            pos = block_start + i + self.display_offset
             
             if pos in self.typed_chars:
                 info = self.typed_chars[pos]
@@ -180,6 +182,18 @@ class TypingAreaWidget(QTextEdit):
         self.ghost_segment_start_perf = None
         self._has_emitted_first_key = False
 
+        # Sliding Window / Large File Optimization (Infinite Runner)
+        self.WINDOW_SIZE = 100        # Lines per window
+        self.SLIDE_THRESHOLD = 20     # Lines from bottom before sliding
+        self.SLIDE_STEP = 40          # How many lines to advance when sliding
+        
+        self.window_start_line = 0
+        self.window_end_line = self.WINDOW_SIZE
+        self.window_offset_display = 0
+        self.engine_to_display_map = []
+        self.line_starts_engine = []
+        self.line_starts_display = []
+
         # Ghost overlay state (race mode)
         self._ghost_display_limit = 0
     
@@ -229,19 +243,24 @@ class TypingAreaWidget(QTextEdit):
         # Convert content for display (replace spaces, enters, tabs)
         self.display_content = self._prepare_display_content(self.original_content)
         
+        # Fast index mapping
+        self._recalculate_index_maps()
+        
         # Initialize engine
         pause_delay = settings.get_setting_float("pause_delay", 7.0, min_val=0.0, max_val=60.0)
         allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self.engine = TypingEngine(self.original_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
         self.engine.auto_indent = settings.get_setting("auto_indent", "0") == "1"
         
-        # Set display content
-        self.setPlainText(self.display_content)
-        
-        # Setup highlighter
+        # Setup highlighter but don't set document yet
         self.highlighter = TypingHighlighter(self.document(), self.engine)
         self._ghost_display_limit = 0
         self.highlighter.clear_ghost_progress()
+        
+        # Initialize window
+        self.window_start_line = 0
+        self.window_end_line = self.WINDOW_SIZE
+        self.refresh_window()
         
         # Reset cursor
         self.current_typing_position = 0
@@ -301,6 +320,89 @@ class TypingAreaWidget(QTextEdit):
         if self.highlighter:
             self.highlighter.clear_ghost_progress()
         print(f"[GhostRecorder] Recording initialized (resumed: {bool(resume_data)})")
+
+    def _recalculate_index_maps(self):
+        """Build precise character position mapping and line indices for fast lookup."""
+        content = self.original_content
+        self.engine_to_display_map = [0] * (len(content) + 1)
+        self.line_starts_engine = [0]
+        self.line_starts_display = [0]
+        
+        space_len = len(self.space_char) if self.space_char else 1
+        enter_len = len(self.enter_char) if self.enter_char else 1
+        
+        curr_display = 0
+        for i, ch in enumerate(content):
+            self.engine_to_display_map[i] = curr_display
+            if ch == '\n':
+                curr_display += enter_len + 1
+                self.line_starts_engine.append(i + 1)
+                self.line_starts_display.append(curr_display)
+            elif ch == '\t':
+                curr_display += space_len * self.tab_width
+            elif ch == ' ':
+                curr_display += space_len
+            else:
+                curr_display += 1
+        self.engine_to_display_map[len(content)] = curr_display
+
+    def refresh_window(self):
+        """Update document content to show current sliding window of the file."""
+        if not self.line_starts_engine: return
+        
+        line_count = len(self.line_starts_engine)
+        start_line = max(0, min(self.window_start_line, line_count - 1))
+        end_line = max(start_line + 1, min(self.window_end_line, line_count))
+        
+        start_display_pos = self.line_starts_display[start_line]
+        if end_line < len(self.line_starts_display):
+            end_display_pos = self.line_starts_display[end_line]
+        else:
+            end_display_pos = len(self.display_content)
+            
+        window_text = self.display_content[start_display_pos:end_display_pos]
+        
+        # Update offset state BEFORE setting text
+        self.window_offset_display = start_display_pos
+        if self.highlighter:
+            self.highlighter.display_offset = start_display_pos
+        
+        # Block signals to prevent recursion/excessive updates
+        self.blockSignals(True)
+        self.setPlainText(window_text)
+        self.blockSignals(False)
+        
+        # Re-apply typed changes for visible window
+        self._refresh_typed_display()
+        
+        if self.highlighter:
+            self.highlighter.rehighlight()
+            
+    def _maybe_slide_window(self):
+        """Slide the window if cursor is nearing edges."""
+        if not self.engine or not self.line_starts_engine: return
+        
+        engine_pos = self.engine.state.cursor_position
+        import bisect
+        current_line_idx = bisect.bisect_right(self.line_starts_engine, engine_pos) - 1
+        
+        # Thresholds
+        if current_line_idx >= self.window_end_line - self.SLIDE_THRESHOLD:
+            # Shift forward
+            new_start = min(current_line_idx - 20, len(self.line_starts_engine) - self.WINDOW_SIZE)
+            new_start = max(0, int(new_start))
+            if new_start > self.window_start_line:
+                self.window_start_line = new_start
+                self.window_end_line = new_start + self.WINDOW_SIZE
+                self.refresh_window()
+        elif current_line_idx < self.window_start_line + self.SLIDE_THRESHOLD and self.window_start_line > 0:
+            # Shift backward
+            new_start = max(0, current_line_idx - (self.WINDOW_SIZE - self.SLIDE_THRESHOLD))
+            new_start = int(new_start)
+            if new_start < self.window_start_line:
+                self.window_start_line = new_start
+                self.window_end_line = new_start + self.WINDOW_SIZE
+                self.refresh_window()
     
     def _setup_error_display(self):
         """Setup display for error messages (no typing engine)."""
@@ -378,9 +480,14 @@ class TypingAreaWidget(QTextEdit):
 
     def _replace_display_char(self, position: int, new_char: str, length: int = 1):
         """Replace the character shown at a position without changing engine state."""
+        # Convert absolute display position to window-relative
+        rel_pos = position - self.window_offset_display
+        if rel_pos < 0 or rel_pos >= self.document().characterCount():
+            return
+
         original_cursor = self.textCursor()
         cursor = QTextCursor(self.document())
-        cursor.setPosition(position)
+        cursor.setPosition(rel_pos)
         cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, length)
         cursor.insertText(new_char)
         self.setTextCursor(original_cursor)
@@ -398,14 +505,19 @@ class TypingAreaWidget(QTextEdit):
         self._replace_display_char(position, target_char, expected_len)
 
     def _refresh_typed_display(self):
-        """Re-apply display text for all typed positions based on current visibility mode."""
+        """Re-apply display text for positions in the current window."""
         if not self.highlighter or not self.highlighter.typed_chars:
             return
 
+        window_start = self.window_offset_display
+        window_end = window_start + len(self.toPlainText())
+        
+        # Only process characters visible in the window for performance
         for position, info in self.highlighter.typed_chars.items():
-            length = info.get("length", max(len(info.get("expected", "")), 1))
-            target_char = info["typed"] if self.show_typed_characters else info["expected"]
-            self._replace_display_char(position, target_char, length)
+            if window_start <= position < window_end:
+                length = info.get("length", max(len(info.get("expected", "")), 1))
+                target_char = info["typed"] if self.show_typed_characters else info["expected"]
+                self._replace_display_char(position, target_char, length)
 
     def _restore_display_for_position(self, position: int):
         """Restore the original expected character at a position."""
@@ -432,34 +544,13 @@ class TypingAreaWidget(QTextEdit):
             self._replace_display_char(position, expected_char, expected_len)
 
     def _display_position_to_engine(self, display_pos: int) -> Optional[int]:
-        """Map a display index back to the underlying engine index."""
-        if display_pos <= 0:
-            return 0
-
-        content = self.engine.state.content if self.engine else self.original_content
-        if not content:
-            return 0
-
-        space_len = len(self.space_char) if self.space_char else 1
-        enter_len = len(self.enter_char) if self.enter_char else 1
-        current_display = 0
-
-        for idx, ch in enumerate(content):
-            if ch == '\n':
-                step = enter_len + 1
-            elif ch == '\t':
-                step = space_len * self.tab_width
-            elif ch == ' ':
-                step = space_len
-            else:
-                step = 1
-
-            if current_display + step > display_pos:
-                return idx
-
-            current_display += step
-
-        return len(content)
+        """Map a document index (relative to window) back to absolute engine index."""
+        abs_display_pos = display_pos + self.window_offset_display
+        
+        # Binary search for the closest engine index
+        import bisect
+        engine_idx = bisect.bisect_left(self.engine_to_display_map, abs_display_pos)
+        return engine_idx
 
     def _clear_and_restore_engine_position(self, engine_index: int):
         """Clear typed state and redraw the expected character for an engine index."""
@@ -481,43 +572,31 @@ class TypingAreaWidget(QTextEdit):
         if expected_char:
             self._replace_display_char(display_pos, expected_char, max(len(expected_char), 1))
 
-    def _update_cursor_position(self):
-        """Update visual cursor to current typing position."""
+    def _update_cursor_position(self, override_pos: Optional[int] = None):
+        """Update visual cursor to current typing position (handled relative to window)."""
+        target_pos = override_pos if override_pos is not None else self.current_typing_position
+        rel_pos = target_pos - self.window_offset_display
+        
+        # Guard against position outside window
+        doc_len = self.document().characterCount() - 1 # QTextDocument ends with \u2029
+        rel_pos = max(0, min(rel_pos, doc_len))
+        
         cursor = self.textCursor()
-        cursor.setPosition(self.current_typing_position, QTextCursor.MoveAnchor)
+        cursor.setPosition(rel_pos, QTextCursor.MoveAnchor)
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
         self._update_cursor_geometry()
 
     def _engine_to_display_position(self, engine_pos: int) -> int:
-        """Convert an engine cursor index to the displayed document index."""
+        """Convert absolute engine index to absolute displayed document index."""
         if engine_pos <= 0:
             return 0
-
-        if self.engine:
-            content = self.engine.state.content
-        else:
-            content = self.original_content
-
-        engine_pos = min(engine_pos, len(content))
-
-        display_pos = 0
-        space_len = len(self.space_char) if self.space_char else 1
-        enter_len = len(self.enter_char) if self.enter_char else 1
-
-        for idx in range(engine_pos):
-            ch = content[idx]
-            if ch == '\n':
-                display_pos += enter_len + 1  # symbol plus newline character
-            elif ch == '\t':
-                display_pos += space_len * self.tab_width
-            elif ch == ' ':
-                display_pos += space_len
-            else:
-                display_pos += 1
-
-        return display_pos
+        if not hasattr(self, 'engine_to_display_map') or not self.engine_to_display_map:
+            return engine_pos
+        
+        idx = min(engine_pos, len(self.engine_to_display_map) - 1)
+        return self.engine_to_display_map[idx]
 
     def mousePressEvent(self, event):
         """Ignore left-click attempts to reposition the cursor."""
@@ -724,6 +803,7 @@ class TypingAreaWidget(QTextEdit):
                 for engine_index in range(new_engine_pos, old_engine_pos):
                     self._clear_and_restore_engine_position(engine_index)
                 self.current_typing_position = self._engine_to_display_position(new_engine_pos)
+                self._maybe_slide_window()
                 self._update_cursor_position()
             else:
                 # Regular backspace
@@ -733,6 +813,7 @@ class TypingAreaWidget(QTextEdit):
                     target_index = self.engine.state.cursor_position
                     self._clear_and_restore_engine_position(target_index)
                     self.current_typing_position = self._engine_to_display_position(target_index)
+                    self._maybe_slide_window()
                     self._update_cursor_position()
             self.stats_updated.emit()
             return
@@ -775,6 +856,7 @@ class TypingAreaWidget(QTextEdit):
             if spaces_processed:
                 self._record_keystroke('\t', all_correct)
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
+            self._maybe_slide_window()
             self._update_cursor_position()
             self.stats_updated.emit()
             return
@@ -855,6 +937,9 @@ class TypingAreaWidget(QTextEdit):
             # Update cursor position (engine already advanced if allowed)
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             
+            # Check for window slide
+            self._maybe_slide_window()
+            
             # If there's a mistake, show cursor after the mistake visually
             visual_cursor_pos = self.current_typing_position
             if self.engine.mistake_at is not None:
@@ -863,14 +948,8 @@ class TypingAreaWidget(QTextEdit):
                     # Show cursor after the mistake character so it's clear where the error is
                     visual_cursor_pos = mistake_display_pos + 1
             
-            # Update visual cursor
-            cursor = self.textCursor()
-            cursor.setPosition(visual_cursor_pos, QTextCursor.MoveAnchor)
-            cursor.clearSelection()
-            self.setTextCursor(cursor)
-            self.ensureCursorVisible()
-            self._update_cursor_geometry()
-            
+            # Use helper for relative cursor update
+            self._update_cursor_position(override_pos=visual_cursor_pos)
             self.stats_updated.emit()
             
             # Check if completed

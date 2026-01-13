@@ -56,8 +56,8 @@ class TypingState:
         return (self._get_calculable_chars() / 5.0) / minutes
 
     def _get_calculable_chars(self) -> int:
-        """Get characters that count towards WPM (total typed - auto-skipped)."""
-        return max(0, self.cursor_position - len(self.skipped_positions))
+        """Get characters that count towards WPM (only correctly typed characters)."""
+        return self.correct_keystrokes
     
     def is_complete(self) -> bool:
         return self.cursor_position >= len(self.content)
