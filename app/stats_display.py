@@ -35,7 +35,7 @@ class StatsBox(QFrame):
         self.value_label = QLabel("--")
         self.value_label.setAlignment(Qt.AlignCenter)
         value_font = QFont()
-        value_font.setPointSize(28)
+        value_font.setPointSize(22)
         value_font.setBold(True)
         self.value_label.setFont(value_font)
         layout.addWidget(self.value_label)
@@ -84,7 +84,7 @@ class StatsBox(QFrame):
             color: {value_color}; 
             background: transparent; 
             border: none;
-            font-size: 32px;
+            font-size: 24px;
             font-weight: bold;
         """)
 
@@ -275,7 +275,7 @@ class InteractiveStatusBox(QFrame):
         self.status_text = QLabel("ACTIVE")
         self.status_text.setAlignment(Qt.AlignCenter)
         status_font = QFont()
-        status_font.setPointSize(20)
+        status_font.setPointSize(16)
         status_font.setBold(True)
         self.status_text.setFont(status_font)
         layout.addWidget(self.status_text)
@@ -283,7 +283,7 @@ class InteractiveStatusBox(QFrame):
         # Pause Button
         self.action_btn = QPushButton("Pause")
         self.action_btn.setCursor(Qt.PointingHandCursor)
-        self.action_btn.setFixedHeight(32)
+        self.action_btn.setFixedHeight(28)
         self.action_btn.clicked.connect(self.pause_clicked.emit)
         layout.addWidget(self.action_btn)
     
@@ -337,8 +337,8 @@ class InteractiveStatusBox(QFrame):
             }}
         """)
         
-        self.status_label.setStyleSheet(f"color: {text_color}; background: transparent; border: none; font-size: 12px;")
-        self.status_text.setStyleSheet(f"color: {status_color}; background: transparent; border: none; font-size: 22px; font-weight: bold;")
+        self.status_label.setStyleSheet(f"color: {text_color}; background: transparent; border: none; font-size: 11px;")
+        self.status_text.setStyleSheet(f"color: {status_color}; background: transparent; border: none; font-size: 18px; font-weight: bold;")
         
         self.action_btn.setStyleSheet(f"""
             QPushButton {{
@@ -384,32 +384,80 @@ class StatsDisplayWidget(QWidget):
         self._last_recorded_incorrect = 0  # Track cumulative incorrect count
         self.error_history = []  # list of (second, errors_in_that_second)
         
-        layout = QHBoxLayout(self)
-        layout.setSpacing(15)
-        layout.setContentsMargins(15, 5, 15, 5)
-        
-        # WPM box
-        self.wpm_box = StatsBox("Words Per Minute", value_key="wpm")
-        layout.addWidget(self.wpm_box, 1)
-        
-        # Accuracy box
-        self.accuracy_box = StatsBox("Accuracy", value_key="accuracy")
-        layout.addWidget(self.accuracy_box, 1)
-        
-        # Time box
-        self.time_box = StatsBox("Time Elapsed", value_key="time")
-        layout.addWidget(self.time_box, 1)
-        
-        # Keystrokes box
-        self.keystroke_box = KeystrokeBox()
-        layout.addWidget(self.keystroke_box, 1)
-        
-        # Interactive status indicator
-        self.status_box = InteractiveStatusBox()
+        self.wpm_box = StatsBox("WPM", value_key="wpm", parent=self)
+        self.accuracy_box = StatsBox("ACC", value_key="accuracy", parent=self)
+        self.time_box = StatsBox("TIME", value_key="time", parent=self)
+        self.keystroke_box = KeystrokeBox(parent=self)
+        self.status_box = InteractiveStatusBox(parent=self)
         self.status_box.pause_clicked.connect(self.on_status_action)
-        layout.addWidget(self.status_box, 1)
+        
+        # Create a persistent layout
+        self.main_layout = QGridLayout(self)
+        
+        # Determine initial orientation from settings
+        initial_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
+        if initial_pos == "right":
+            self.set_orientation("vertical")
+        else:
+            self.set_orientation("horizontal")
         
         self.apply_theme()
+    
+    def set_orientation(self, orientation: str):
+        """Change the orientation of the stats display (horizontal or vertical)."""
+        widgets = [self.wpm_box, self.accuracy_box, self.time_box, self.keystroke_box, self.status_box]
+        
+        # 1. Clear all items from the layout without deleting widgets
+        while self.main_layout.count():
+            item = self.main_layout.takeAt(0)
+            # Widget is automatically detached but stays a child of 'self'
+            
+        # 2. Re-populate grid and adjust constraints
+        if orientation == "vertical":
+            self.main_layout.setSpacing(10)
+            self.main_layout.setContentsMargins(10, 5, 10, 5)
+            
+            # Use short labels for vertical sidebar
+            self.wpm_box.title_label.setText("WPM")
+            self.accuracy_box.title_label.setText("ACC")
+            self.time_box.title_label.setText("TIME")
+            
+            for i, w in enumerate(widgets):
+                self.main_layout.addWidget(w, i, 0)
+            
+            # Add stretch to push everything to the top
+            self.main_layout.setRowStretch(len(widgets), 1)
+            for i in range(len(widgets)):
+                self.main_layout.setRowStretch(i, 0)
+            self.main_layout.setColumnStretch(0, 0)
+            
+            self.setFixedWidth(140)
+            self.setFixedHeight(16777215)
+            self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        else: # horizontal
+            self.main_layout.setSpacing(15)
+            self.main_layout.setContentsMargins(15, 5, 15, 5)
+            
+            # Use longer labels for horizontal bar
+            self.wpm_box.title_label.setText("Words Per Minute")
+            self.accuracy_box.title_label.setText("Accuracy")
+            self.time_box.title_label.setText("Time Elapsed")
+            
+            for i, w in enumerate(widgets):
+                self.main_layout.addWidget(w, 0, i)
+            
+            # Distribute space equally
+            self.main_layout.setRowStretch(0, 0)
+            for i in range(len(widgets)):
+                self.main_layout.setColumnStretch(i, 1)
+            self.main_layout.setColumnStretch(len(widgets), 0) # No trailing stretch
+            
+            self.setFixedWidth(16777215)
+            self.setFixedHeight(120)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        # Force layout recalculation
+        self.main_layout.activate()
     
     def on_status_action(self):
         """Handle status box click."""
@@ -506,7 +554,8 @@ class StatsDisplayWidget(QWidget):
         
         self.setStyleSheet(f"""
             #statsDisplay {{
-                background-color: {scheme.bg_primary};
+                background-color: {scheme.bg_secondary};
+                border-left: 1px solid {scheme.border_color};
             }}
         """)
         

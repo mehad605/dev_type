@@ -944,6 +944,9 @@ class MainWindow(QMainWindow):
     sound_enabled_changed = Signal(bool)
     instant_death_changed = Signal(bool)
     ignored_patterns_changed = Signal()
+    progress_bar_pos_changed = Signal(str)
+    stats_display_pos_changed = Signal(str)
+    auto_indent_changed = Signal(bool)
     
     def __init__(self):
         if DEBUG_STARTUP_TIMING:
@@ -1267,64 +1270,7 @@ class MainWindow(QMainWindow):
         modifiers = event.modifiers()
         key = event.key()
         
-        # Ctrl + T: Cycle themes (Global)
-        if (modifiers & Qt.ControlModifier) and key == Qt.Key_T:
-            self._cycle_themes()
-            event.accept()
-            return
-            
-        # Ctrl + Shift + P: Open Profile Switcher (Global)
-        if (modifiers & Qt.ControlModifier) and (modifiers & Qt.ShiftModifier) and key == Qt.Key_P:
-            self.open_profile_manager()
-            event.accept()
-            return
-            
-        # Alt + 1-7: Direct tab switching
-        if (modifiers & Qt.AltModifier) and not (modifiers & Qt.ControlModifier):
-            tab_index = -1
-            if key == Qt.Key_1: tab_index = 0
-            elif key == Qt.Key_2: tab_index = 1
-            elif key == Qt.Key_3: tab_index = 2
-            elif key == Qt.Key_4: tab_index = 3
-            elif key == Qt.Key_5: tab_index = 4
-            elif key == Qt.Key_6: tab_index = 5
-            elif key == Qt.Key_7: tab_index = 6
-            
-            if tab_index != -1 and tab_index < self.tabs.count():
-                self.tabs.setCurrentIndex(tab_index)
-                event.accept()
-                return
-
-        # Handle shortcuts when Typing Tab is active
-        if self.tabs.currentWidget() == self.editor_tab:
-            if (modifiers & Qt.ControlModifier):
-                if key == Qt.Key_P:
-                    # Toggle Pause/Resume
-                    if hasattr(self.editor_tab, 'toggle_pause'):
-                        self.editor_tab.toggle_pause()
-                    event.accept()
-                    return
-                elif key == Qt.Key_R:
-                    # Random File
-                    if hasattr(self.editor_tab, 'file_tree') and hasattr(self.editor_tab.file_tree, '_on_random_clicked'):
-                        self.editor_tab.file_tree._on_random_clicked()
-                    event.accept()
-                    return
-                elif key == Qt.Key_D:
-                    # Toggle Instant Death
-                    current = settings.get_setting("instant_death_mode", "0") == "1"
-                    self._handle_instant_death_button(not current)
-                    event.accept()
-                    return
-            elif (modifiers & Qt.AltModifier):
-                if key == Qt.Key_R:
-                    # Start Race
-                    if hasattr(self.editor_tab, 'on_ghost_clicked'):
-                        self.editor_tab.on_ghost_clicked()
-                    event.accept()
-                    return
-
-        # Global Toggles
+        # 1. Behavioral Global Shortcuts (Work everywhere)
         if (modifiers & Qt.ControlModifier):
             if key == Qt.Key_L:
                 # Toggle Lenient Mode
@@ -1351,6 +1297,78 @@ class MainWindow(QMainWindow):
                 self._handle_show_typed_button(not current)
                 event.accept()
                 return
+            elif key == Qt.Key_D:
+                # Toggle Instant Death
+                current = settings.get_setting("instant_death_mode", "0") == "1"
+                self._handle_instant_death_button(not current)
+                event.accept()
+                return
+            elif key == Qt.Key_I:
+                # Toggle Auto Indent (Ctrl + I)
+                current = settings.get_setting("auto_indent", "0") == "1"
+                self._handle_auto_indent_button(not current)
+                event.accept()
+                return
+            elif key == Qt.Key_T:
+                # Cycle Themes
+                self._cycle_themes()
+                event.accept()
+                return
+            elif (modifiers & Qt.ShiftModifier) and key == Qt.Key_P:
+                # Switch Profile
+                self.open_profile_manager()
+                event.accept()
+                return
+
+        # 2. Layout & Tab Navigation (Global)
+        if (modifiers & Qt.AltModifier) and not (modifiers & Qt.ControlModifier):
+            # Alt + 1-7: Direct tab switching
+            tab_index = -1
+            if key == Qt.Key_1: tab_index = 0
+            elif key == Qt.Key_2: tab_index = 1
+            elif key == Qt.Key_3: tab_index = 2
+            elif key == Qt.Key_4: tab_index = 3
+            elif key == Qt.Key_5: tab_index = 4
+            elif key == Qt.Key_6: tab_index = 5
+            elif key == Qt.Key_7: tab_index = 6
+            
+            if tab_index != -1 and tab_index < self.tabs.count():
+                self.tabs.setCurrentIndex(tab_index)
+                event.accept()
+                return
+
+        # 3. Session-Specific Shortcuts (Typing Tab ONLY)
+        if hasattr(self, 'editor_tab') and self.tabs.currentWidget() == self.editor_tab:
+            # ESC: Reset
+            if key == Qt.Key_Escape:
+                if hasattr(self.editor_tab, 'on_reset_clicked'):
+                    self.editor_tab.on_reset_clicked()
+                event.accept()
+                return
+
+            # Ctrl actions
+            if (modifiers & Qt.ControlModifier):
+                if key == Qt.Key_P:
+                    # Toggle Pause/Resume
+                    if hasattr(self.editor_tab, 'toggle_pause'):
+                        self.editor_tab.toggle_pause()
+                    event.accept()
+                    return
+                elif key == Qt.Key_R:
+                    # Random File
+                    if hasattr(self.editor_tab, 'file_tree') and hasattr(self.editor_tab.file_tree, '_on_random_clicked'):
+                        self.editor_tab.file_tree._on_random_clicked()
+                    event.accept()
+                    return
+            
+            # Alt actions
+            if (modifiers & Qt.AltModifier):
+                if key == Qt.Key_R:
+                    # Start Race
+                    if hasattr(self.editor_tab, 'on_ghost_clicked'):
+                        self.editor_tab.on_ghost_clicked()
+                    event.accept()
+                    return
 
         super().keyPressEvent(event)
 
@@ -1506,6 +1524,59 @@ class MainWindow(QMainWindow):
         
         general_group.setLayout(general_layout)
         s_layout.addWidget(general_group)
+
+        # UI Layout settings group
+        layout_group = QGroupBox("Interface Layout")
+        layout_layout = QVBoxLayout()
+        
+        # Progress Bar Position
+        pb_pos_label = QLabel("Progress Bar Position")
+        pb_pos_label.setStyleSheet("font-weight: bold;")
+        layout_layout.addWidget(pb_pos_label)
+        
+        pb_pos_row = QHBoxLayout()
+        pb_pos_row.addWidget(QLabel("Location:"))
+        self.pb_pos_combo = QComboBox()
+        self.pb_pos_combo.addItem("Top", "top")
+        self.pb_pos_combo.addItem("Bottom", "bottom")
+        self.pb_pos_combo.setMinimumWidth(120)
+        
+        current_pb_pos = settings.get_setting("progress_bar_pos", settings.get_default("progress_bar_pos"))
+        index = self.pb_pos_combo.findData(current_pb_pos)
+        if index >= 0:
+            self.pb_pos_combo.setCurrentIndex(index)
+        
+        self.pb_pos_combo.currentIndexChanged.connect(self._handle_pb_pos_changed)
+        pb_pos_row.addWidget(self.pb_pos_combo)
+        pb_pos_row.addStretch()
+        layout_layout.addLayout(pb_pos_row)
+        
+        layout_layout.addSpacing(10)
+        
+        # Stats Display Position
+        stats_pos_label = QLabel("Stats Display Position")
+        stats_pos_label.setStyleSheet("font-weight: bold;")
+        layout_layout.addWidget(stats_pos_label)
+        
+        stats_pos_row = QHBoxLayout()
+        stats_pos_row.addWidget(QLabel("Location:"))
+        self.stats_pos_combo = QComboBox()
+        self.stats_pos_combo.addItem("Right Sidebar", "right")
+        self.stats_pos_combo.addItem("Bottom Bar", "bottom")
+        self.stats_pos_combo.setMinimumWidth(120)
+        
+        current_stats_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
+        index = self.stats_pos_combo.findData(current_stats_pos)
+        if index >= 0:
+            self.stats_pos_combo.setCurrentIndex(index)
+        
+        self.stats_pos_combo.currentIndexChanged.connect(self._handle_stats_pos_changed)
+        stats_pos_row.addWidget(self.stats_pos_combo)
+        stats_pos_row.addStretch()
+        layout_layout.addLayout(stats_pos_row)
+        
+        layout_group.setLayout(layout_layout)
+        s_layout.addWidget(layout_group)
 
         # History Retention settings group
         history_group = QGroupBox("History Retention")
@@ -3207,9 +3278,23 @@ class MainWindow(QMainWindow):
 
     def _handle_instant_death_button(self, enabled: bool):
         """Handle clicks on the instant-death buttons."""
-        self._update_instant_death_buttons(enabled)
         settings.set_setting("instant_death_mode", "1" if enabled else "0")
+        self._update_instant_death_buttons(enabled)
         self.instant_death_changed.emit(enabled)
+
+    def _handle_pb_pos_changed(self, index):
+        """Handle progress bar position change."""
+        pos = self.pb_pos_combo.itemData(index)
+        if pos:
+            settings.set_setting("progress_bar_pos", pos)
+            self.progress_bar_pos_changed.emit(pos)
+
+    def _handle_stats_pos_changed(self, index):
+        """Handle stats display position change."""
+        pos = self.stats_pos_combo.itemData(index)
+        if pos:
+            settings.set_setting("stats_display_pos", pos)
+            self.stats_display_pos_changed.emit(pos)
 
     def _handle_sound_enabled_button(self, enabled: bool):
         """Handle sound enabled/disabled button clicks."""
@@ -3621,6 +3706,23 @@ class MainWindow(QMainWindow):
             self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
         if hasattr(self, 'ignored_folders_edit'):
             self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))
+
+        # Interface Layout settings
+        if hasattr(self, 'pb_pos_combo'):
+            pb_pos = settings.get_setting("progress_bar_pos", settings.get_default("progress_bar_pos"))
+            index = self.pb_pos_combo.findData(pb_pos)
+            if index >= 0:
+                self.pb_pos_combo.blockSignals(True)
+                self.pb_pos_combo.setCurrentIndex(index)
+                self.pb_pos_combo.blockSignals(False)
+
+        if hasattr(self, 'stats_pos_combo'):
+            stats_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
+            index = self.stats_pos_combo.findData(stats_pos)
+            if index >= 0:
+                self.stats_pos_combo.blockSignals(True)
+                self.stats_pos_combo.setCurrentIndex(index)
+                self.stats_pos_combo.blockSignals(False)
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -3674,6 +3776,21 @@ class MainWindow(QMainWindow):
         
             # Connect progress bar color updates
             self.colors_changed.connect(self.editor_tab.update_progress_bar_color)
+            
+            # Connect layout position updates
+            self.progress_bar_pos_changed.connect(self.editor_tab.update_layout)
+            self.stats_display_pos_changed.connect(self.editor_tab.update_layout)
+            
+            # Connect Instant Death and Auto Indent (Bidirectional sync)
+            self.instant_death_changed.connect(lambda enabled: self.editor_tab._set_instant_death_mode(enabled, persist=False))
+            self.auto_indent_changed.connect(lambda enabled: self.editor_tab._set_auto_indent(enabled, persist=False))
+            
+            self.editor_tab.toggle_instant_death_requested.connect(self._handle_instant_death_button)
+            self.editor_tab.toggle_auto_indent_requested.connect(self._handle_auto_indent_button)
+            
+            # Additional UI sync
+            self.sound_enabled_changed.connect(self.editor_tab.sound_widget.set_enabled)
+            self.colors_changed.connect(self.editor_tab.apply_theme)
     
     def _emit_initial_settings(self):
         """Emit initial settings to apply them immediately after connection."""
@@ -3723,6 +3840,13 @@ class MainWindow(QMainWindow):
         show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
         self.show_ghost_text_changed.emit(show_ghost)
+        
+        # UI Layout settings
+        pb_pos = settings.get_setting("progress_bar_pos", settings.get_default("progress_bar_pos"))
+        self.progress_bar_pos_changed.emit(pb_pos)
+        
+        stats_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
+        self.stats_display_pos_changed.emit(stats_pos)
 
     def on_ignored_extensions_changed(self, text: str):
         """Deprecated: Logic moved to _save_ignore_settings."""
@@ -4177,6 +4301,7 @@ class MainWindow(QMainWindow):
         """Handle clicks on the auto-indent buttons."""
         settings.set_setting("auto_indent", "1" if enabled else "0")
         self._update_auto_indent_buttons(enabled)
+        self.auto_indent_changed.emit(enabled)
         # Update engine immediately if it exists
         if hasattr(self, 'editor_tab') and self.editor_tab.typing_area and self.editor_tab.typing_area.engine:
             self.editor_tab.typing_area.engine.auto_indent = enabled

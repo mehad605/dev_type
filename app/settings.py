@@ -81,6 +81,10 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "ghost_progress_bar_color": "#ff557f",
     "ghost_text_color": "#ffaaff",
     
+    # UI Layout settings
+    "progress_bar_pos": "top",
+    "stats_display_pos": "right",
+    
     # Stats settings
     "best_wpm_min_accuracy": "0.9",
     "stats_heatmap_metric": "total_chars",

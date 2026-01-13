@@ -63,14 +63,28 @@ class ShortcutItem(QFrame):
         
         self.desc_label.setStyleSheet(f"color: {scheme.text_primary}; background: transparent;")
 
+    def set_visible_by_filter(self, filter_text: str) -> bool:
+        """Show/hide based on filter, return True if match found."""
+        if not filter_text:
+            self.show()
+            return True
+            
+        matches = filter_text in self.key_label.text().lower() or filter_text in self.desc_label.text().lower()
+        self.setVisible(matches)
+        return matches
+
 class ShortcutsTab(QWidget):
     """Tab displaying all available keyboard shortcuts."""
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.sections = [] # List of (label, items_list)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(20)
+        layout.setContentsMargins(40, 20, 40, 40)
+        layout.setSpacing(15)
+        
+        # Header Row: Title + Search
+        header_layout = QHBoxLayout()
         
         # Title
         title_label = QLabel("Keyboard Shortcuts")
@@ -78,7 +92,21 @@ class ShortcutsTab(QWidget):
         title_font.setPointSize(24)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        
+        header_layout.addStretch()
+        
+        # Search Bar
+        from PySide6.QtWidgets import QLineEdit
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search shortcuts...")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.setFixedWidth(250)
+        self.search_input.setMinimumHeight(32)
+        self.search_input.textChanged.connect(self._filter_shortcuts)
+        header_layout.addWidget(self.search_input)
+        
+        layout.addLayout(header_layout)
         
         # Description
         desc_label = QLabel("Increase your productivity with these powerful keyboard combinations.")
@@ -102,19 +130,20 @@ class ShortcutsTab(QWidget):
             ("Ctrl + T", "Cycle through available themes"),
             ("Ctrl + Shift + P", "Switch Profile"),
             ("Alt + 1-7", "Switch between tabs"),
-            ("Ctrl + L", "Toggle Lenient Mode (No mistake fixing)"),
+            ("Ctrl + L", "Toggle Lenient Mode (Skip fixing mistakes)"),
             ("Ctrl + G", "Toggle Ghost Text visibility"),
             ("Ctrl + M", "Toggle sound (Mute/Unmute)"),
-            ("Ctrl + S", "Toggle 'Show what you type' mode")
+            ("Ctrl + S", "Toggle 'Show what you type' mode"),
+            ("Ctrl + I", "Toggle Auto-Indent mode"),
+            ("Ctrl + D", "Toggle Instant Death mode")
         ])
         
         # Typing Tab Shortcuts
         self.add_section("Typing Tab", [
             ("Ctrl + P", "Pause or Resume the current typing session"),
             ("Ctrl + R", "Select a random file from the current folder"),
-            ("Ctrl + D", "Toggle Instant Death mode"),
-            ("Alt + R", "Start a race against your ghost"),
-            ("ESC", "Reset the current line or file")
+            ("Alt + R", "Start a custom ghost race"),
+            ("ESC", "Reset cursor or abort current session")
         ])
         
         self.container_layout.addStretch()
@@ -129,9 +158,23 @@ class ShortcutsTab(QWidget):
         section_label.setStyleSheet("color: #5e81ac; font-weight: bold; font-size: 10pt; margin-top: 10px;")
         self.container_layout.addWidget(section_label)
         
+        items = []
         for key, desc in shortcuts:
             item = ShortcutItem(key, desc)
             self.container_layout.addWidget(item)
+            items.append(item)
+            
+        self.sections.append((section_label, items))
+
+    def _filter_shortcuts(self, text: str):
+        text = text.lower()
+        for label, items in self.sections:
+            section_has_match = False
+            for item in items:
+                if item.set_visible_by_filter(text):
+                    section_has_match = True
+            
+            label.setVisible(section_has_match)
 
     def apply_theme(self):
         from app.themes import get_color_scheme
@@ -139,6 +182,21 @@ class ShortcutsTab(QWidget):
         scheme = get_color_scheme("dark", scheme_name)
         
         self.title_label.setStyleSheet(f"color: {scheme.text_primary};")
+        
+        # Update search input style
+        self.search_input.setStyleSheet(f"""
+            QLineEdit {{
+                border: 1px solid {scheme.border_color};
+                border-radius: 6px;
+                padding: 4px 10px;
+                background-color: {scheme.bg_secondary};
+                color: {scheme.text_primary};
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border-color: {scheme.accent_color};
+            }}
+        """)
         
         # Update all items
         for i in range(self.container_layout.count()):

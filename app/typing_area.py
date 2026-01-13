@@ -823,42 +823,52 @@ class TypingAreaWidget(QTextEdit):
             sound_mgr.play_keypress()  # Sound for tab
             all_correct = True
             spaces_processed = 0
-            # Process 'tab_width' spaces for tab
+            
+            # Process up to 'tab_width' characters, but stop if we hit non-whitespace
             for _ in range(self.tab_width):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
-                position = self._engine_to_display_position(self.engine.state.cursor_position)
-                expected_char = self.engine.state.content[self.engine.state.cursor_position]
-                expected_display = self._display_char_for(expected_char)
                 
-                # Match what the old code did: always send a space ' '
-                is_correct, expected_from_engine, _ = self.engine.process_keystroke(' ')
+                position = self._engine_to_display_position(self.engine.state.cursor_position)
+                expected_actual = self.engine.state.content[self.engine.state.cursor_position]
+                
+                # Stop tabbing if we reach something that isn't a space or a tab
+                if expected_actual not in (' ', '\t'):
+                    break
+                
+                # Type the exact whitespace character expected (handles mixed spaces/tabs)
+                char_to_type = expected_actual
+                is_correct, expected_from_engine, _ = self.engine.process_keystroke(char_to_type)
                 
                 if not is_correct:
                     all_correct = False
+                    # Stop to prevent drawing multiple red indicators at one spot
+                    break
                 
                 if expected_from_engine == "" and not is_correct:
-                    # Record failed tab attempt before exiting
-                    self._record_keystroke('\t', False)
-                    self.stats_updated.emit()
-                    return
-                    
+                    # strict mode block
+                    break
+                
+                # Track visual state
+                typed_display = self._display_char_for(char_to_type)
+                expected_display = self._display_char_for(expected_actual)
+
                 if self.highlighter:
                     self.highlighter.set_typed_char(
                         position,
-                        self.space_char,
+                        typed_display,
                         expected_display,
                         is_correct
                     )
                 self._apply_display_for_position(position)
                 spaces_processed += 1
                 
-            if spaces_processed:
+            if spaces_processed > 0:
                 self._record_keystroke('\t', all_correct)
-            self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
-            self._maybe_slide_window()
-            self._update_cursor_position()
-            self.stats_updated.emit()
+                self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
+                self._maybe_slide_window()
+                self._update_cursor_position()
+                self.stats_updated.emit()
             return
         
         # Handle printable characters

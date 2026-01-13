@@ -3,7 +3,7 @@ import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication, QFrame
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QEvent
+from PySide6.QtCore import Qt, QTimer, QSize, QEvent, Signal
 from PySide6.QtGui import QKeyEvent
 from typing import Optional, List
 from app.file_tree import FileTreeWidget
@@ -23,6 +23,10 @@ DEBUG_STARTUP_TIMING = True
 
 class EditorTab(QWidget):
     """Complete editor/typing tab with tree, typing area, and stats."""
+    # Signals for communication with parent
+    toggle_instant_death_requested = Signal(bool)
+    toggle_auto_indent_requested = Signal(bool)
+    
     
     def __init__(self, parent=None):
         if DEBUG_STARTUP_TIMING:
@@ -166,9 +170,9 @@ class EditorTab(QWidget):
         # RIGHT PANE: Action Buttons + Typing Area
         # ==========================================
         right_pane = QWidget()
-        right_layout = QVBoxLayout(right_pane)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+        self.right_layout = QVBoxLayout(right_pane)
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSpacing(0)
 
         # Right Local Header
         right_header_widget = QWidget()
@@ -177,21 +181,31 @@ class EditorTab(QWidget):
         right_header_layout.setSpacing(8)
 
         # Action Buttons setup
-        self.reset_btn = QPushButton("Reset to Top")
+        self.reset_btn = QPushButton("Reset")
         self.reset_btn.setIcon(get_icon("ROTATE_CCW"))
         self.reset_btn.setStyleSheet(header_btn_style)
         self.reset_btn.setFixedHeight(30)
-        self.reset_btn.setToolTip("Reset cursor to beginning of file")
+        self.reset_btn.setToolTip("Reset cursor to beginning of file (ESC)")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
 
         from app import settings
+        auto_indent_enabled = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
+        self.auto_indent_btn = QPushButton("Indent")
+        self.auto_indent_btn.setIcon(get_icon("INDENT"))
+        self.auto_indent_btn.setCheckable(True)
+        self.auto_indent_btn.setChecked(auto_indent_enabled)
+        self.auto_indent_btn.setFixedHeight(30)
+        self.auto_indent_btn.setToolTip("Auto-indent after newlines (Ctrl+I)")
+        self.auto_indent_btn.clicked.connect(self.on_auto_indent_toggled)
+        self.auto_indent_btn.setStyleSheet(header_btn_style)
+
         instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
-        self.instant_death_btn = QPushButton("Instant Death")
+        self.instant_death_btn = QPushButton("Death: OFF")
         self.instant_death_btn.setIcon(get_icon("DEATH"))
         self.instant_death_btn.setCheckable(True)
         self.instant_death_btn.setChecked(instant_death_enabled)
         self.instant_death_btn.setFixedHeight(30)
-        self.instant_death_btn.setToolTip("Reset to top on any mistake")
+        self.instant_death_btn.setToolTip("Reset to top on any mistake (Ctrl+D)")
         self.instant_death_btn.clicked.connect(self.on_instant_death_toggled)
 
         self.ghost_btn = QPushButton()
@@ -210,24 +224,23 @@ class EditorTab(QWidget):
 
         right_header_layout.addStretch()
         right_header_layout.addWidget(self.reset_btn)
+        right_header_layout.addWidget(self.auto_indent_btn)
         right_header_layout.addWidget(self.instant_death_btn)
         right_header_layout.addWidget(self.ghost_btn)
         right_header_layout.addWidget(self.sound_widget)
 
-        right_layout.addWidget(right_header_widget)
+        self.right_header_widget = right_header_widget
+        self.right_layout.addWidget(self.right_header_widget)
         
         # Separator line for right side
-        right_sep = QFrame()
-        right_sep.setFrameShape(QFrame.HLine)
-        right_sep.setFrameShadow(QFrame.Plain)
-        right_sep.setFixedHeight(1)
-        right_sep.setStyleSheet("background-color: #3b4252; border: none;")
-        right_layout.addWidget(right_sep)
+        self.right_sep = QFrame()
+        self.right_sep.setFrameShape(QFrame.HLine)
+        self.right_sep.setFrameShadow(QFrame.Plain)
+        self.right_sep.setFixedHeight(1)
+        self.right_sep.setStyleSheet("background-color: #3b4252; border: none;")
+        self.right_layout.addWidget(self.right_sep)
 
-        # Vertical Splitter: Typing Area | Stats/Progress
-        v_splitter = QSplitter(Qt.Vertical)
-        
-        # Typing area setup
+        # 1. Typing area setup
         if DEBUG_STARTUP_TIMING: t = time.time()
         self.typing_area = TypingAreaWidget()
         if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
@@ -237,96 +250,111 @@ class EditorTab(QWidget):
         self.typing_area.first_key_pressed.connect(self._on_first_race_key)
         self.typing_area.typing_resumed.connect(self._on_typing_resumed)
         self.typing_area.typing_paused.connect(self._on_typing_paused)
-        v_splitter.addWidget(self.typing_area)
         
         # Ensure engine matches current instant death state
         self._set_instant_death_mode(self.instant_death_btn.isChecked(), persist=False)
         
-        # Connect to parent window signals for dynamic updates
-        window = self.window()
-        if hasattr(window, 'cursor_changed'):
-            window.cursor_changed.connect(self.typing_area.update_cursor)
-            window.font_changed.connect(self.typing_area.update_font)
-            window.colors_changed.connect(self.typing_area.update_colors)
-            window.space_char_changed.connect(self.typing_area.update_space_char)
-            window.pause_delay_changed.connect(self.typing_area.update_pause_delay)
-            window.allow_continue_changed.connect(self.typing_area.update_allow_continue)
-            window.show_typed_changed.connect(self.typing_area.update_show_typed_characters)
-            window.show_ghost_text_changed.connect(self.typing_area.update_show_ghost_text)
-            window.sound_enabled_changed.connect(self.sound_widget.set_enabled)
-            window.instant_death_changed.connect(lambda enabled: self._set_instant_death_mode(enabled, persist=False))
-            window.colors_changed.connect(self.apply_theme)
-            
-            # Apply initial settings
-            from app import settings
-            c_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
-            c_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
-            self.typing_area.update_cursor(c_type, c_style)
-            
-            f_family = settings.get_setting("font_family", settings.get_default("font_family"))
-            f_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
-            self.typing_area.update_font(f_family, f_size, False)
-            
-            self.typing_area.update_colors()
-            self.update_progress_bar_color()
+        # Initial settings application
+        from app import settings
+        c_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
+        c_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
+        self.typing_area.update_cursor(c_type, c_style)
+        
+        f_family = settings.get_setting("font_family", settings.get_default("font_family"))
+        f_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=32)
+        self.typing_area.update_font(f_family, f_size, False)
+        self.typing_area.update_colors()
+        self.update_progress_bar_color()
 
-        # Bottom section: Progress Bars + Stats Display
-        self.bottom_container = QWidget()
-        bottom_layout = QVBoxLayout(self.bottom_container)
-        bottom_layout.setContentsMargins(0, 2, 0, 0)
-        bottom_layout.setSpacing(2)
+        # Connect to parent window signals for dynamic updates
+        # (Most connections managed centrally by MainWindow._connect_settings_signals)
+        window = self.window()
+        if window and hasattr(window, 'stats_display_pos_changed'):
+            window.stats_display_pos_changed.connect(self.update_layout)
+            window.colors_changed.connect(self.apply_theme)
+
+        # 2. Top section: Progress Bars (now at top for better visibility)
+        self.top_container = QWidget(self)
+        self.top_container.hide()
+        top_layout = QVBoxLayout(self.top_container)
+        top_layout.setContentsMargins(0, 2, 0, 5)
+        top_layout.setSpacing(2)
         
         # User progress bar
         user_progress_widget = QWidget()
         user_progress_layout = QHBoxLayout(user_progress_widget)
-        user_progress_layout.setContentsMargins(5, 1, 5, 1)
+        user_progress_layout.setContentsMargins(15, 1, 15, 1)
         user_progress_layout.setSpacing(10)
-        self.user_label = QLabel("You:")
-        self.user_label.setStyleSheet("color: #888888; font-weight: bold;")
+        self.user_label = QLabel("USER:")
+        self.user_label.setStyleSheet("color: #888888; font-weight: bold; font-size: 11px;")
         self.user_label.setFixedWidth(60)
         user_progress_layout.addWidget(self.user_label, stretch=0)
         self.user_progress_bar = ProgressBarWidget(bar_type="user")
         user_progress_layout.addWidget(self.user_progress_bar, stretch=1)
         self.user_progress_label = QLabel("0%")
-        self.user_progress_label.setFixedWidth(50)
-        self.user_progress_label.setAlignment(Qt.AlignCenter)
-        self.user_progress_label.setStyleSheet("color: #888888; font-weight: bold;")
+        self.user_progress_label.setFixedWidth(40)
+        self.user_progress_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.user_progress_label.setStyleSheet("color: #888888; font-weight: bold; font-size: 11px;")
         user_progress_layout.addWidget(self.user_progress_label, stretch=0)
-        bottom_layout.addWidget(user_progress_widget)
+        top_layout.addWidget(user_progress_widget)
         
         # Ghost progress bar
         ghost_progress_widget = QWidget()
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
-        ghost_progress_layout.setContentsMargins(5, 1, 5, 1)
+        ghost_progress_layout.setContentsMargins(15, 1, 15, 1)
         ghost_progress_layout.setSpacing(10)
-        self.ghost_label = QLabel("Ghost:")
+        self.ghost_label = QLabel("CPU:")
         ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
-        self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
+        self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold; font-size: 11px;")
         self.ghost_label.setFixedWidth(60)
         ghost_progress_layout.addWidget(self.ghost_label, stretch=0)
         self.ghost_progress_bar = ProgressBarWidget(bar_type="ghost")
         ghost_progress_layout.addWidget(self.ghost_progress_bar, stretch=1)
         self.ghost_progress_label = QLabel("0%")
-        self.ghost_progress_label.setFixedWidth(50)
-        self.ghost_progress_label.setAlignment(Qt.AlignCenter)
-        self.ghost_progress_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold;")
+        self.ghost_progress_label.setFixedWidth(40)
+        self.ghost_progress_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.ghost_progress_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold; font-size: 11px;")
         ghost_progress_layout.addWidget(self.ghost_progress_label, stretch=0)
         self.ghost_progress_widget = ghost_progress_widget
         self.ghost_progress_widget.setVisible(False)
-        bottom_layout.addWidget(ghost_progress_widget)
+        top_layout.addWidget(ghost_progress_widget)
         
-        # Stats display
+        # Progress bars container (added to layout in update_layout)
+
+        # 3. Main Content Area: [Typing Area] | [Optional Stats Sidebar]
+        self.content_pane = QWidget(self)
+        self.content_pane.hide()
+        self.content_layout = QHBoxLayout(self.content_pane)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
+        
+        # Vertical Separator (for sidebar mode)
+        self.v_sep = QFrame(self)
+        self.v_sep.setFrameShape(QFrame.VLine)
+        self.v_sep.setFrameShadow(QFrame.Plain)
+        self.v_sep.setFixedWidth(1)
+        self.v_sep.setStyleSheet("background-color: #3b4252; border: none;")
+        self.v_sep.setVisible(False)
+        
+        # Horizontal Separator (for bottom mode)
+        self.h_sep = QFrame(self)
+        self.h_sep.setFrameShape(QFrame.HLine)
+        self.h_sep.setFrameShadow(QFrame.Plain)
+        self.h_sep.setFixedHeight(1)
+        self.h_sep.setStyleSheet("background-color: #3b4252; border: none;")
+        self.h_sep.setVisible(False)
+        
+        # Stats Display on right (fixed width)
         if DEBUG_STARTUP_TIMING: t = time.time()
-        self.stats_display = StatsDisplayWidget()
+        self.stats_display = StatsDisplayWidget(self)
+        self.stats_display.hide()
         self.stats_display.pause_requested.connect(self.toggle_pause)
         self.stats_display.reset_requested.connect(self.on_reset_clicked)
         if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] StatsDisplayWidget: {time.time() - t:.3f}s")
-        bottom_layout.addWidget(self.stats_display)
         
-        v_splitter.addWidget(self.bottom_container)
-        v_splitter.setSizes([920, 80])
+        # Initial Layout assembly
+        self.update_layout()
         
-        right_layout.addWidget(v_splitter)
         h_splitter.addWidget(right_pane)
 
         # Apply final layout parameters
@@ -353,6 +381,123 @@ class EditorTab(QWidget):
         
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] Load complete: {time.time() - t_start:.3f}s")
+
+    def update_layout(self, *args):
+        """Dynamic layout update based on user settings."""
+        if not hasattr(self, 'typing_area'): # Not loaded yet
+            return
+            
+        from app import settings
+        from PySide6.QtWidgets import QSizePolicy
+        
+        # BLOCK UPDATES to prevent flickering and ghost windows
+        self.setUpdatesEnabled(False)
+        
+        # Hide containers temporarily to prevent they appearing at (0,0)
+        self.top_container.hide()
+        self.content_pane.hide()
+        self.stats_display.hide()
+        self.v_sep.hide()
+        self.h_sep.hide()
+        if hasattr(self, 'footer_sep'):
+            self.footer_sep.hide()
+
+        pb_pos = settings.get_setting("progress_bar_pos", settings.get_default("progress_bar_pos"))
+        stats_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
+        
+        # 1. Clear content layout (Typing area + Sidebar)
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(self) # Keep parented to self
+        
+        # 2. Clear Right Layout from index 2 onwards (After Header + Sep)
+        while self.right_layout.count() > 2:
+            item = self.right_layout.takeAt(2)
+            if item.widget():
+                item.widget().setParent(self)
+        
+        # 3. Assemble Content Pane (Typing Area + optional Sidebar)
+        self.content_layout.addWidget(self.typing_area, stretch=1)
+        self.typing_area.show()
+        
+        if stats_pos == "right":
+            self.stats_display.set_orientation("vertical")
+            self.v_sep.setVisible(True)
+            self.content_layout.addWidget(self.v_sep)
+            self.content_layout.addWidget(self.stats_display)
+            self.h_sep.setVisible(False)
+        else:
+            self.v_sep.setVisible(False)
+            self.h_sep.setVisible(True)
+            self.stats_display.set_orientation("horizontal")
+            
+        # 4. Assemble Right Layout in correct order
+        # Header (0) and its separator (1) are untouched.
+        
+        # If progress bar is top
+        if pb_pos == "top":
+            self.top_container.setStyleSheet("") # Clear background
+            self.right_layout.addWidget(self.top_container)
+            
+        # Main content (Typing area)
+        self.right_layout.addWidget(self.content_pane, stretch=1)
+        self.content_pane.show()
+        
+        # BOTTOM AREA (Footer)
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
+        if pb_pos == "bottom" and stats_pos == "bottom":
+            # If both at bottom, Progress Bar comes TOP of the footer
+            self.right_layout.addWidget(self.h_sep)
+            self.h_sep.show()
+            
+            # Add solid background to avoid bleed-through
+            self.top_container.setStyleSheet(f"background-color: {scheme.bg_primary};")
+            self.right_layout.addWidget(self.top_container)
+            
+            # Second separator between progress and stats
+            if not hasattr(self, 'footer_sep'):
+                self.footer_sep = QFrame(self)
+                self.footer_sep.setFrameShape(QFrame.HLine)
+                self.footer_sep.setFixedHeight(1)
+            self.footer_sep.setStyleSheet(f"background-color: {scheme.border_color}; border: none;")
+            self.right_layout.addWidget(self.footer_sep)
+            self.footer_sep.show()
+            
+            self.right_layout.addWidget(self.stats_display)
+            self.stats_display.show()
+        elif pb_pos == "bottom":
+            self.right_layout.addWidget(self.h_sep)
+            self.h_sep.show()
+            self.top_container.setStyleSheet(f"background-color: {scheme.bg_primary};")
+            self.right_layout.addWidget(self.top_container)
+        elif stats_pos == "bottom":
+            self.right_layout.addWidget(self.h_sep)
+            self.h_sep.show()
+            self.right_layout.addWidget(self.stats_display)
+            self.stats_display.show()
+        
+        # Show what needs to be shown
+        if pb_pos == "top":
+            self.top_container.show()
+        elif pb_pos == "bottom":
+            self.top_container.show()
+            
+        if stats_pos == "right":
+            self.stats_display.show()
+        
+        # Ensure correct spacing at the very bottom
+        if pb_pos == "bottom" or stats_pos == "bottom":
+            # Add a small buffer at bottom
+            self.right_layout.addSpacing(2)
+        
+        # Refresh visuals and RE-ENABLE UPDATES
+        self.apply_theme()
+        self.setUpdatesEnabled(True)
+        self.update()
     
     def showEvent(self, event):
         """Trigger lazy loading when tab is shown."""
@@ -493,18 +638,14 @@ class EditorTab(QWidget):
         self.instant_death_btn.blockSignals(True)
         self.instant_death_btn.setChecked(enabled)
         self.instant_death_btn.blockSignals(False)
-        self.instant_death_btn.setText("Instant Death: Enabled" if enabled else "Instant Death: Disabled")
+        self.instant_death_btn.setText("Death: ON" if enabled else "Death: OFF")
         self._update_instant_death_style()
         if hasattr(self, 'typing_area') and self.typing_area.engine:
             self.typing_area.engine.instant_death_mode = enabled
 
     def on_instant_death_toggled(self, enabled: bool):
         """Handle instant death mode toggle."""
-        window = self.window()
-        if hasattr(window, '_handle_instant_death_button'):
-            window._handle_instant_death_button(enabled)
-        else:
-            self._set_instant_death_mode(enabled, persist=True)
+        self.toggle_instant_death_requested.emit(enabled)
     
     def _update_instant_death_style(self):
         """Update instant death button styling based on state."""
@@ -542,7 +683,39 @@ class EditorTab(QWidget):
         """
         
         self.instant_death_btn.setStyleSheet(enabled_style if is_enabled else base_style)
-        self.instant_death_btn.setText("Instant Death: ON" if is_enabled else "Instant Death: OFF")
+        self.instant_death_btn.setText("Death: ON" if is_enabled else "Death: OFF")
+
+    def on_auto_indent_toggled(self, enabled: bool):
+        """Handle auto-indent mode toggle."""
+        self.toggle_auto_indent_requested.emit(enabled)
+
+    def _set_auto_indent(self, enabled: bool, persist: bool):
+        """Apply auto-indent mode to settings, button, and engine."""
+        if persist:
+            from app import settings
+            settings.set_setting("auto_indent", "1" if enabled else "0")
+        self.auto_indent_btn.blockSignals(True)
+        self.auto_indent_btn.setChecked(enabled)
+        self.auto_indent_btn.blockSignals(False)
+        
+        # Update button style
+        if enabled:
+            self.auto_indent_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #5e81ac;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                    font-weight: bold;
+                }
+            """)
+        else:
+            self.auto_indent_btn.setStyleSheet("") # Use default or apply_theme handles it
+            self.apply_theme()
+            
+        if hasattr(self, 'typing_area') and self.typing_area.engine:
+            self.typing_area.engine.auto_indent = enabled
     
     def on_mistake_occurred(self):
         """Handle mistake in typing area - reset if instant death mode is enabled."""
