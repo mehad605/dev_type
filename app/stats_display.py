@@ -199,9 +199,9 @@ class KeystrokeBox(QFrame):
         self.total_count.setText(str(total))
         
         # Update percentages
-        self.correct_pct.setText(f"{correct_pct:.0f}%")
-        self.incorrect_pct.setText(f"{incorrect_pct:.0f}%")
-        self.total_pct.setText("100%")
+        self.correct_pct.setText(f"{correct_pct:.1f}%")
+        self.incorrect_pct.setText(f"{incorrect_pct:.1f}%")
+        self.total_pct.setText("100.0%")
     
     def apply_theme(self):
         """Apply current theme colors."""
@@ -287,7 +287,7 @@ class InteractiveStatusBox(QFrame):
         self.action_btn.clicked.connect(self.pause_clicked.emit)
         layout.addWidget(self.action_btn)
     
-    def update_status(self, is_paused: bool, is_finished: bool):
+    def update_status(self, is_paused: bool, is_finished: bool, elapsed_time: float = 0):
         """Update the status display."""
         self.is_paused = is_paused
         self.is_finished = is_finished
@@ -297,8 +297,12 @@ class InteractiveStatusBox(QFrame):
             self.action_btn.setText("Reset")
             self.action_btn.setVisible(True)
         elif is_paused:
-            self.status_text.setText("PAUSED")
-            self.action_btn.setText("Resume")
+            if elapsed_time == 0:
+                self.status_text.setText("READY")
+                self.action_btn.setText("Start")
+            else:
+                self.status_text.setText("PAUSED")
+                self.action_btn.setText("Resume")
         else:
             self.status_text.setText("ACTIVE")
             self.action_btn.setText("Pause")
@@ -459,7 +463,7 @@ class StatsDisplayWidget(QWidget):
         # Status indicator
         is_finished = stats.get("is_finished", False)
         is_paused = stats.get("is_paused", True)
-        self.status_box.update_status(is_paused, is_finished)
+        self.status_box.update_status(is_paused, is_finished, elapsed_time=time_sec)
     
     def get_wpm_history(self) -> list:
         """Get the recorded WPM history as list of (second, wpm) tuples."""
@@ -475,6 +479,24 @@ class StatsDisplayWidget(QWidget):
         self._last_recorded_second = -1
         self.error_history = []
         self._last_recorded_incorrect = 0
+
+    def load_history(self, wpm_history: list, error_history: list, initial_incorrect: int = 0):
+        """Load WPM and error history for resumed session."""
+        self.wpm_history = wpm_history or []
+        self.error_history = error_history or []
+        self._last_recorded_incorrect = initial_incorrect
+        if self.wpm_history:
+            self._last_recorded_second = max(s for s, _ in self.wpm_history)
+        if error_history:
+             # We can't perfectly reconstruct _last_recorded_incorrect from error_history
+             # because error_history is (second, count_in_that_second)
+             # But it's used to calculate deltas. If we resume, we should ideally know
+             # the total incorrect at that point.
+             pass
+
+    def get_history(self) -> tuple:
+        """Get current WPM and error history."""
+        return self.wpm_history, self.error_history
     
     def apply_theme(self):
         """Apply current theme to all components."""

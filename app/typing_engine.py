@@ -15,6 +15,9 @@ class TypingState:
     is_paused: bool = True
     last_keystroke_time: float = 0
     is_finished: bool = False  # Track if session is completed
+    max_correct_position: int = -1 # Furthest position correctly typed
+    auto_skipped_characters: int = 0  # Characters skipped by auto-indent
+    skipped_positions: set = None # Positions skipped by auto-indent
     _session_start: float = 0  # When current typing session started (for pause/resume)
     
     # Keep start_time for backward compatibility but it's not used for timing anymore
@@ -32,6 +35,7 @@ class TypingState:
         if self.key_misses is None: self.key_misses = {}
         if self.key_confusions is None: self.key_confusions = {}
         if self.error_types is None: self.error_types = {'omission': 0, 'insertion': 0, 'transposition': 0, 'substitution': 0}
+        if self.skipped_positions is None: self.skipped_positions = set()
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -49,7 +53,11 @@ class TypingState:
         minutes = self.elapsed_time / 60.0
         if minutes == 0:
             return 0.0
-        return (self.cursor_position / 5.0) / minutes
+        return (self._get_calculable_chars() / 5.0) / minutes
+
+    def _get_calculable_chars(self) -> int:
+        """Get characters that count towards WPM (total typed - auto-skipped)."""
+        return max(0, self.cursor_position - len(self.skipped_positions))
     
     def is_complete(self) -> bool:
         return self.cursor_position >= len(self.content)
@@ -63,6 +71,7 @@ class TypingEngine:
         self.pause_delay = pause_delay  # Seconds of inactivity before auto-pause
         self.mistake_at: Optional[int] = None
         self.allow_continue_mistakes = allow_continue_mistakes  # Allow continuing despite mistakes
+        self.auto_indent = False  # Changed via setter or init
     
     def start(self):
         """Start or resume the typing session."""
@@ -99,9 +108,9 @@ class TypingEngine:
         if elapsed <= 0:
             return 0.0
         minutes = elapsed / 60.0
-        if minutes == 0:
+        if minutes == 0 or self.state.correct_keystrokes == 0:
             return 0.0
-        return (self.state.cursor_position / 5.0) / minutes
+        return (self.state._get_calculable_chars() / 5.0) / minutes
     
     def check_auto_pause(self) -> bool:
         """Check if session should auto-pause due to inactivity."""
@@ -111,7 +120,7 @@ class TypingEngine:
                 return True
         return False
     
-    def process_keystroke(self, typed_char: str) -> Tuple[bool, str]:
+    def process_keystroke(self, typed_char: str) -> Tuple[bool, str, int]:
         """
         Process a single keystroke.
         
@@ -119,11 +128,11 @@ class TypingEngine:
             typed_char: The character that was typed
             
         Returns:
-            (is_correct, expected_char) tuple
+            (is_correct, expected_char, skipped_count) tuple
         """
         # Don't process if already finished
         if self.state.is_finished:
-            return False, ""
+            return False, "", 0
             
         # Start session if paused
         if self.state.is_paused:
@@ -132,7 +141,7 @@ class TypingEngine:
         self.state.last_keystroke_time = time.time()
         
         if self.state.cursor_position >= len(self.state.content):
-            return False, ""
+            return False, "", 0
         
         expected_char = self.state.content[self.state.cursor_position]
         is_correct = typed_char == expected_char
@@ -141,10 +150,14 @@ class TypingEngine:
         if self.mistake_at is not None and not self.allow_continue_mistakes:
             # Count as incorrect keystroke but don't advance
             self.state.incorrect_keystrokes += 1
-            return False, expected_char
+            return False, expected_char, 0
             
         if is_correct:
-            self.state.correct_keystrokes += 1
+            # Only increment correct_keystrokes if this position hasn't been correctly typed before
+            if self.state.cursor_position > self.state.max_correct_position:
+                self.state.correct_keystrokes += 1
+                self.state.max_correct_position = self.state.cursor_position
+                
             self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
             self.state.cursor_position += 1
             
@@ -189,7 +202,24 @@ class TypingEngine:
                 # Don't advance cursor on incorrect keystroke
                 self.mistake_at = self.state.cursor_position
         
-        return is_correct, expected_char
+        # 3. Auto-indent logic
+        skipped_count = 0
+        if is_correct and typed_char == '\n' and self.auto_indent:
+            # Peek at next characters to see if they are whitespace
+            while self.state.cursor_position < len(self.state.content):
+                next_char = self.state.content[self.state.cursor_position]
+                if next_char in (' ', '\t'):
+                    self.state.skipped_positions.add(self.state.cursor_position)
+                    # Also treat skipped positions as "already typed" so they don't count if backspaced and manually typed
+                    if self.state.cursor_position > self.state.max_correct_position:
+                        self.state.max_correct_position = self.state.cursor_position
+                    self.state.cursor_position += 1
+                    skipped_count += 1
+                else:
+                    break
+                    
+        # Return info about skipped characters if any
+        return is_correct, expected_char, skipped_count
     
     def process_backspace(self):
         """Process a backspace keystroke."""
@@ -208,6 +238,9 @@ class TypingEngine:
         # Move cursor back if possible
         if self.state.cursor_position > 0:
             self.state.cursor_position -= 1
+            # If we backspace over a skipped character, remove it from skipped set
+            if self.state.cursor_position in self.state.skipped_positions:
+                self.state.skipped_positions.remove(self.state.cursor_position)
             self.state.last_keystroke_time = time.time()
     
     def process_ctrl_backspace(self):
@@ -233,6 +266,11 @@ class TypingEngine:
         # If we backspaced over a mistake, clear the lock
         if self.mistake_at is not None and pos <= self.mistake_at:
             self.mistake_at = None
+
+        # Remove any skipped positions in the range we're deleting
+        for p in list(self.state.skipped_positions):
+            if pos <= p < self.state.cursor_position:
+                self.state.skipped_positions.remove(p)
             
         self.state.cursor_position = pos
         self.state.last_keystroke_time = time.time()
@@ -247,6 +285,8 @@ class TypingEngine:
         self.state.is_paused = True
         self.state.last_keystroke_time = 0
         self.state.is_finished = False
+        self.state.max_correct_position = -1
+        self.state.skipped_positions.clear()
         self.mistake_at = None
     
     def reset_cursor_only(self):
@@ -274,6 +314,7 @@ class TypingEngine:
         self.state.correct_keystrokes = correct
         self.state.incorrect_keystrokes = incorrect
         self.state.elapsed_time = elapsed
+        self.state.max_correct_position = max(self.state.max_correct_position, cursor_pos - 1)
         self.state.is_paused = True
         self.state.start_time = time.time() - elapsed  # Adjust start time
         self.mistake_at = None  # Don't load mistake state

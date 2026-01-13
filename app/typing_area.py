@@ -1,5 +1,7 @@
 """Typing area widget with character-by-character validation and color coding."""
 import logging
+import time
+import json
 from pathlib import Path
 from PySide6.QtWidgets import QTextEdit, QWidget, QVBoxLayout, QApplication
 from PySide6.QtGui import (
@@ -174,7 +176,8 @@ class TypingAreaWidget(QTextEdit):
         # Ghost recording
         self.is_recording_ghost = False
         self.ghost_keystrokes = []
-        self.ghost_start_time = None
+        self.ghost_accumulated_ms = 0
+        self.ghost_segment_start_perf = None
         self._has_emitted_first_key = False
 
         # Ghost overlay state (race mode)
@@ -230,6 +233,7 @@ class TypingAreaWidget(QTextEdit):
         pause_delay = settings.get_setting_float("pause_delay", 7.0, min_val=0.0, max_val=60.0)
         allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
         self.engine = TypingEngine(self.original_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
+        self.engine.auto_indent = settings.get_setting("auto_indent", "0") == "1"
         
         # Set display content
         self.setPlainText(self.display_content)
@@ -243,12 +247,14 @@ class TypingAreaWidget(QTextEdit):
         self.current_typing_position = 0
         self._update_cursor_position()
         
-        # Start ghost recording for this session
-        self.start_ghost_recording()
-        
         # Try to load saved progress
         from app import stats_db
         progress = stats_db.get_session_progress(file_path)
+        
+        # Start ghost recording (handles resumed state)
+        resumed_keystrokes = progress.get("keystrokes") if progress else None
+        self.start_ghost_recording(resumed_keystrokes)
+
         if progress:
             self.engine.load_progress(
                 cursor_pos=progress["cursor_position"],
@@ -265,18 +271,36 @@ class TypingAreaWidget(QTextEdit):
                 self.highlighter.clear_all()
 
         self.stats_updated.emit()
-    
-    def start_ghost_recording(self):
-        """Start recording keystrokes for potential ghost session."""
-        import time
+        return progress
+        
+    def start_ghost_recording(self, resume_data=None):
+        """Start or resume recording keystrokes for potential ghost session."""
         self.is_recording_ghost = True
-        self.ghost_keystrokes = []
-        self.ghost_start_time = time.time()
         self._has_emitted_first_key = False
         self._ghost_display_limit = 0
+        
+        if resume_data:
+            try:
+                self.ghost_keystrokes = json.loads(resume_data)
+                # If we have existing keystrokes, start after the last timestamp
+                if self.ghost_keystrokes:
+                    self.ghost_accumulated_ms = self.ghost_keystrokes[-1]['t']
+                    self._has_emitted_first_key = True # Already started
+                else:
+                    self.ghost_accumulated_ms = 0
+            except Exception as e:
+                print(f"[GhostRecorder] Failed to resume keystrokes: {e}")
+                self.ghost_keystrokes = []
+                self.ghost_accumulated_ms = 0
+        else:
+            self.ghost_keystrokes = []
+            self.ghost_accumulated_ms = 0
+            
+        self.ghost_segment_start_perf = None
+        
         if self.highlighter:
             self.highlighter.clear_ghost_progress()
-        print("[GhostRecorder] Started recording")
+        print(f"[GhostRecorder] Recording initialized (resumed: {bool(resume_data)})")
     
     def _setup_error_display(self):
         """Setup display for error messages (no typing engine)."""
@@ -288,18 +312,28 @@ class TypingAreaWidget(QTextEdit):
         self.is_recording_ghost = False
         self.ghost_keystrokes = []
     
-    def stop_ghost_recording(self):
-        """Stop recording keystrokes."""
-        self.is_recording_ghost = False
-        print(f"[GhostRecorder] Stopped recording ({len(self.ghost_keystrokes)} keystrokes)")
-    
+    def _resume_ghost_recording(self):
+        """Called when typing resumes to start a new timing segment."""
+        if self.is_recording_ghost and self.ghost_segment_start_perf is None:
+            self.ghost_segment_start_perf = time.perf_counter()
+
+    def _pause_ghost_recording(self):
+        """Called when typing pauses to finalize the current timing segment."""
+        if self.is_recording_ghost and self.ghost_segment_start_perf is not None:
+            duration_ms = (time.perf_counter() - self.ghost_segment_start_perf) * 1000
+            self.ghost_accumulated_ms += duration_ms
+            self.ghost_segment_start_perf = None
+
     def _record_keystroke(self, key_char: str, is_correct: bool):
         """Record a keystroke for ghost replay."""
-        if not self.is_recording_ghost or self.ghost_start_time is None:
+        if not self.is_recording_ghost:
             return
         
-        import time
-        timestamp_ms = int((time.time() - self.ghost_start_time) * 1000)
+        # Ensure we are in an active segment if recording
+        if self.ghost_segment_start_perf is None:
+             self.ghost_segment_start_perf = time.perf_counter()
+        
+        timestamp_ms = int(self.ghost_accumulated_ms + (time.perf_counter() - self.ghost_segment_start_perf) * 1000)
         
         # Compact format: t=timestamp, k=key, c=correct (1/0)
         self.ghost_keystrokes.append({
@@ -654,9 +688,11 @@ class TypingAreaWidget(QTextEdit):
             # Toggle pause state
             if self.engine.state.is_paused:
                 self.engine.start()
+                self._resume_ghost_recording()
                 self.typing_resumed.emit()
             else:
                 self.engine.pause()
+                self._pause_ghost_recording()
                 self.typing_paused.emit()
             self.stats_updated.emit()
             event.accept()
@@ -713,7 +749,7 @@ class TypingAreaWidget(QTextEdit):
                 position = self._engine_to_display_position(self.engine.state.cursor_position)
                 expected_char = self.engine.state.content[self.engine.state.cursor_position]
                 expected_display = self._display_char_for(expected_char)
-                is_correct, expected_from_engine = self.engine.process_keystroke(' ')
+                is_correct, expected_from_engine, _ = self.engine.process_keystroke(' ')
                 if not is_correct:
                     all_correct = False
                 if expected_from_engine == "" and not is_correct:
@@ -750,10 +786,11 @@ class TypingAreaWidget(QTextEdit):
                 char = '\n'
             
             # Process keystroke
-            is_correct, expected = self.engine.process_keystroke(char)
+            is_correct, expected, skipped_count = self.engine.process_keystroke(char)
             
             # If engine was paused and is now running, emit typing_resumed signal
             if was_paused and not self.engine.state.is_paused:
+                self._resume_ghost_recording()
                 self.typing_resumed.emit()
             
             # Record keystroke for ghost
@@ -790,6 +827,24 @@ class TypingAreaWidget(QTextEdit):
 
             self._apply_display_for_position(position)
             
+            # 4. Handle auto-indent skipped characters
+            if skipped_count > 0:
+                # Start tracking from the first character after the newline
+                temp_engine_pos = self.engine.state.cursor_position - skipped_count
+                for _ in range(skipped_count):
+                    display_pos = self._engine_to_display_position(temp_engine_pos)
+                    actual_char = self.engine.state.content[temp_engine_pos]
+                    display_char = self._display_char_for(actual_char)
+                    
+                    self.highlighter.set_typed_char(
+                        display_pos,
+                        display_char,
+                        display_char,
+                        True
+                    )
+                    self._apply_display_for_position(display_pos)
+                    temp_engine_pos += 1
+
             # Update cursor position (engine already advanced if allowed)
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             
@@ -813,6 +868,7 @@ class TypingAreaWidget(QTextEdit):
             
             # Check if completed
             if self.engine.state.is_finished:
+                self._pause_ghost_recording()
                 # Emit one final stats update with the completion stats
                 self.stats_updated.emit()
                 self.session_completed.emit()
@@ -820,6 +876,7 @@ class TypingAreaWidget(QTextEdit):
     def _check_auto_pause(self):
         """Check if session should auto-pause."""
         if self.engine and self.engine.check_auto_pause():
+            self._pause_ghost_recording()
             self.typing_paused.emit()
             self.stats_updated.emit()
     
@@ -834,6 +891,8 @@ class TypingAreaWidget(QTextEdit):
             self.stats_updated.emit()
         self._has_emitted_first_key = False
         self.clear_ghost_progress()
+        self.start_ghost_recording() # Restart recording from scratch
+        self.stats_updated.emit()
     
     def reset_cursor_only(self):
         """Reset cursor to beginning but keep stats running (for race mode instant death)."""

@@ -91,9 +91,22 @@ def init_stats_tables():
             incorrect_keystrokes INTEGER DEFAULT 0,
             session_time REAL DEFAULT 0,
             is_paused BOOLEAN DEFAULT 1,
+            keystrokes_json TEXT,
+            wpm_history_json TEXT,
+            error_history_json TEXT,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Ensure keystrokes_json column exists for older databases
+    cur.execute("PRAGMA table_info(session_progress)")
+    progress_columns = {row[1] for row in cur.fetchall()}
+    if "keystrokes_json" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN keystrokes_json TEXT")
+    if "wpm_history_json" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN wpm_history_json TEXT")
+    if "error_history_json" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN error_history_json TEXT")
 
     # Historical session table for aggregations
     cur.execute("""
@@ -753,7 +766,8 @@ def get_session_progress(file_path: str) -> Optional[Dict]:
     cur = conn.cursor()
     cur.execute("""
         SELECT cursor_position, total_characters, correct_keystrokes,
-               incorrect_keystrokes, session_time, is_paused
+               incorrect_keystrokes, session_time, is_paused, keystrokes_json,
+               wpm_history_json, error_history_json
         FROM session_progress
         WHERE file_path = ?
     """, (file_path,))
@@ -768,21 +782,29 @@ def get_session_progress(file_path: str) -> Optional[Dict]:
             "incorrect": row[3],
             "time": row[4],
             "is_paused": bool(row[5]),
+            "keystrokes": row[6],
+            "wpm_history": row[7],
+            "error_history": row[8]
         }
     return None
 
 
 def save_session_progress(file_path: str, cursor_pos: int, total_chars: int,
-                          correct: int, incorrect: int, time: float, is_paused: bool = True):
+                          correct: int, incorrect: int, time: float, is_paused: bool = True,
+                          keystrokes_json: Optional[str] = None,
+                          wpm_history_json: Optional[str] = None,
+                          error_history_json: Optional[str] = None):
     """Save progress of an incomplete typing session."""
     conn = _connect()
     cur = conn.cursor()
     cur.execute("""
         INSERT OR REPLACE INTO session_progress
         (file_path, cursor_position, total_characters, correct_keystrokes,
-         incorrect_keystrokes, session_time, is_paused, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    """, (file_path, cursor_pos, total_chars, correct, incorrect, time, is_paused))
+         incorrect_keystrokes, session_time, is_paused, keystrokes_json,
+         wpm_history_json, error_history_json, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (file_path, cursor_pos, total_chars, correct, incorrect, time, is_paused, 
+          keystrokes_json, wpm_history_json, error_history_json))
     conn.commit()
     conn.close()
 

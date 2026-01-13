@@ -27,7 +27,7 @@ def test_typing_engine_initialization():
 def test_correct_keystroke():
     """Test processing correct keystroke."""
     engine = TypingEngine("hello")
-    is_correct, expected = engine.process_keystroke("h")
+    is_correct, expected, _ = engine.process_keystroke("h")
     
     assert is_correct is True
     assert expected == "h"
@@ -40,7 +40,7 @@ def test_correct_keystroke():
 def test_incorrect_keystroke():
     """Test processing incorrect keystroke - cursor doesn't advance."""
     engine = TypingEngine("hello")
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
@@ -158,7 +158,7 @@ def test_continue_on_error_enabled():
     engine = TypingEngine("hello")
     
     # Type incorrect character
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
@@ -167,7 +167,7 @@ def test_continue_on_error_enabled():
     assert engine.mistake_at == 0  # Mistake marker set
     
     # Trying to type again should be blocked
-    is_correct2, expected2 = engine.process_keystroke("e")
+    is_correct2, expected2, _ = engine.process_keystroke("e")
     assert engine.state.cursor_position == 0  # Still at position 0
     
     # Must backspace first
@@ -175,7 +175,7 @@ def test_continue_on_error_enabled():
     assert engine.mistake_at is None  # Mistake marker cleared
     
     # Now can type the correct character
-    is_correct3, expected3 = engine.process_keystroke("h")
+    is_correct3, expected3, _ = engine.process_keystroke("h")
     assert is_correct3 is True
     assert engine.state.cursor_position == 1
 
@@ -185,7 +185,7 @@ def test_continue_on_error_disabled():
     engine = TypingEngine("hello")
     
     # Type incorrect character
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     
     assert is_correct is False
     assert expected == "h"
@@ -198,7 +198,7 @@ def test_continue_on_error_disabled():
     assert engine.mistake_at is None
     
     # Now type correct character
-    is_correct2, expected2 = engine.process_keystroke("h")
+    is_correct2, expected2, _ = engine.process_keystroke("h")
     assert is_correct2 is True
     assert engine.state.cursor_position == 1
 
@@ -208,13 +208,13 @@ def test_allow_continue_mistakes_true():
     engine = TypingEngine("hello", allow_continue_mistakes=True)
     
     # Type incorrect character - cursor should advance
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     assert is_correct is False
     assert engine.state.cursor_position == 1  # Advances even on error
     assert engine.mistake_at == 0  # Mistake marked at position 0
     
     # Can continue typing
-    is_correct2, expected2 = engine.process_keystroke("e")
+    is_correct2, expected2, _ = engine.process_keystroke("e")
     assert is_correct2 is True
     assert engine.state.cursor_position == 2
 
@@ -224,13 +224,13 @@ def test_allow_continue_mistakes_false():
     engine = TypingEngine("hello", allow_continue_mistakes=False)
     
     # Type incorrect character - cursor should NOT advance
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     assert is_correct is False
     assert engine.state.cursor_position == 0  # Does not advance
     assert engine.mistake_at == 0
     
     # Cannot continue - blocked
-    is_correct2, expected2 = engine.process_keystroke("e")
+    is_correct2, expected2, _ = engine.process_keystroke("e")
     assert engine.state.cursor_position == 0  # Still blocked
 
 
@@ -317,6 +317,84 @@ def test_no_input_after_finished():
     assert engine.state.is_finished is True
     
     # Try to type more - should be blocked
-    is_correct, expected = engine.process_keystroke("x")
+    is_correct, expected, _ = engine.process_keystroke("x")
     assert is_correct is False
     assert expected == ""
+
+
+def test_auto_indent():
+    """Test auto-indentation feature."""
+    content = "def hello():\n    pass"
+    engine = TypingEngine(content)
+    engine.auto_indent = True
+    
+    # 1. Type "def hello():"
+    for char in "def hello():":
+        engine.process_keystroke(char)
+        
+    assert engine.state.cursor_position == 12
+    
+    # 2. Type "\n" - should trigger auto-indent of 4 spaces
+    is_correct, expected, skipped = engine.process_keystroke("\n")
+    
+    assert is_correct is True
+    assert expected == "\n"
+    assert skipped == 4
+    # Cursor should be: 12 (newline position) + 1 (past newline) + 4 (skipped spaces) = 17
+    assert engine.state.cursor_position == 17
+    assert engine.state.content[engine.state.cursor_position] == "p" # Next char
+    
+    # 3. Wpm calculation should exclude these 4 chars
+    # Typed 12 + 1 = 13 manual characters.
+    assert engine.state._get_calculable_chars() == 13
+    
+    # 4. Backspacing over skipped chars
+    engine.process_backspace()
+    assert engine.state.cursor_position == 16
+    assert len(engine.state.skipped_positions) == 3
+    
+    # 5. Ctrl+Backspace should clear skipped positions in range
+    # Reset to state before backspace
+    engine.state.cursor_position = 17
+    engine.state.skipped_positions.add(16)
+    
+    engine.process_ctrl_backspace()
+    # Should delete the indented part and the newline, or just to the start of the line.
+    # Actually process_ctrl_backspace deletes word boundaries.
+    # From 17 back: skips 16,15,14,13 (spaces), then 12 (\n).
+    assert engine.state.cursor_position < 13
+    assert len(engine.state.skipped_positions) == 0
+
+
+def test_no_point_farming():
+    """Test that correctly retyping already-typed chars doesn't give points."""
+    engine = TypingEngine("abc")
+    
+    # 1. Type "a" correctly
+    engine.process_keystroke("a")
+    assert engine.state.correct_keystrokes == 1
+    assert engine.state.max_correct_position == 0
+    
+    # 2. Backspace
+    engine.process_backspace()
+    assert engine.state.cursor_position == 0
+    
+    # 3. Type "a" correctly again - should NOT increment correct_keystrokes
+    engine.process_keystroke("a")
+    assert engine.state.correct_keystrokes == 1
+    assert engine.state.max_correct_position == 0
+    
+    # 4. Successively type "b" - should increment
+    engine.process_keystroke("b")
+    assert engine.state.correct_keystrokes == 2
+    assert engine.state.max_correct_position == 1
+    
+    # 5. Type incorrectly at a previously correct position
+    engine.process_backspace() # back to "b" position
+    engine.process_backspace() # back to "a" position
+    assert engine.state.cursor_position == 0
+    
+    # Type "x" instead of "a" - should count as incorrect
+    engine.process_keystroke("x")
+    assert engine.state.correct_keystrokes == 2 # still 2 from before
+    assert engine.state.incorrect_keystrokes == 1

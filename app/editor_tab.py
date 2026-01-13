@@ -1,4 +1,5 @@
 """Editor/Typing tab with file tree, typing area, and stats display."""
+import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QLabel, QMessageBox, QApplication, QFrame
 )
@@ -389,7 +390,18 @@ class EditorTab(QWidget):
         
         # Load new file
         self.current_file = file_path
-        self.typing_area.load_file(file_path)
+        progress = self.typing_area.load_file(file_path)
+        
+        # Load graph history if resuming
+        if progress:
+            try:
+                wpm_h = json.loads(progress["wpm_history"]) if progress.get("wpm_history") else []
+                err_h = json.loads(progress["error_history"]) if progress.get("error_history") else []
+                self.stats_display.load_history(wpm_h, err_h, progress.get("incorrect", 0))
+            except Exception as e:
+                print(f"[EditorTab] Error loading history: {e}")
+                self.stats_display.clear_wpm_history()
+        
         self.typing_area.setFocus()
         self.file_tree.refresh_file_stats(file_path)
         self.file_tree.refresh_incomplete_sessions()
@@ -459,6 +471,7 @@ class EditorTab(QWidget):
             self._finalize_ghost_race(cancelled=True)
         
         self.typing_area.reset_session()
+        self.stats_display.clear_wpm_history()
         stats_db.clear_session_progress(self.current_file)
         self.file_tree.refresh_file_stats(self.current_file)
         self.file_tree.refresh_incomplete_sessions()
@@ -664,6 +677,9 @@ class EditorTab(QWidget):
             error_history=error_history
         )
         dialog.exec()
+        
+        # Auto-reset after clicking continue
+        self.on_reset_clicked()
     
     def _save_current_progress(self):
         """Save progress of current file."""
@@ -678,6 +694,15 @@ class EditorTab(QWidget):
         if engine.state.is_complete():
             stats_db.clear_session_progress(self.current_file)
         elif engine.state.cursor_position > 0:
+            # Get keystrokes for partial recording
+            keystrokes = self.typing_area.get_ghost_data()
+            keystrokes_json = json.dumps(keystrokes) if keystrokes else None
+            
+            # Get history for graph
+            wpm_h, err_h = self.stats_display.get_history()
+            wpm_h_json = json.dumps(wpm_h) if wpm_h else None
+            err_h_json = json.dumps(err_h) if err_h else None
+            
             stats_db.save_session_progress(
                 self.current_file,
                 cursor_pos=engine.state.cursor_position,
@@ -685,7 +710,10 @@ class EditorTab(QWidget):
                 correct=engine.state.correct_keystrokes,
                 incorrect=engine.state.incorrect_keystrokes,
                 time=engine.get_elapsed_time(),
-                is_paused=True
+                is_paused=True,
+                keystrokes_json=keystrokes_json,
+                wpm_history_json=wpm_h_json,
+                error_history_json=err_h_json
             )
         else:
             stats_db.clear_session_progress(self.current_file)

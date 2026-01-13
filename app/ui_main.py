@@ -1632,6 +1632,40 @@ class MainWindow(QMainWindow):
 
         instant_death = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
         self._update_instant_death_buttons(instant_death)
+
+        # Auto-Indentation option
+        auto_indent_label = QLabel("Auto-Indentation")
+        auto_indent_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(auto_indent_label)
+
+        auto_indent_description = QLabel(
+            "Automatically indent the next line to match the current line's indentation level when you press Enter. "
+            "These characters won't count towards your typing statistics."
+        )
+        auto_indent_description.setWordWrap(True)
+        auto_indent_description.setStyleSheet("color: #888888; font-size: 9pt;")
+        typing_behavior_layout.addWidget(auto_indent_description)
+
+        auto_indent_button_row = QHBoxLayout()
+        auto_indent_button_row.setSpacing(8)
+
+        self.auto_indent_enabled_btn = QPushButton("Enabled")
+        self.auto_indent_disabled_btn = QPushButton("Disabled")
+        for btn in (self.auto_indent_enabled_btn, self.auto_indent_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(30)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.auto_indent_enabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(True))
+        self.auto_indent_disabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(False))
+
+        auto_indent_button_row.addWidget(self.auto_indent_enabled_btn)
+        auto_indent_button_row.addWidget(self.auto_indent_disabled_btn)
+        auto_indent_button_row.addStretch()
+        typing_behavior_layout.addLayout(auto_indent_button_row)
+
+        auto_indent = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
+        self._update_auto_indent_buttons(auto_indent)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -3424,6 +3458,8 @@ class MainWindow(QMainWindow):
         self._update_show_typed_buttons(show_typed_state)
         show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost_state)
+        auto_indent_state = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
+        self._update_auto_indent_buttons(auto_indent_state)
         
         # Global Exclusion settings
         if hasattr(self, 'ignored_files_edit'):
@@ -3948,6 +3984,27 @@ class MainWindow(QMainWindow):
             
             self._colors_dirty = False
             QMessageBox.information(self, "Reset", f"Theme '{scheme_name}' reset to defaults.")
+
+    def _update_auto_indent_buttons(self, enabled: bool):
+        """Refresh the button styles for the auto-indent setting."""
+        if not hasattr(self, "auto_indent_enabled_btn"): return
+        
+        active_style = "background-color: #6272a4; color: white; border: none;"
+        inactive_style = "background-color: #3b4252; color: #888; border: 1px solid #444;"
+        
+        self.auto_indent_enabled_btn.setChecked(enabled)
+        self.auto_indent_disabled_btn.setChecked(not enabled)
+        
+        self.auto_indent_enabled_btn.setStyleSheet(active_style if enabled else inactive_style)
+        self.auto_indent_disabled_btn.setStyleSheet(active_style if not enabled else inactive_style)
+
+    def _handle_auto_indent_button(self, enabled: bool):
+        """Handle clicks on the auto-indent buttons."""
+        settings.set_setting("auto_indent", "1" if enabled else "0")
+        self._update_auto_indent_buttons(enabled)
+        # Update engine immediately if it exists
+        if hasattr(self, 'editor_tab') and self.editor_tab.typing_area and self.editor_tab.typing_area.engine:
+            self.editor_tab.typing_area.engine.auto_indent = enabled
 
 
 def create_splash_screen(app):

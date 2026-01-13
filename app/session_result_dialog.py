@@ -806,7 +806,7 @@ class StatCard(QFrame):
         layout.addSpacing(10)
         
         # 3. Acc
-        self._add_stat(layout, f"{acc:.0f}%", "Acc", size=24)
+        self._add_stat(layout, f"{acc:.1f}%", "Acc", size=24)
         
         layout.addSpacing(15)
         
@@ -819,7 +819,10 @@ class StatCard(QFrame):
         self._add_detail(layout, "x", error_color, str(incorrect))
         total_chars = correct + incorrect
         self._add_detail(layout, "sum", accent_color, str(total_chars))
-        self._add_detail(layout, "clock", text_secondary, f"{time_val:.0f}s")
+        
+        minutes = int(time_val // 60)
+        seconds = int(time_val % 60)
+        self._add_detail(layout, "clock", text_secondary, f"{minutes}:{seconds:02d}")
 
     def _add_stat(self, layout, value, label, size=24):
         container = QWidget()

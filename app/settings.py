@@ -45,6 +45,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "show_typed_characters": "0",
     "show_ghost_text": "1",
     "instant_death_mode": "0",
+    "auto_indent": "0",
     
     # Color settings (Dracula theme colors)
     "color_untyped": "#6272a4",
