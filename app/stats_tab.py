@@ -1738,7 +1738,7 @@ class KeyboardHeatmap(QWidget):
         self._render_cache = {}
         self._tooltip_cache = None
         
-        self.setMinimumHeight(240)
+        self.setMinimumHeight(500)
         self.setMouseTracking(True)
         self._update_colors()
         
@@ -1751,6 +1751,7 @@ class KeyboardHeatmap(QWidget):
         self.success_color = colors["success"]
         self.error_color = colors["error"]
         self.neutral_color = colors["bg_tertiary"]
+        self.accent_color = colors["accent"]
         self.tooltip_bg = QColor("#2d2d2d")
         
     def set_data(self, stats: Dict[str, Dict[str, int]], confusions: Dict[str, Dict[str, int]]):
@@ -1854,14 +1855,24 @@ class KeyboardHeatmap(QWidget):
     def _get_layout_params(self):
         rect = self.rect()
         key_margin = 3
+        # Reserve space for tooltips and pop-up effects
+        v_margin = 110 
+        h_margin = 55
+        
         current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
         max_row_len = max(len(row) for row in current_rows)
-        # Make it more compact - slightly smaller keys and tight margins
-        key_size = min((rect.width() - 20) / max_row_len, (rect.height() - 10) / len(current_rows))
-        key_size = max(25, min(42, key_size))
+        
+        avail_w = rect.width() - (h_margin * 2)
+        avail_h = rect.height() - (v_margin * 2)
+        
+        key_size = min(avail_w / max_row_len, avail_h / len(current_rows))
+        key_size = max(25, min(45, key_size))
+        
         total_width = max_row_len * key_size
+        total_height = len(current_rows) * key_size
+        
         start_x = (rect.width() - total_width) / 2
-        start_y = (rect.height() - len(current_rows) * key_size) / 2
+        start_y = (rect.height() - total_height) / 2
         return rect, key_size, key_margin, start_x, start_y
 
     def paintEvent(self, event):
@@ -1871,8 +1882,7 @@ class KeyboardHeatmap(QWidget):
         rect, key_size, key_margin, start_x, start_y = self._get_layout_params()
         current_rows = self.ROWS_UPPER if self.shift_mode else self.ROWS_LOWER
         
-        hover_rect = None
-        hover_stats = None
+        hover_data = None # Store hovered key data to draw last
         
         for r, row in enumerate(current_rows):
             offset = self._get_row_offset(r, key_size)
@@ -1889,14 +1899,20 @@ class KeyboardHeatmap(QWidget):
                 cache = self._render_cache.get(key_label)
                 if not cache: continue
                 
-                fill_color = cache["fill"]
                 is_hovered = (key_label == self.hovered_key)
-                
                 if is_hovered:
-                    fill_color = fill_color.lighter(120)
-                    hover_rect = key_rect
-                    hover_stats = self.display_stats.get(key_label)
+                    # Save for drawing last
+                    hover_data = {
+                        "rect": key_rect,
+                        "cache": cache,
+                        "label": key_label,
+                        "stats": self.display_stats.get(key_label)
+                    }
+                    continue
                 
+                fill_color = cache["fill"]
+                
+                # Draw normal key
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(fill_color)
                 painter.drawRoundedRect(key_rect, 4, 4)
@@ -1905,110 +1921,203 @@ class KeyboardHeatmap(QWidget):
                 painter.drawText(key_rect, Qt.AlignCenter, cache["label"])
                 
                 # Border
-                painter.setPen(QPen(self.border_color.lighter(110) if is_hovered else self.border_color, 1))
+                painter.setPen(QPen(self.border_color, 1))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRoundedRect(key_rect, 4, 4)
 
-        # Draw Tooltip
-        if hover_rect and hover_stats:
-            total = hover_stats["correct"] + hover_stats["error"]
-            if total > 0:
-                # Tooltip Cache Calculation
-                if not self._tooltip_cache:
-                    acc_pct = (hover_stats["correct"] / total) * 100
-                    header_lines = [
-                        f"Key: {self.hovered_key}",
-                        f"Accuracy: {acc_pct:.1f}% ({hover_stats['correct']}/{total})",
-                        f"Total Errors: {hover_stats['error']}"
-                    ]
-                    
-                    confusions = self.display_confusions.get(self.hovered_key, {})
-                    sorted_confusions = []
-                    if confusions and hover_stats["error"] > 0:
-                        sorted_confusions = sorted(confusions.items(), key=lambda x: x[1], reverse=True)[:3]
+        # Draw Hovered Key (on top with pop-up effect)
+        if hover_data:
+            key_label = hover_data["label"]
+            cache = hover_data["cache"]
+            key_rect = hover_data["rect"]
+            hover_stats = hover_data["stats"]
+            
+            # Pop up effect: slight scale and offset
+            pop_margin = 2
+            pop_rect = key_rect.adjusted(-pop_margin, -pop_margin, pop_margin, pop_margin)
+            
+            # Highlight fill
+            fill_color = cache["fill"].lighter(115)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(fill_color)
+            painter.drawRoundedRect(pop_rect, 6, 6)
+            
+            # Text
+            painter.setPen(cache["text"])
+            painter.drawText(pop_rect, Qt.AlignCenter, cache["label"])
+            
+            # Thick accent border
+            painter.setPen(QPen(self.accent_color, 2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(pop_rect, 6, 6)
 
-                    fm = painter.fontMetrics()
-                    header_h = len(header_lines) * max(fm.height(), 16)
-                    
-                    block_w, block_h, block_gap = 38, 38, 6
-                    visual_section_w = 0
-                    visual_section_h = 0
-                    
-                    if sorted_confusions:
-                        section_title = "Top 3 Mistakes (% of errors):"
-                        visual_section_h = 88
-                        visual_section_w = len(sorted_confusions) * (block_w + block_gap) - block_gap
-                        visual_section_w = max(visual_section_w, fm.horizontalAdvance(section_title))
-                    
-                    max_w = max(visual_section_w, *(fm.horizontalAdvance(line) for line in header_lines))
-                    total_h = header_h + (15 if sorted_confusions else 0) + visual_section_h
-                    
-                    self._tooltip_cache = {
-                        "header_lines": header_lines,
-                        "sorted_confusions": sorted_confusions,
-                        "section_title": section_title if sorted_confusions else "",
-                        "max_w": max_w,
-                        "total_h": total_h,
-                        "header_h": header_h,
-                        "block_w": block_w, "block_h": block_h, "block_gap": block_gap
-                    }
+            # Draw Tooltip
+            if hover_stats:
+                total = hover_stats["correct"] + hover_stats["error"]
+                if total > 0:
+                    # Tooltip Cache Calculation
+                    if not self._tooltip_cache:
+                        acc_pct = (hover_stats["correct"] / total) * 100
+                        confusions = self.display_confusions.get(self.hovered_key, {})
+                        sorted_confusions = []
+                        if confusions and hover_stats["error"] > 0:
+                            sorted_confusions = sorted(confusions.items(), key=lambda x: x[1], reverse=True)[:3]
 
-                # Use Tooltip Cache
-                cache = self._tooltip_cache
-                max_w, total_h = cache["max_w"], cache["total_h"]
-                
-                tx = hover_rect.center().x() - max_w / 2 - 12
-                ty = hover_rect.top() - total_h - 20
-                if ty < 5: ty = hover_rect.bottom() + 10
-                
-                tx = max(8, min(tx, rect.width() - max_w - 24))
-                ty = max(5, min(ty, rect.height() - total_h - 20))
-                
-                original_font = painter.font()
-                tip_rect = QRectF(tx, ty, max_w + 24, total_h + 12)
-                painter.setPen(QPen(self.border_color.lighter(120), 1))
-                painter.setBrush(self.tooltip_bg)
-                painter.drawRoundedRect(tip_rect, 6, 6)
-                
-                painter.setPen(self.text_primary)
-                curr_y = ty + painter.fontMetrics().height() + 6
-                for line in cache["header_lines"]:
-                    painter.drawText(int(tx + 12), int(curr_y), line)
-                    curr_y += max(painter.fontMetrics().height(), 16)
-                
-                if cache["sorted_confusions"]:
-                    curr_y += 2
-                    painter.setPen(QPen(self.border_color, 1))
-                    painter.drawLine(int(tx + 12), int(curr_y), int(tx + max_w + 12), int(curr_y))
+                        # Sizing and Layout Constants
+                        padding = 16
+                        row_h = 24
+                        max_w = 260
+                        
+                        header_h = 32
+                        stats_h = 2 * row_h
+                        mistakes_header_h = 30 if sorted_confusions else 0
+                        mistakes_content_h = len(sorted_confusions) * 32 if sorted_confusions else 0
+                        separator_h = 15 if sorted_confusions else 0
+                        
+                        total_h = header_h + stats_h + separator_h + mistakes_header_h + mistakes_content_h + padding
+                        
+                        self._tooltip_cache = {
+                            "key_label": f"Key: {self.hovered_key}" if self.hovered_key != "SPACE" else "Key: Space",
+                            "stats": [
+                                ("Accuracy:", f"{acc_pct:.1f}% ({hover_stats['correct']}/{total})"),
+                                ("Total Errors:", str(hover_stats["error"]))
+                            ],
+                            "mistakes": sorted_confusions,
+                            "section_title": f"TOP {len(sorted_confusions)} MISTAKES" if sorted_confusions else "",
+                            "max_w": max_w,
+                            "total_h": total_h
+                        }
+
+                    # Use Tooltip Cache
+                    cache_tip = self._tooltip_cache
+                    w, h = cache_tip["max_w"], cache_tip["total_h"]
                     
-                    curr_y += 18
-                    painter.setPen(self.text_secondary)
-                    painter.drawText(int(tx + 12), int(curr_y), cache["section_title"])
+                    # 1. Default: Center horizontally over key, position above
+                    tx = pop_rect.center().x() - w / 2
+                    ty = pop_rect.top() - h - 22
                     
-                    curr_y += 20
-                    confusion_colors = [QColor("#ff1744"), QColor("#ff9100"), QColor("#ffea00")]
+                    # Position Decision Logic
+                    # Check top collision
+                    if ty < 10:
+                        # 2. Try Below
+                        ty = pop_rect.bottom() + 18
+                        # If below ALSO misses, try beside (for narrow keys)
+                        if ty + h > rect.height() - 10:
+                            if pop_rect.width() < w * 0.9: # Narrow key (not Space)
+                                ty = pop_rect.center().y() - h / 2
+                                # Try Right
+                                tx = pop_rect.right() + 20
+                                # Check Right collision
+                                if tx + w > rect.width() - 10:
+                                    # Try Left
+                                    tx = pop_rect.left() - w - 20
                     
-                    for i, (char, count) in enumerate(cache["sorted_confusions"]):
-                        bx = tx + 12 + i * (cache["block_w"] + cache["block_gap"])
+                    # Final boundary safeguards (clamping)
+                    tx = max(8, min(tx, rect.width() - w - 8))
+                    ty = max(8, min(ty, rect.height() - h - 8))
+                    
+                    tip_rect = QRectF(tx, ty, w, h)
+                    
+                    # Draw Shadow/Backdrop
+                    painter.setPen(Qt.NoPen)
+                    painter.setBrush(QColor(0, 0, 0, 160))
+                    painter.drawRoundedRect(tip_rect.translated(2, 2), 8, 8)
+                    
+                    # Main Box
+                    painter.setBrush(QColor("#1e2127")) # Deep dark background
+                    painter.setPen(QPen(QColor("#3e4451"), 1))
+                    painter.drawRoundedRect(tip_rect, 8, 8)
+                    
+                    curr_y = ty + 24
+                    
+                    # 1. Key Header
+                    font = painter.font()
+                    font.setBold(True)
+                    font.setPointSize(12)
+                    painter.setFont(font)
+                    painter.setPen(QColor("#ffffff"))
+                    painter.drawText(int(tx + 16), int(curr_y), cache_tip["key_label"])
+                    curr_y += 32
+                    
+                    # 2. Stats Rows
+                    font.setPointSize(10)
+                    font.setBold(False)
+                    painter.setFont(font)
+                    for label, val in cache_tip["stats"]:
+                        # Label (Grey)
+                        painter.setPen(QColor("#abb2bf"))
+                        painter.drawText(int(tx + 16), int(curr_y), label)
+                        # Value (White Bold)
+                        painter.setPen(QColor("#ffffff"))
+                        font.setBold(True)
+                        painter.setFont(font)
+                        val_w = painter.fontMetrics().horizontalAdvance(val)
+                        painter.drawText(int(tx + w - 16 - val_w), int(curr_y), val)
+                        font.setBold(False)
+                        painter.setFont(font)
+                        curr_y += 24
+
+                    # 3. Mistake Section
+                    if cache_tip["mistakes"]:
+                        # Separator
+                        curr_y -= 8
+                        painter.setPen(QPen(QColor("#3e4451"), 1))
+                        painter.drawLine(int(tx + 16), int(curr_y), int(tx + w - 16), int(curr_y))
+                        curr_y += 24
+                        
+                        # Title
+                        painter.setPen(QColor("#e06c75")) # Muted red
+                        font.setBold(True)
+                        font.setCapitalization(QFont.AllUppercase)
+                        font.setPointSize(9)
+                        painter.setFont(font)
+                        painter.drawText(int(tx + 16), int(curr_y), cache_tip["section_title"])
+                        curr_y += 18
+                        
+                        # Mistake Rows
                         err_total = hover_stats["error"]
-                        pct = (count / err_total) * 100 if err_total > 0 else 0
-                        
-                        painter.setPen(confusion_colors[i % 3])
-                        painter.setFont(QFont(original_font.family(), 8, QFont.Bold))
-                        painter.drawText(QRectF(bx, curr_y - 18, cache["block_w"], 15), Qt.AlignCenter, f"{pct:.0f}%")
-                        
-                        painter.setPen(Qt.NoPen)
-                        painter.setBrush(confusion_colors[i % 3])
-                        block_rect = QRectF(bx, curr_y, cache["block_w"], cache["block_h"])
-                        painter.drawRoundedRect(block_rect, 4, 4)
-                        
-                        painter.setPen(QColor(0, 0, 0))
-                        painter.setFont(QFont(original_font.family(), 10, QFont.Medium))
-                        display_char = char if char != " " else "␣"
-                        if display_char == "[NONE]": display_char = "?"
-                        painter.drawText(block_rect, Qt.AlignCenter, display_char)
-                
-                painter.setFont(original_font)
+                        for char, count in cache_tip["mistakes"]:
+                            pct = (count / err_total) * 100 if err_total > 0 else 0
+                            
+                            # Card-like Key Icon
+                            icon_rect = QRectF(tx + 16, curr_y, 22, 22)
+                            painter.setPen(Qt.NoPen)
+                            painter.setBrush(QColor("#e06c75").darker(150))
+                            painter.drawRoundedRect(icon_rect, 4, 4)
+                            painter.setPen(QColor("#ffffff"))
+                            font.setPointSize(10)
+                            font.setBold(True)
+                            painter.setFont(font)
+                            display_char = char if char != " " else "␣"
+                            if display_char == "[NONE]": display_char = "?"
+                            if len(display_char) == 1: display_char = display_char.upper()
+                            painter.drawText(icon_rect, Qt.AlignCenter, display_char)
+                            
+                            # Bar
+                            bar_container_x = tx + 16 + 22 + 12
+                            bar_max_w = w - (16 + 22 + 12 + 16 + 45)
+                            
+                            bg_bar = QRectF(bar_container_x, curr_y + 6, bar_max_w, 10)
+                            painter.setBrush(QColor("#2c313a"))
+                            painter.setPen(QPen(QColor("#3e4451"), 1)) # Subtle border added
+                            painter.drawRoundedRect(bg_bar, 5, 5)
+                            
+                            fill_bar = QRectF(bar_container_x, curr_y + 6, bar_max_w * (pct/100), 10)
+                            painter.setBrush(QColor("#e06c75"))
+                            painter.setPen(Qt.NoPen)
+                            painter.drawRoundedRect(fill_bar, 5, 5)
+                            
+                            # Percentage Text
+                            painter.setPen(QColor("#e06c75"))
+                            pct_text = f"{pct:.0f}%"
+                            val_w = painter.fontMetrics().horizontalAdvance(pct_text)
+                            painter.drawText(int(tx + w - 16 - val_w), int(curr_y + 16), pct_text)
+                            
+                            curr_y += 32
+
+                    painter.setFont(font)
+                    font.setCapitalization(QFont.MixedCase)
+                    painter.setFont(font)
 
 
 

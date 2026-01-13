@@ -742,29 +742,36 @@ class TypingAreaWidget(QTextEdit):
             sound_mgr.play_keypress()  # Sound for tab
             all_correct = True
             spaces_processed = 0
-            # Process 4 spaces for tab
-            for _ in range(4):
+            # Process 'tab_width' spaces for tab
+            for _ in range(self.tab_width):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
                 position = self._engine_to_display_position(self.engine.state.cursor_position)
                 expected_char = self.engine.state.content[self.engine.state.cursor_position]
                 expected_display = self._display_char_for(expected_char)
+                
+                # Match what the old code did: always send a space ' '
                 is_correct, expected_from_engine, _ = self.engine.process_keystroke(' ')
+                
                 if not is_correct:
                     all_correct = False
+                
                 if expected_from_engine == "" and not is_correct:
                     # Record failed tab attempt before exiting
                     self._record_keystroke('\t', False)
                     self.stats_updated.emit()
                     return
-                self.highlighter.set_typed_char(
-                    position,
-                    self.space_char,
-                    expected_display,
-                    is_correct
-                )
+                    
+                if self.highlighter:
+                    self.highlighter.set_typed_char(
+                        position,
+                        self.space_char,
+                        expected_display,
+                        is_correct
+                    )
                 self._apply_display_for_position(position)
                 spaces_processed += 1
+                
             if spaces_processed:
                 self._record_keystroke('\t', all_correct)
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)

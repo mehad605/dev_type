@@ -145,8 +145,10 @@ class FolderCardWidget(QFrame):
         self.remove_btn.setCursor(Qt.PointingHandCursor)
         self.remove_btn.hide()
         self.remove_btn.setObjectName("removeBtn")
+        self.remove_btn.clicked.connect(self._on_remove_clicked)  # Connect the signal!
         layout.addWidget(self.remove_btn)
 
+        self.setCursor(Qt.PointingHandCursor)
         self._apply_style()
         self._update_icon()
 
@@ -215,6 +217,11 @@ class FolderCardWidget(QFrame):
                 background-color: {base_color};
                 border: 1px solid {border_color};
                 border-radius: 10px;
+            }}
+
+            QFrame#folderCard:hover {{
+                background-color: {scheme.bg_tertiary if not self._selected else scheme.bg_tertiary};
+                border-color: {scheme.accent_color if not self._selected else scheme.accent_color};
             }}
 
             /* KILL ALL NESTED BACKGROUNDS to prevent boxed artifacts */
@@ -448,22 +455,33 @@ class FoldersTab(QWidget):
         self.list.setFrameShape(QFrame.NoFrame)
         self.list.setSpacing(6)
         self.list.setSelectionMode(QListWidget.SingleSelection)
+        self.list.setAttribute(Qt.WA_MacShowFocusRect, False) # Hide Mac focus rect if on Mac
         self.list.setStyleSheet("""
             QListWidget {
                 background: transparent;
                 border: none;
                 padding: 4px 0;
+                outline: none;
             }
             QListWidget::item {
                 margin: 0;
                 padding: 0;
                 background: transparent;
+                outline: none;
             }
             QListWidget::item:selected {
                 background: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item:focus {
+                outline: none;
             }
         """)
         self.layout.addWidget(self.list)
+        
+        # Connect selection signal
+        self.list.currentItemChanged.connect(self._on_selection_changed)
         
         # Loading indicator (hidden by default)
         self.loading_label = QLabel("Scanning folders...")
@@ -482,6 +500,17 @@ class FoldersTab(QWidget):
         if DEBUG_STARTUP_TIMING:
             print(f"    [FoldersTab] load_folders(): {time.time() - t:.3f}s")
             print(f"    [FoldersTab] TOTAL: {time.time() - t_start:.3f}s")
+
+    def _on_selection_changed(self, current, previous):
+        """Update selected state of folder cards."""
+        if previous:
+            widget = self.list.itemWidget(previous)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_selected(False)
+        if current:
+            widget = self.list.itemWidget(current)
+            if isinstance(widget, FolderCardWidget):
+                widget.set_selected(True)
 
     def on_folder_double_clicked(self, item: QListWidgetItem):
         """Navigate to typing tab when folder is double-clicked."""
@@ -831,6 +860,30 @@ class FoldersTab(QWidget):
         if hasattr(self, 'desc_label'):
             self.desc_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 10pt;")
         
+        # Update list widget styling to maintain clean look
+        self.list.setStyleSheet("""
+            QListWidget {
+                background: transparent;
+                border: none;
+                padding: 4px 0;
+                outline: none;
+            }
+            QListWidget::item {
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                outline: none;
+            }
+            QListWidget::item:selected {
+                background: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item:focus {
+                outline: none;
+            }
+        """)
+
         # Update toolbar buttons
         self.add_btn.setStyleSheet(f"""
             QPushButton {{
@@ -2258,6 +2311,26 @@ class MainWindow(QMainWindow):
         self.space_char_custom.setMaxLength(1)
         self.space_char_custom.setText(space_char if space_char not in ["␣", "·", " "] else "")
         self.space_char_custom.setEnabled(self.space_char_combo.currentText() == "custom")
+        # Match the dropdown styling - no bottom highlight
+        self.space_char_custom.setStyleSheet("""
+            QLineEdit {
+                background-color: #2e3440;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }
+            QLineEdit:hover {
+                border: 1px solid #88c0d0;
+            }
+            QLineEdit:focus {
+                border: 1px solid #88c0d0;
+            }
+            QLineEdit:disabled {
+                background-color: #3b4252;
+                color: #4c566a;
+            }
+        """)
         
         self.space_char_combo.currentTextChanged.connect(self.on_space_char_changed)
         self.space_char_custom.textChanged.connect(self.on_space_char_custom_changed)
@@ -2269,45 +2342,116 @@ class MainWindow(QMainWindow):
         space_layout.addStretch() # Ensure this row also doesn't stretch weirdly
         typing_layout.addRow("Space char:", space_layout)
         
-        # Tab width
+        # Tab width - modern stepper with +/- buttons
+        tab_width_row = QHBoxLayout()
+        tab_width_row.setSpacing(8)
+        
         self.tab_width_spin = QSpinBox()
         self.tab_width_spin.setRange(1, 8)
+        self.tab_width_spin.setButtonSymbols(QSpinBox.NoButtons)
+        self.tab_width_spin.setAlignment(Qt.AlignCenter)
+        self.tab_width_spin.setFixedWidth(60)
+        self.tab_width_spin.setFixedHeight(36)
         self.tab_width_spin.setSuffix(" spaces")
         tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
         self.tab_width_spin.setValue(tab_width)
         self.tab_width_spin.valueChanged.connect(self.on_tab_width_changed)
         
-        # Compact row
-        tab_width_row = QHBoxLayout()
+        # Reuse the button style from fonts section
+        spinner_btn_style = """
+            QPushButton {
+                font-size: 20px;
+                font-weight: 900;
+                background: #3b4252;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: #4c566a;
+                border-color: #88c0d0;
+            }
+            QPushButton:pressed {
+                background: #88c0d0;
+                color: #2e3440;
+            }
+        """
+        
+        spinner_input_style = """
+            QSpinBox {
+                background-color: #2e3440;
+                color: #eceff4;
+                border: 1px solid #434c5e;
+                border-radius: 6px;
+                padding-left: 0;
+            }
+            QSpinBox:hover {
+                border: 1px solid #88c0d0;
+            }
+        """
+        
+        self.tab_width_spin.setStyleSheet(spinner_input_style)
+        
+        tab_minus_btn = QPushButton("−")
+        tab_plus_btn = QPushButton("+")
+        for btn in [tab_minus_btn, tab_plus_btn]:
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(spinner_btn_style)
+        
+        tab_minus_btn.clicked.connect(lambda: self.tab_width_spin.setValue(self.tab_width_spin.value() - 1))
+        tab_plus_btn.clicked.connect(lambda: self.tab_width_spin.setValue(self.tab_width_spin.value() + 1))
+        
+        tab_width_row.addWidget(tab_minus_btn)
         tab_width_row.addWidget(self.tab_width_spin)
+        tab_width_row.addWidget(tab_plus_btn)
         tab_width_row.addStretch()
         typing_layout.addRow("Tab width:", tab_width_row)
         
-        # Pause delay
+        # Pause delay - modern stepper with +/- buttons
+        pause_delay_row = QHBoxLayout()
+        pause_delay_row.setSpacing(8)
+        
         self.pause_delay_spin = QSpinBox()
         self.pause_delay_spin.setRange(1, 60)
+        self.pause_delay_spin.setButtonSymbols(QSpinBox.NoButtons)
+        self.pause_delay_spin.setAlignment(Qt.AlignCenter)
+        self.pause_delay_spin.setFixedWidth(80)
+        self.pause_delay_spin.setFixedHeight(36)
         self.pause_delay_spin.setSuffix(" seconds")
         pause_delay = int(settings.get_setting_float("pause_delay", 7.0, min_val=1.0, max_val=60.0))
         self.pause_delay_spin.setValue(pause_delay)
+        self.pause_delay_spin.setStyleSheet(spinner_input_style)
+        self.pause_delay_spin.valueChanged.connect(self.on_pause_delay_changed)
         
-        # Compact row
-        pause_delay_row = QHBoxLayout()
+        pause_minus_btn = QPushButton("−")
+        pause_plus_btn = QPushButton("+")
+        for btn in [pause_minus_btn, pause_plus_btn]:
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(spinner_btn_style)
+        
+        pause_minus_btn.clicked.connect(lambda: self.pause_delay_spin.setValue(self.pause_delay_spin.value() - 1))
+        pause_plus_btn.clicked.connect(lambda: self.pause_delay_spin.setValue(self.pause_delay_spin.value() + 1))
+        
+        pause_delay_row.addWidget(pause_minus_btn)
         pause_delay_row.addWidget(self.pause_delay_spin)
+        pause_delay_row.addWidget(pause_plus_btn)
         pause_delay_row.addStretch()
         
-        best_wpm_min = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
-        try:
-            best_wpm_percent = int(round(float(best_wpm_min) * 100)) if best_wpm_min is not None else 90
-        except (TypeError, ValueError):
-            best_wpm_percent = 90
-        if hasattr(self, "best_wpm_accuracy_spin"):
-            self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
-        self.pause_delay_spin.valueChanged.connect(self.on_pause_delay_changed)
         typing_layout.addRow("Auto-pause delay:", pause_delay_row)
 
-        # Best WPM accuracy threshold
+        # Best WPM accuracy threshold - modern stepper with +/- buttons
+        best_wpm_row = QHBoxLayout()
+        best_wpm_row.setSpacing(8)
+        
         self.best_wpm_accuracy_spin = QSpinBox()
         self.best_wpm_accuracy_spin.setRange(0, 100)
+        self.best_wpm_accuracy_spin.setButtonSymbols(QSpinBox.NoButtons)
+        self.best_wpm_accuracy_spin.setAlignment(Qt.AlignCenter)
+        self.best_wpm_accuracy_spin.setFixedWidth(60)
+        self.best_wpm_accuracy_spin.setFixedHeight(36)
         self.best_wpm_accuracy_spin.setSuffix(" %")
         try:
             best_wpm_acc_raw = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
@@ -2315,11 +2459,22 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             best_wpm_percent = 90
         self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
+        self.best_wpm_accuracy_spin.setStyleSheet(spinner_input_style)
         self.best_wpm_accuracy_spin.valueChanged.connect(self.on_best_wpm_accuracy_changed)
         
-        # Compact row
-        best_wpm_row = QHBoxLayout()
+        best_wpm_minus_btn = QPushButton("−")
+        best_wpm_plus_btn = QPushButton("+")
+        for btn in [best_wpm_minus_btn, best_wpm_plus_btn]:
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(spinner_btn_style)
+        
+        best_wpm_minus_btn.clicked.connect(lambda: self.best_wpm_accuracy_spin.setValue(self.best_wpm_accuracy_spin.value() - 1))
+        best_wpm_plus_btn.clicked.connect(lambda: self.best_wpm_accuracy_spin.setValue(self.best_wpm_accuracy_spin.value() + 1))
+        
+        best_wpm_row.addWidget(best_wpm_minus_btn)
         best_wpm_row.addWidget(self.best_wpm_accuracy_spin)
+        best_wpm_row.addWidget(best_wpm_plus_btn)
         best_wpm_row.addStretch()
         typing_layout.addRow("Best WPM min accuracy:", best_wpm_row)
         
@@ -3734,7 +3889,27 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'settings_scroll_area'):
                 self.settings_scroll_area.verticalScrollBar().setValue(0)
                 
-            # Note: Settings values update automatically via _emit_initial_settings below
+            # Refresh all toggle button states from new profile's settings
+            auto_indent_state = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
+            self._update_auto_indent_buttons(auto_indent_state)
+            
+            allow_continue_state = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
+            self._update_allow_continue_buttons(allow_continue_state)
+            
+            show_typed_state = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
+            self._update_show_typed_buttons(show_typed_state)
+            
+            show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
+            self._update_show_ghost_text_buttons(show_ghost_state)
+            
+            instant_death_state = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
+            self._update_instant_death_buttons(instant_death_state)
+            
+            sound_enabled_state = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+            self._update_sound_enabled_buttons(sound_enabled_state)
+            
+            confirm_del_state = settings.get_setting("delete_confirm", settings.get_default("delete_confirm")) == "1"
+            self._update_confirm_del_buttons(confirm_del_state)
 
         # 4. Refresh Editor Settings & THEME
         self.apply_current_theme() # Apply theme for the new profile
