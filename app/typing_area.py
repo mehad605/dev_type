@@ -839,7 +839,7 @@ class TypingAreaWidget(QTextEdit):
                 # Regular backspace
                 self._record_keystroke("\b", True)
                 if self.engine.state.cursor_position > 0 or self.engine.mistake_at is not None:
-                    self.engine.process_backspace()
+                    self.engine.process_backspace(self.space_per_tab)
                     target_index = self.engine.state.cursor_position
                     self._clear_and_restore_engine_position(target_index)
                     self.current_typing_position = self._engine_to_display_position(target_index)
@@ -870,7 +870,7 @@ class TypingAreaWidget(QTextEdit):
                 # Physical key press already processed sound; use virtual processing for engine
                 tab_was_attempted = True
                 char_to_type = expected_actual
-                is_correct, expected_from_engine, _ = self.engine.process_keystroke(char_to_type, increment_stats=False)
+                is_correct, expected_from_engine, _ = self.engine.process_keystroke(char_to_type, increment_stats=False, space_per_tab=self.space_per_tab)
                 
                 if not is_correct:
                     all_correct = False
@@ -934,7 +934,7 @@ class TypingAreaWidget(QTextEdit):
                 char = '\n'
             
             # Process keystroke
-            is_correct, expected, skipped_count = self.engine.process_keystroke(char)
+            is_correct, expected, skipped_count = self.engine.process_keystroke(char, space_per_tab=self.space_per_tab)
             
             # Log expected vs actual if enabled
             if self.logging_enabled:

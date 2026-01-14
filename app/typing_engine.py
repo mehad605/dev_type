@@ -125,7 +125,20 @@ class TypingEngine:
                 return True
         return False
     
-    def process_keystroke(self, typed_char: str, increment_stats: bool = True) -> Tuple[bool, str, int]:
+    def _get_line_indentation(self, pos: int) -> int:
+        """Find the indentation of the line containing the given position."""
+        content = self.state.content
+        # Find newline before pos
+        start = content.rfind('\n', 0, pos)
+        line_start = start + 1 if start != -1 else 0
+        
+        # Count leading whitespace
+        indent = 0
+        while line_start + indent < len(content) and content[line_start + indent] in (' ', '\t'):
+            indent += 1
+        return indent
+
+    def process_keystroke(self, typed_char: str, increment_stats: bool = True, space_per_tab: int = 4) -> Tuple[bool, str, int]:
         """
         Process a single keystroke.
         
@@ -180,49 +193,74 @@ class TypingEngine:
                 self.state.is_finished = True
                 self.pause()  # Properly pause to accumulate final time
         else:
+            if self.mistake_at is None:
+                self.mistake_at = self.state.cursor_position
+            
             if increment_stats:
                 self.state.incorrect_keystrokes += 1
                 self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
-            
-            # Categorize Error Type (Heuristics)
-            # 1. Swapped: User typed the next character
-            next_char = self.state.content[self.state.cursor_position + 1] if self.state.cursor_position + 1 < len(self.state.content) else None
-            # 2. Missed: User typed the character after next
-            next_next_char = self.state.content[self.state.cursor_position + 2] if self.state.cursor_position + 2 < len(self.state.content) else None
-            
-            if typed_char == next_char:
-                if increment_stats: self.state.error_types['transposition'] += 1
-            elif typed_char == next_next_char:
-                if increment_stats: self.state.error_types['omission'] += 1
-            else:
-                if increment_stats: self.state.error_types['insertion'] += 1 # Default to insertion if not transposition or omission
-            
-            # Record what was typed instead
-            if increment_stats:
+                
+                # Categorize Error Type (Heuristics)
+                # 1. Swapped: User typed the next character
+                next_char = self.state.content[self.state.cursor_position + 1] if self.state.cursor_position + 1 < len(self.state.content) else None
+                # 2. Missed: User typed the character after next
+                next_next_char = self.state.content[self.state.cursor_position + 2] if self.state.cursor_position + 2 < len(self.state.content) else None
+                
+                if typed_char == next_char:
+                    self.state.error_types['transposition'] += 1
+                elif typed_char == next_next_char:
+                    self.state.error_types['omission'] += 1
+                else:
+                    self.state.error_types['substitution'] += 1
+
+                # Track key confusions
                 if expected_char not in self.state.key_confusions:
                     self.state.key_confusions[expected_char] = {}
                 actual_char = typed_char if typed_char else "[NONE]"
                 self.state.key_confusions[expected_char][actual_char] = self.state.key_confusions[expected_char].get(actual_char, 0) + 1
             
             if self.allow_continue_mistakes:
-                # Allow cursor to advance even on mistakes
                 self.state.cursor_position += 1
-                # Track that there was a mistake (for UI highlighting)
-                if self.mistake_at is None:
-                    self.mistake_at = self.state.cursor_position - 1
-            else:
-                # Don't advance cursor on incorrect keystroke
-                self.mistake_at = self.state.cursor_position
+
+        if increment_stats:
+            self.state.last_keystroke_time = time.time()
+
+        # Check if finished
+        if self.state.is_complete():
+            self.state.is_finished = True
+            self.pause() # Properly pause to accumulate final time
         
-        # 3. Auto-indent logic
+        # Smart-indent logic
         skipped_count = 0
         if is_correct and typed_char == '\n' and self.auto_indent:
-            # Peek at next characters to see if they are whitespace
-            while self.state.cursor_position < len(self.state.content):
+            # 1. Get previous line indentation
+            # The position before the current cursor is where the \n we just typed is
+            prev_line_pos = self.state.cursor_position - 1
+            prev_indent = self._get_line_indentation(prev_line_pos)
+            
+            # 2. Check for block openers at the end of the previous line
+            # Find the last non-whitespace character on the previous line
+            start_search = prev_line_pos
+            content = self.state.content
+            # Find start of the previous line
+            start_newline = content.rfind('\n', 0, prev_line_pos)
+            line_start = start_newline + 1 if start_newline != -1 else 0
+            
+            last_char = None
+            for p in range(prev_line_pos - 1, line_start - 1, -1):
+                if content[p] not in (' ', '\t', '\r', '\n'):
+                    last_char = content[p]
+                    break
+            
+            target_indent = prev_indent
+            if last_char in (':', '{', '[', '('):
+                target_indent += space_per_tab
+            
+            # 3. Auto-fill whitespace on the new line up to target_indent
+            while self.state.cursor_position < len(self.state.content) and skipped_count < target_indent:
                 next_char = self.state.content[self.state.cursor_position]
                 if next_char in (' ', '\t'):
                     self.state.skipped_positions.add(self.state.cursor_position)
-                    # Also treat skipped positions as "already typed" so they don't count if backspaced and manually typed
                     if self.state.cursor_position > self.state.max_correct_position:
                         self.state.max_correct_position = self.state.cursor_position
                     self.state.cursor_position += 1
@@ -233,7 +271,7 @@ class TypingEngine:
         # Return info about skipped characters if any
         return is_correct, expected_char, skipped_count
     
-    def process_backspace(self):
+    def process_backspace(self, space_per_tab: int = 4):
         """Process a backspace keystroke."""
         # If there's a mistake at current position and we're in strict mode,
         # just clear the mistake marker without moving the cursor
@@ -241,7 +279,7 @@ class TypingEngine:
             self.mistake_at = None
             self.state.last_keystroke_time = time.time()
             return
-        
+            
         # In lenient mode or when mistake is behind us, clear mistake marker
         # and move cursor back
         if self.mistake_at is not None:
@@ -249,10 +287,34 @@ class TypingEngine:
         
         # Move cursor back if possible
         if self.state.cursor_position > 0:
-            self.state.cursor_position -= 1
-            # If we backspace over a skipped character, remove it from skipped set
-            if self.state.cursor_position in self.state.skipped_positions:
-                self.state.skipped_positions.remove(self.state.cursor_position)
+            content = self.state.content
+            pos = self.state.cursor_position
+            
+            # Find start of line
+            start = content.rfind('\n', 0, pos)
+            line_start = start + 1 if start != -1 else 0
+            
+            # Check if all characters from line_start to pos are whitespace
+            is_leading_whitespace = True
+            for i in range(line_start, pos):
+                if content[i] not in (' ', '\t'):
+                    is_leading_whitespace = False
+                    break
+            
+            # Smart backspace: if we are in leading whitespace and at a tab stop
+            if is_leading_whitespace and (pos - line_start) > 0 and (pos - line_start) % space_per_tab == 0:
+                # Delete a whole level
+                for _ in range(space_per_tab):
+                    if self.state.cursor_position > line_start:
+                        self.state.cursor_position -= 1
+                        if self.state.cursor_position in self.state.skipped_positions:
+                            self.state.skipped_positions.remove(self.state.cursor_position)
+            else:
+                self.state.cursor_position -= 1
+                # If we backspace over a skipped character, remove it from skipped set
+                if self.state.cursor_position in self.state.skipped_positions:
+                    self.state.skipped_positions.remove(self.state.cursor_position)
+            
             self.state.last_keystroke_time = time.time()
     
     def process_ctrl_backspace(self):

@@ -25,7 +25,7 @@ class EditorTab(QWidget):
     """Complete editor/typing tab with tree, typing area, and stats."""
     # Signals for communication with parent
     toggle_instant_death_requested = Signal(bool)
-    toggle_auto_indent_requested = Signal(bool)
+    toggle_smart_indent_requested = Signal(bool)
     
     
     def __init__(self, parent=None):
@@ -190,14 +190,14 @@ class EditorTab(QWidget):
 
         from app import settings
         auto_indent_enabled = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
-        self.auto_indent_btn = QPushButton("Indent")
-        self.auto_indent_btn.setIcon(get_icon("INDENT"))
-        self.auto_indent_btn.setCheckable(True)
-        self.auto_indent_btn.setChecked(auto_indent_enabled)
-        self.auto_indent_btn.setFixedHeight(30)
-        self.auto_indent_btn.setToolTip("Auto-indent after newlines (Ctrl+I)")
-        self.auto_indent_btn.clicked.connect(self.on_auto_indent_toggled)
-        self.auto_indent_btn.setStyleSheet(header_btn_style)
+        self.smart_indent_btn = QPushButton("Smart Indent")
+        self.smart_indent_btn.setIcon(get_icon("INDENT"))
+        self.smart_indent_btn.setCheckable(True)
+        self.smart_indent_btn.setChecked(auto_indent_enabled)
+        self.smart_indent_btn.setFixedHeight(30)
+        self.smart_indent_btn.setToolTip("Smart-indent after newlines (Ctrl+I)")
+        self.smart_indent_btn.clicked.connect(self.on_smart_indent_toggled)
+        self.smart_indent_btn.setStyleSheet(header_btn_style)
 
         instant_death_enabled = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
         self.instant_death_btn = QPushButton("Death: OFF")
@@ -233,7 +233,7 @@ class EditorTab(QWidget):
 
         right_header_layout.addStretch()
         right_header_layout.addWidget(self.reset_btn)
-        right_header_layout.addWidget(self.auto_indent_btn)
+        right_header_layout.addWidget(self.smart_indent_btn)
         right_header_layout.addWidget(self.instant_death_btn)
         right_header_layout.addWidget(self.ghost_btn)
         right_header_layout.addWidget(self.sound_widget)
@@ -714,22 +714,22 @@ class EditorTab(QWidget):
         self.instant_death_btn.setStyleSheet(enabled_style if is_enabled else base_style)
         self.instant_death_btn.setText("Death: ON" if is_enabled else "Death: OFF")
 
-    def on_auto_indent_toggled(self, enabled: bool):
-        """Handle auto-indent mode toggle."""
-        self.toggle_auto_indent_requested.emit(enabled)
+    def on_smart_indent_toggled(self, enabled: bool):
+        """Handle smart-indent mode toggle."""
+        self.toggle_smart_indent_requested.emit(enabled)
 
     def _set_auto_indent(self, enabled: bool, persist: bool):
-        """Apply auto-indent mode to settings, button, and engine."""
+        """Apply smart-indent mode to settings, button, and engine."""
         if persist:
             from app import settings
             settings.set_setting("auto_indent", "1" if enabled else "0")
-        self.auto_indent_btn.blockSignals(True)
-        self.auto_indent_btn.setChecked(enabled)
-        self.auto_indent_btn.blockSignals(False)
+        self.smart_indent_btn.blockSignals(True)
+        self.smart_indent_btn.setChecked(enabled)
+        self.smart_indent_btn.blockSignals(False)
         
         # Update button style
         if enabled:
-            self.auto_indent_btn.setStyleSheet("""
+            self.smart_indent_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #5e81ac;
                     color: white;
@@ -740,7 +740,7 @@ class EditorTab(QWidget):
                 }
             """)
         else:
-            self.auto_indent_btn.setStyleSheet("") # Use default or apply_theme handles it
+            self.smart_indent_btn.setStyleSheet("") # Use default or apply_theme handles it
             self.apply_theme()
             
         if hasattr(self, 'typing_area') and self.typing_area.engine:
@@ -1044,7 +1044,7 @@ class EditorTab(QWidget):
         wpm = stats["wpm"]
         accuracy = stats["accuracy"]
         instant_death_enabled = self.instant_death_btn.isChecked()
-        auto_indent_enabled = self.auto_indent_btn.isChecked()
+        auto_indent_enabled = self.smart_indent_btn.isChecked()
         space_per_tab = self.typing_area.space_per_tab if hasattr(self.typing_area, 'space_per_tab') else 4
         tab_width = self.typing_area.tab_width if hasattr(self.typing_area, 'tab_width') else 4
         
@@ -1112,7 +1112,7 @@ class EditorTab(QWidget):
                     
                     indent_line = ""
                     if stats.get("auto_indent") is not None:
-                        indent_line = "\nAuto Indent: " + ("On" if stats["auto_indent"] else "Off")
+                        indent_line = "\nSmart Indent: " + ("On" if stats["auto_indent"] else "Off")
                     
                     space_line = ""
                     if stats.get("space_per_tab") is not None:
@@ -1292,18 +1292,18 @@ class EditorTab(QWidget):
         if key_char == "<CTRL-BACKSPACE>":
             self._ghost_engine.process_ctrl_backspace()
         elif key_char == "\b":
-            self._ghost_engine.process_backspace()
+            self._ghost_engine.process_backspace(space_per_tab=self._ghost_space_per_tab)
         elif key_char == "\t":
             # Replay tab using the ghost's SPECIFIC recorded space_per_tab setting
             for _ in range(self._ghost_space_per_tab):
-                self._ghost_engine.process_keystroke(" ", increment_stats=False)
+                self._ghost_engine.process_keystroke(" ", increment_stats=False, space_per_tab=self._ghost_space_per_tab)
             self._ghost_engine.state.correct_keystrokes += 1
         elif key_char == "\n":
-            self._ghost_engine.process_keystroke("\n")
+            self._ghost_engine.process_keystroke("\n", space_per_tab=self._ghost_space_per_tab)
         elif key_char == " ":
-            self._ghost_engine.process_keystroke(" ")
+            self._ghost_engine.process_keystroke(" ", space_per_tab=self._ghost_space_per_tab)
         elif key_char:
-            self._ghost_engine.process_keystroke(key_char)
+            self._ghost_engine.process_keystroke(key_char, space_per_tab=self._ghost_space_per_tab)
         
         self._ghost_cursor_position = self._ghost_engine.state.cursor_position
         self.typing_area.set_ghost_progress_limit(self._ghost_cursor_position)

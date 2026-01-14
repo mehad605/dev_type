@@ -1728,6 +1728,40 @@ class MainWindow(QMainWindow):
         show_ghost = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost)
         
+        # Smart Indentation option
+        auto_indent_label = QLabel("Smart Indentation")
+        auto_indent_label.setStyleSheet("font-weight: bold;")
+        typing_behavior_layout.addWidget(auto_indent_label)
+
+        auto_indent_description = QLabel(
+            "Matches previous line indentation and auto-indents after block openers (':', '{', etc.). "
+            "Backspace un-indents a full level if at a tab stop."
+        )
+        auto_indent_description.setWordWrap(True)
+        auto_indent_description.setStyleSheet("color: #888888; font-size: 9pt;")
+        typing_behavior_layout.addWidget(auto_indent_description)
+
+        auto_indent_button_row = QHBoxLayout()
+        auto_indent_button_row.setSpacing(8)
+
+        self.auto_indent_enabled_btn = QPushButton("ON")
+        self.auto_indent_disabled_btn = QPushButton("OFF")
+        for btn in (self.auto_indent_enabled_btn, self.auto_indent_disabled_btn):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(30)
+            btn.setCursor(Qt.PointingHandCursor)
+
+        self.auto_indent_enabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(True))
+        self.auto_indent_disabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(False))
+
+        auto_indent_button_row.addWidget(self.auto_indent_enabled_btn)
+        auto_indent_button_row.addWidget(self.auto_indent_disabled_btn)
+        auto_indent_button_row.addStretch()
+        typing_behavior_layout.addLayout(auto_indent_button_row)
+
+        auto_indent = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
+        self._update_auto_indent_buttons(auto_indent)
+
         # Instant Death option (also in Settings)
         death_label = QLabel("Instant Death Mode")
         death_label.setStyleSheet("font-weight: bold;")
@@ -1761,39 +1795,6 @@ class MainWindow(QMainWindow):
         instant_death = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
         self._update_instant_death_buttons(instant_death)
 
-        # Auto-Indentation option
-        auto_indent_label = QLabel("Auto-Indentation")
-        auto_indent_label.setStyleSheet("font-weight: bold;")
-        typing_behavior_layout.addWidget(auto_indent_label)
-
-        auto_indent_description = QLabel(
-            "Automatically indent the next line to match the current line's indentation level when you press Enter. "
-            "These characters won't count towards your typing statistics."
-        )
-        auto_indent_description.setWordWrap(True)
-        auto_indent_description.setStyleSheet("color: #888888; font-size: 9pt;")
-        typing_behavior_layout.addWidget(auto_indent_description)
-
-        auto_indent_button_row = QHBoxLayout()
-        auto_indent_button_row.setSpacing(8)
-
-        self.auto_indent_enabled_btn = QPushButton("ON")
-        self.auto_indent_disabled_btn = QPushButton("OFF")
-        for btn in (self.auto_indent_enabled_btn, self.auto_indent_disabled_btn):
-            btn.setCheckable(True)
-            btn.setMinimumHeight(30)
-            btn.setCursor(Qt.PointingHandCursor)
-
-        self.auto_indent_enabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(True))
-        self.auto_indent_disabled_btn.clicked.connect(lambda: self._handle_auto_indent_button(False))
-
-        auto_indent_button_row.addWidget(self.auto_indent_enabled_btn)
-        auto_indent_button_row.addWidget(self.auto_indent_disabled_btn)
-        auto_indent_button_row.addStretch()
-        typing_behavior_layout.addLayout(auto_indent_button_row)
-
-        auto_indent = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
-        self._update_auto_indent_buttons(auto_indent)
         
         typing_behavior_group.setLayout(typing_behavior_layout)
         s_layout.addWidget(typing_behavior_group)
@@ -3791,7 +3792,7 @@ class MainWindow(QMainWindow):
             self.auto_indent_changed.connect(lambda enabled: self.editor_tab._set_auto_indent(enabled, persist=False))
             
             self.editor_tab.toggle_instant_death_requested.connect(self._handle_instant_death_button)
-            self.editor_tab.toggle_auto_indent_requested.connect(self._handle_auto_indent_button)
+            self.editor_tab.toggle_smart_indent_requested.connect(self._handle_auto_indent_button)
             
             # Additional UI sync
             self.sound_enabled_changed.connect(self.editor_tab.sound_widget.set_enabled)
