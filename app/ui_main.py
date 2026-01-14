@@ -1777,8 +1777,8 @@ class MainWindow(QMainWindow):
         auto_indent_button_row = QHBoxLayout()
         auto_indent_button_row.setSpacing(8)
 
-        self.auto_indent_enabled_btn = QPushButton("Enabled")
-        self.auto_indent_disabled_btn = QPushButton("Disabled")
+        self.auto_indent_enabled_btn = QPushButton("ON")
+        self.auto_indent_disabled_btn = QPushButton("OFF")
         for btn in (self.auto_indent_enabled_btn, self.auto_indent_disabled_btn):
             btn.setCheckable(True)
             btn.setMinimumHeight(30)
@@ -4042,6 +4042,15 @@ class MainWindow(QMainWindow):
         # 4. Refresh Editor Settings & THEME
         self.apply_current_theme() # Apply theme for the new profile
         self._emit_initial_settings()
+
+        # Update scheme combo box to reflect new profile's theme
+        if hasattr(self, 'scheme_combo'):
+            current_scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+            index = self.scheme_combo.findText(current_scheme)
+            if index >= 0:
+                self.scheme_combo.blockSignals(True)
+                self.scheme_combo.setCurrentIndex(index)
+                self.scheme_combo.blockSignals(False)
         
         # 5. Reset Editor Session if needed
         # The editor logic listens to settings changes, so it should be fine.

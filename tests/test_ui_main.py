@@ -448,3 +448,50 @@ class TestMainWindowLifecycle:
         window = MainWindow()
         window.open_typing_tab_for_language("Python", ["C:/test.py"])
         assert window.tabs.currentWidget() == window.editor_tab
+
+    def test_scheme_combo_updates_on_profile_switch(self, app, mock_icon_manager, mock_sound_manager, tmp_path):
+        """Test that the theme combo box updates when switching profiles."""
+        from app.ui_main import MainWindow
+        from app.profile_manager import ProfileManager
+        from unittest.mock import patch
+        import app.settings as settings
+
+        # Setup profile manager with two profiles
+        with patch('app.portable_data.get_data_manager') as mock_gdm:
+            from app.portable_data import PortableDataManager
+            pdm = PortableDataManager()
+            pdm._data_dir = tmp_path / "Dev_Type_Data"
+            pdm._data_dir.mkdir()
+            mock_gdm.return_value = pdm
+
+            pm = ProfileManager()
+            pm.create_profile("Profile1")
+            pm.create_profile("Profile2")
+
+            # Create DB files for each profile
+            pm.switch_profile("Profile1")
+            settings.init_db(str(pm.get_current_db_path()))
+            settings.set_setting("dark_scheme", "dracula")
+
+            pm.switch_profile("Profile2")
+            settings.init_db(str(pm.get_current_db_path()))
+            settings.set_setting("dark_scheme", "cyberpunk")
+
+            with patch('app.ui_main.MainWindow.apply_current_theme'), \
+                 patch('app.ui_main.MainWindow._emit_initial_settings'):
+
+                window = MainWindow()
+                # Load settings tab
+                window._load_settings_tab_lazy()
+
+                # Initially on Profile2, switch to Profile1
+                window.switch_profile("Profile1")
+
+                # Check that combo shows Profile1's theme
+                assert window.scheme_combo.currentText() == "dracula"
+
+                # Switch back to Profile2
+                window.switch_profile("Profile2")
+
+                # Check that combo shows Profile2's theme
+                assert window.scheme_combo.currentText() == "cyberpunk"

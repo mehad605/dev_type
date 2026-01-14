@@ -36,7 +36,13 @@ class TypingHighlighter(QSyntaxHighlighter):
         self.correct_format = QTextCharFormat()
         correct_color = settings.get_setting("color_correct", settings.get_default("color_correct"))
         self.correct_format.setForeground(QColor(correct_color))
-        
+
+        self.skipped_format = QTextCharFormat()
+        # Use a slightly different shade for skipped characters
+        skipped_color = QColor(correct_color)
+        skipped_color.setAlpha(180)  # Semi-transparent
+        self.skipped_format.setForeground(skipped_color)
+
         self.incorrect_format = QTextCharFormat()
         incorrect_color = settings.get_setting("color_incorrect", settings.get_default("color_incorrect"))
         self.incorrect_format.setForeground(QColor(incorrect_color))
@@ -47,15 +53,16 @@ class TypingHighlighter(QSyntaxHighlighter):
         
         self.show_ghost_text = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         
-        self.typed_chars = {}  # position -> {typed, expected, is_correct}
+        self.typed_chars = {}  # position -> {typed, expected, is_correct, is_skipped}
         self.ghost_display_limit = 0
-    
-    def set_typed_char(self, position: int, typed_char: str, expected_char: str, is_correct: bool):
+
+    def set_typed_char(self, position: int, typed_char: str, expected_char: str, is_correct: bool, is_skipped: bool = False):
         """Record a typed character at a position."""
         self.typed_chars[position] = {
             "typed": typed_char,
             "expected": expected_char,
             "is_correct": is_correct,
+            "is_skipped": is_skipped,
             "length": max(len(expected_char), len(typed_char), 1),
         }
         self.rehighlight()
@@ -82,7 +89,11 @@ class TypingHighlighter(QSyntaxHighlighter):
             if pos in self.typed_chars:
                 info = self.typed_chars[pos]
                 if info["is_correct"]:
-                    self.setFormat(i, 1, self.correct_format)
+                    if info.get("is_skipped", False):
+                        # Skipped characters (auto-indent) - use semi-transparent correct color
+                        self.setFormat(i, 1, self.skipped_format)
+                    else:
+                        self.setFormat(i, 1, self.correct_format)
                 else:
                     self.setFormat(i, 1, self.incorrect_format)
             elif pos < self.engine.state.cursor_position:
@@ -939,7 +950,8 @@ class TypingAreaWidget(QTextEdit):
                         display_pos,
                         display_char,
                         display_char,
-                        True
+                        True,
+                        is_skipped=True
                     )
                     self._apply_display_for_position(display_pos)
                     temp_engine_pos += 1
