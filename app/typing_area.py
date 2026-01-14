@@ -23,9 +23,10 @@ WARN_FILE_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB warning threshold
 class TypingHighlighter(QSyntaxHighlighter):
     """Syntax highlighter for coloring typed/untyped characters."""
     
-    def __init__(self, parent: QTextDocument, engine: TypingEngine):
+    def __init__(self, parent: QTextDocument, engine: TypingEngine, parent_widget=None):
         super().__init__(parent)
         self.engine = engine
+        self.parent_widget = parent_widget
         self.display_offset = 0  # Offset from start of file for sliding window
         
         # Color formats - load from settings
@@ -38,10 +39,8 @@ class TypingHighlighter(QSyntaxHighlighter):
         self.correct_format.setForeground(QColor(correct_color))
 
         self.skipped_format = QTextCharFormat()
-        # Use a slightly different shade for skipped characters
-        skipped_color = QColor(correct_color)
-        skipped_color.setAlpha(180)  # Semi-transparent
-        self.skipped_format.setForeground(skipped_color)
+        # Use same color for skipped characters so they look "correctly typed"
+        self.skipped_format.setForeground(QColor(correct_color))
 
         self.incorrect_format = QTextCharFormat()
         incorrect_color = settings.get_setting("color_incorrect", settings.get_default("color_incorrect"))
@@ -82,6 +81,15 @@ class TypingHighlighter(QSyntaxHighlighter):
         """Apply formatting to text block."""
         block_start = self.currentBlock().position()
         
+        # Calculate visual cursor position
+        visual_cursor_pos = -1
+        if self.parent_widget:
+            # Safely get the display position corresponding to current engine cursor
+            visual_cursor_pos = self.parent_widget._engine_to_display_position(self.engine.state.cursor_position)
+        else:
+            # Fallback (legacy/test support)
+            visual_cursor_pos = self.engine.state.cursor_position
+
         for i, char in enumerate(text):
             # Map relative document position to absolute file position
             pos = block_start + i + self.display_offset
@@ -96,7 +104,7 @@ class TypingHighlighter(QSyntaxHighlighter):
                         self.setFormat(i, 1, self.correct_format)
                 else:
                     self.setFormat(i, 1, self.incorrect_format)
-            elif pos < self.engine.state.cursor_position:
+            elif pos < visual_cursor_pos:
                 # Already typed correctly (moved past it)
                 self.setFormat(i, 1, self.correct_format)
             elif pos < self.ghost_display_limit and self.show_ghost_text:
@@ -264,7 +272,7 @@ class TypingAreaWidget(QTextEdit):
         self.engine.auto_indent = settings.get_setting("auto_indent", "0") == "1"
         
         # Setup highlighter but don't set document yet
-        self.highlighter = TypingHighlighter(self.document(), self.engine)
+        self.highlighter = TypingHighlighter(self.document(), self.engine, parent_widget=self)
         self._ghost_display_limit = 0
         self.highlighter.clear_ghost_progress()
         
@@ -1059,6 +1067,7 @@ class TypingAreaWidget(QTextEdit):
             
             correct_color = settings.get_setting("color_correct", settings.get_default("color_correct"))
             self.highlighter.correct_format.setForeground(QColor(correct_color))
+            self.highlighter.skipped_format.setForeground(QColor(correct_color))
             
             incorrect_color = settings.get_setting("color_incorrect", settings.get_default("color_incorrect"))
             self.highlighter.incorrect_format.setForeground(QColor(incorrect_color))
