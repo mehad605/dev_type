@@ -376,19 +376,59 @@ def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
                 # Dynamic Language Detection
                 if ext in LANGUAGE_MAP:
                     lang = LANGUAGE_MAP[ext]
-                elif ext: # If it has an extension and we don't know it
-                    # Auto-register: capitalize extension
+                    language_files[lang].append(str(file_path))
+                    file_count += 1
+                elif is_text_file(file_path):
+                     # Unknown extension but looks like text (e.g. .jsx, .toml)
+                     # Treat extension as language name
                     lang = ext.lstrip(".").capitalize()
+                    language_files[lang].append(str(file_path))
+                    file_count += 1
                 else:
-                    lang = "No Extension"
-                
-                language_files[lang].append(str(file_path))
-                file_count += 1
+                    # Binary or unsafe
+                    continue
             
             if file_count >= MAX_FILES_PER_FOLDER:
                 break
     
     return dict(language_files)
+
+
+def is_text_file(path: Path) -> bool:
+    """Check if a file is text-based by scanning for binary characters."""
+    try:
+        with open(path, 'rb') as f:
+            chunk = f.read(4096)
+            
+        if not chunk:
+            return True  # Empty file is considered text
+            
+        # NULL byte check - best indicator of binary files (images, exes)
+        if b'\0' in chunk:
+            return False
+            
+        # Encoding check - try to decode as UTF-8
+        try:
+            chunk.decode('utf-8')
+        except UnicodeDecodeError:
+            # If strictly valid UTF-8 is required, return False.
+            # However, some text files might be Latin-1 etc. 
+            # A more lenient check is to look for excessive high-byte characters 
+            # or control characters, but usually the NULL check + UTF-8 trial is enough 
+            # to filter out media/executables for a typing app.
+            
+            # Additional heuristic: if more than 30% of chars are non-printable/high-byte, call it binary
+            text_chars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7f})
+            if not all(c in text_chars for c in chunk):
+                 # Has chars that are rare in standard text
+                 pass
+            
+            # For now, let's assume if it fails UTF-8 decodes AND has weird bytes, it's not for typing.
+            return False
+            
+        return True
+    except Exception:
+        return False
 
 
 def get_language_for_file(file_path: str) -> str:
