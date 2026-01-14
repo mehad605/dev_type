@@ -512,6 +512,8 @@ class EditorTab(QWidget):
         """Trigger lazy loading when tab is shown."""
         super().showEvent(event)
         self.ensure_loaded()
+        # Force stats update to reflect current state (e.g. paused)
+        QTimer.singleShot(0, self.on_stats_updated)
     
     def load_folder(self, folder_path: str):
         """Load a single folder for practice."""
@@ -718,6 +720,36 @@ class EditorTab(QWidget):
 
     def on_smart_indent_toggled(self, enabled: bool):
         """Handle smart-indent mode toggle."""
+        # Check for active session before allowing toggle
+        if self.typing_area and self.typing_area.engine:
+            state = self.typing_area.engine.state
+            if state.cursor_position > 0 and not state.is_finished:
+                # Pause the session while user decides
+                self.typing_area.engine.pause()
+                self.typing_area.typing_paused.emit()
+                
+                # Force stats update to reflect "PAUSED" status immediately
+                self.on_stats_updated()
+                QApplication.processEvents() # Ensure UI repaints before dialog shows
+                
+                reply = QMessageBox.question(
+                    self, 
+                    "Reset Session?", 
+                    "Toggling Smart Indent will reset the current session.\nAre you sure you want to proceed?",
+                    QMessageBox.Yes | QMessageBox.No, 
+                    QMessageBox.No
+                )
+                
+                if reply == QMessageBox.No:
+                    # User cancelled: revert button state without triggering signals
+                    self.smart_indent_btn.blockSignals(True)
+                    self.smart_indent_btn.setChecked(not enabled)
+                    self.smart_indent_btn.blockSignals(False)
+                    return
+
+                # User confirmed: reset session
+                self.typing_area.reset_session()
+
         self.toggle_smart_indent_requested.emit(enabled)
 
     def _set_auto_indent(self, enabled: bool, persist: bool):
@@ -945,6 +977,8 @@ class EditorTab(QWidget):
     def save_active_progress(self):
         """Pause the active session and persist progress, if any."""
         self._save_current_progress()
+        # Ensure stats UI reflects the paused state immediately
+        self.on_stats_updated()
     
     def on_sound_volume_changed(self, volume: int):
         """Handle volume change from sound widget."""

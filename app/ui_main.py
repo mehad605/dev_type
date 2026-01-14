@@ -521,6 +521,17 @@ class FoldersTab(QWidget):
         if self.edit_btn.isChecked():
             return  # Don't navigate in edit mode
         folder_path = item.data(Qt.UserRole)
+        
+        # Explicitly unselect the widget immediately
+        widget = self.list.itemWidget(item)
+        if isinstance(widget, FolderCardWidget):
+            widget.set_selected(False)
+            
+        # Clear selection and focus so it doesn't look "stuck" (like hover) when returning
+        self.list.clearSelection()
+        self.list.setCurrentItem(None) # Ensure current item anchor is also cleared
+        self.list.clearFocus()
+        
         # Signal parent window to switch to typing tab with this folder
         parent_window = self.window()
         if hasattr(parent_window, 'open_typing_tab'):

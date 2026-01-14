@@ -861,10 +861,19 @@ class TypingAreaWidget(QTextEdit):
                 # Regular backspace
                 self._record_keystroke("\b", True)
                 if self.engine.state.cursor_position > 0 or self.engine.mistake_at is not None:
+                    old_pos = self.engine.state.cursor_position
                     self.engine.process_backspace(self.space_per_tab)
-                    target_index = self.engine.state.cursor_position
-                    self._clear_and_restore_engine_position(target_index)
-                    self.current_typing_position = self._engine_to_display_position(target_index)
+                    new_pos = self.engine.state.cursor_position
+                    
+                    # Clear visuals for all removed characters (handles single char, smart backspace, and undo auto-indent)
+                    # Use a range to ensure we catch everything if the cursor jumped back multiple spots
+                    start_clear = new_pos
+                    end_clear = max(old_pos, new_pos + 1) # Ensure at least one char is cleared
+                    
+                    for idx in range(start_clear, end_clear):
+                        self._clear_and_restore_engine_position(idx)
+                        
+                    self.current_typing_position = self._engine_to_display_position(new_pos)
                     self._maybe_slide_window()
                     self._update_cursor_position()
             self.stats_updated.emit()
@@ -873,6 +882,9 @@ class TypingAreaWidget(QTextEdit):
         # Handle Tab
         if key == Qt.Key_Tab:
             sound_mgr.play_keypress()  # Sound for tab
+            
+            initial_max_correct = self.engine.state.max_correct_position
+            
             all_correct = True
             spaces_processed = 0
             
@@ -927,9 +939,11 @@ class TypingAreaWidget(QTextEdit):
             # Manual stats increment: one physical key press = one keystroke
             if tab_was_attempted:
                 if all_correct:
-                    self.engine.state.correct_keystrokes += 1
-                    # Also increment hit count for space (as a representative of the action)
-                    self.engine.state.key_hits[' '] = self.engine.state.key_hits.get(' ', 0) + 1
+                    # Prevent keystroke farming: only credit if we advanced new territory
+                    if self.engine.state.max_correct_position > initial_max_correct:
+                        self.engine.state.correct_keystrokes += 1
+                        # Also increment hit count for space (as a representative of the action)
+                        self.engine.state.key_hits[' '] = self.engine.state.key_hits.get(' ', 0) + 1
                 else:
                     self.engine.state.incorrect_keystrokes += 1
                     self.engine.state.key_misses[' '] = self.engine.state.key_misses.get(' ', 0) + 1

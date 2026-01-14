@@ -296,13 +296,30 @@ class TypingEngine:
             
             # Check if all characters from line_start to pos are whitespace
             is_leading_whitespace = True
+            all_skipped = True
             for i in range(line_start, pos):
                 if content[i] not in (' ', '\t'):
                     is_leading_whitespace = False
+                    all_skipped = False
                     break
+                if i not in self.state.skipped_positions:
+                    all_skipped = False
             
-            # Smart backspace: if we are in leading whitespace and at a tab stop
-            if is_leading_whitespace and (pos - line_start) > 0 and (pos - line_start) % space_per_tab == 0:
+            # Undo Auto-Indent: If this entire line of whitespace was auto-inserted (skipped),
+            # pressing backspace should revert the whole thing including the newline
+            if self.auto_indent and is_leading_whitespace and all_skipped and (pos - line_start) > 0:
+                # Remove skipped marks for this range
+                for p in range(line_start, pos):
+                    if p in self.state.skipped_positions:
+                        self.state.skipped_positions.remove(p)
+                
+                # Jump back before the newline (if exists)
+                self.state.cursor_position = max(0, line_start - 1)
+                self.state.last_keystroke_time = time.time()
+                return
+            
+            # Smart backspace: if we are in leading whitespace and at a tab stop AND auto indent is on
+            if self.auto_indent and is_leading_whitespace and (pos - line_start) > 0 and (pos - line_start) % space_per_tab == 0:
                 # Delete a whole level
                 for _ in range(space_per_tab):
                     if self.state.cursor_position > line_start:
