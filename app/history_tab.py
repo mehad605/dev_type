@@ -76,6 +76,16 @@ class HistoryTab(QWidget):
         self.max_duration_input = self._create_numeric_input("Max")
         filter_row.addWidget(self.max_duration_input)
 
+        self.indent_label = QLabel("Smart Indent")
+        filter_row.addWidget(self.indent_label)
+
+        self.indent_combo = QComboBox()
+        self.indent_combo.setMinimumWidth(80)
+        self.indent_combo.addItem("All", None)
+        self.indent_combo.addItem("ON", True)
+        self.indent_combo.addItem("OFF", False)
+        filter_row.addWidget(self.indent_combo)
+
         self.apply_filters_btn = QPushButton("Apply Filters")
         self.apply_filters_btn.clicked.connect(self.apply_filters)
         filter_row.addWidget(self.apply_filters_btn)
@@ -115,7 +125,7 @@ class HistoryTab(QWidget):
         action_row.addStretch()
         layout.addLayout(action_row)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels([
             "Date",
             "Language",
@@ -125,6 +135,7 @@ class HistoryTab(QWidget):
             "Duration (s)",
             "Correct",
             "Incorrect",
+            "Smart Indent",
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionsClickable(True)
@@ -162,6 +173,7 @@ class HistoryTab(QWidget):
         self.name_label.setStyleSheet(label_style)
         self.wpm_label.setStyleSheet(label_style)
         self.duration_label.setStyleSheet(label_style)
+        self.indent_label.setStyleSheet(label_style)
         self.count_label.setStyleSheet(f"color: {text_secondary};")
         
         # Table
@@ -248,6 +260,7 @@ class HistoryTab(QWidget):
         self.max_wpm_input.setStyleSheet(input_style)
         self.min_duration_input.setStyleSheet(input_style)
         self.max_duration_input.setStyleSheet(input_style)
+        self.indent_combo.setStyleSheet(input_style)
 
     def _create_numeric_input(self, placeholder: str) -> QLineEdit:
         """Create a numeric line edit accepting floats with optional blank value."""
@@ -283,6 +296,7 @@ class HistoryTab(QWidget):
             "max_wpm": self._parse_float(self.max_wpm_input.text()),
             "min_duration": self._parse_float(self.min_duration_input.text()),
             "max_duration": self._parse_float(self.max_duration_input.text()),
+            "auto_indent": self.indent_combo.currentData(),
         }
 
         if self._range_invalid(filters["min_wpm"], filters["max_wpm"]):
@@ -299,6 +313,7 @@ class HistoryTab(QWidget):
         """Clear all filter inputs."""
         self.language_combo.setCurrentIndex(0)
         self.name_filter_input.clear()
+        self.indent_combo.setCurrentIndex(0)
         for widget in (self.min_wpm_input, self.max_wpm_input, self.min_duration_input, self.max_duration_input):
             widget.clear()
         self.apply_filters()
@@ -371,6 +386,7 @@ class HistoryTab(QWidget):
             max_wpm=filters.get("max_wpm"),
             min_duration=filters.get("min_duration"),
             max_duration=filters.get("max_duration"),
+            auto_indent=filters.get("auto_indent"),
         )
 
         header = self.table.horizontalHeader()
@@ -429,6 +445,11 @@ class HistoryTab(QWidget):
             incorrect_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 7, incorrect_item)
 
+            indent_item = QTableWidgetItem("ON" if record.get("auto_indent") else "OFF")
+            indent_item.setData(Qt.EditRole, 1 if record.get("auto_indent") else 0)
+            indent_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 8, indent_item)
+
         self.count_label.setText(f"Showing {len(history)} session(s)")
         self.table.setSortingEnabled(True)
         if self.table.rowCount() and 0 <= sort_col < self.table.columnCount():
@@ -475,7 +496,7 @@ class HistoryTab(QWidget):
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = [
                     'Date', 'Language', 'File', 'WPM', 'Accuracy', 
-                    'Duration (s)', 'Correct', 'Incorrect'
+                    'Duration (s)', 'Correct', 'Incorrect', 'Smart Indent'
                 ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 
@@ -495,7 +516,8 @@ class HistoryTab(QWidget):
                         'Accuracy': f"{accuracy * 100:.1f}%",
                         'Duration (s)': f"{record.get('duration', 0.0):.1f}",
                         'Correct': record.get("correct", 0),
-                        'Incorrect': record.get("incorrect", 0)
+                        'Incorrect': record.get("incorrect", 0),
+                        'Smart Indent': "ON" if record.get("auto_indent") else "OFF"
                     })
             
             QMessageBox.information(

@@ -218,7 +218,8 @@ class InternalFileTree(QTreeWidget):
                 folder_files[parent] = []
             folder_files[parent].append(file_path)
 
-        stats_cache = stats_db.get_file_stats_for_files(files)
+        auto_indent = settings.get_setting("auto_indent", "0") == "1"
+        stats_cache = stats_db.get_file_stats_for_files(files, auto_indent=auto_indent)
         
         # Create tree items for each folder
         for folder, file_list in sorted(folder_files.items()):
@@ -272,7 +273,8 @@ class InternalFileTree(QTreeWidget):
             item for item in items
             if item.is_file() and item.suffix.lower() in LANGUAGE_MAP
         ]
-        stats_cache = stats_db.get_file_stats_for_files(str(item) for item in file_candidates)
+        auto_indent = settings.get_setting("auto_indent", "0") == "1"
+        stats_cache = stats_db.get_file_stats_for_files([str(item) for item in file_candidates], auto_indent=auto_indent)
 
         for item in items:
             if item.name.startswith('.'):
@@ -359,8 +361,9 @@ class InternalFileTree(QTreeWidget):
         if not file_path:
             return
         
-        # Get fresh stats from database
-        stats = stats_db.get_file_stats(file_path)
+        # Get fresh stats from database for the current mode
+        auto_indent = settings.get_setting("auto_indent", "0") == "1"
+        stats = stats_db.get_file_stats(file_path, auto_indent=auto_indent)
         item = self._find_file_item(file_path)
         if not item:
             return
@@ -702,3 +705,7 @@ class FileTreeWidget(QWidget):
     def update_ignore_settings(self):
         """Update ignore settings and refresh tree."""
         self.tree.update_ignore_settings()
+
+    def reload_tree(self):
+        """Reload the tree using the last used load method."""
+        self.tree.reload_tree()

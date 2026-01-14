@@ -70,21 +70,53 @@ def init_stats_tables():
     # File statistics table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS file_stats (
-            file_path TEXT PRIMARY KEY,
+            file_path TEXT,
+            auto_indent INTEGER DEFAULT 0,
             best_wpm REAL DEFAULT 0,
             last_wpm REAL DEFAULT 0,
             best_accuracy REAL DEFAULT 0,
             last_accuracy REAL DEFAULT 0,
             times_practiced INTEGER DEFAULT 0,
             last_practiced TIMESTAMP,
-            completed BOOLEAN DEFAULT 0
+            completed BOOLEAN DEFAULT 0,
+            PRIMARY KEY (file_path, auto_indent)
         )
     """)
     
+    # Migration for file_stats if auto_indent doesn't exist or isn't part of PK
+    cur.execute("PRAGMA table_info(file_stats)")
+    columns = {row[1] for row in cur.fetchall()}
+    if "auto_indent" not in columns:
+        cur.execute("ALTER TABLE file_stats RENAME TO file_stats_old")
+        cur.execute("""
+            CREATE TABLE file_stats (
+                file_path TEXT,
+                auto_indent INTEGER DEFAULT 0,
+                best_wpm REAL DEFAULT 0,
+                last_wpm REAL DEFAULT 0,
+                best_accuracy REAL DEFAULT 0,
+                last_accuracy REAL DEFAULT 0,
+                times_practiced INTEGER DEFAULT 0,
+                last_practiced TIMESTAMP,
+                completed BOOLEAN DEFAULT 0,
+                PRIMARY KEY (file_path, auto_indent)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO file_stats (file_path, auto_indent, best_wpm, last_wpm, 
+                                     best_accuracy, last_accuracy, times_practiced, 
+                                     last_practiced, completed)
+            SELECT file_path, 0, best_wpm, last_wpm, best_accuracy, last_accuracy, 
+                   times_practiced, last_practiced, completed
+            FROM file_stats_old
+        """)
+        cur.execute("DROP TABLE file_stats_old")
+
     # Session progress table (for resuming incomplete sessions)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS session_progress (
-            file_path TEXT PRIMARY KEY,
+            file_path TEXT,
+            auto_indent INTEGER DEFAULT 0,
             cursor_position INTEGER DEFAULT 0,
             total_characters INTEGER DEFAULT 0,
             correct_keystrokes INTEGER DEFAULT 0,
@@ -98,11 +130,48 @@ def init_stats_tables():
             max_correct_position INTEGER DEFAULT -1,
             typed_chars_json TEXT,
             skipped_positions_json TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (file_path, auto_indent)
         )
     """)
     
-    # Ensure keystrokes_json column exists for older databases
+    # Migration for session_progress if auto_indent doesn't exist
+    cur.execute("PRAGMA table_info(session_progress)")
+    progress_cols = {row[1] for row in cur.fetchall()}
+    if "auto_indent" not in progress_cols:
+        cur.execute("ALTER TABLE session_progress RENAME TO session_progress_old")
+        cur.execute("""
+            CREATE TABLE session_progress (
+                file_path TEXT,
+                auto_indent INTEGER DEFAULT 0,
+                cursor_position INTEGER DEFAULT 0,
+                total_characters INTEGER DEFAULT 0,
+                correct_keystrokes INTEGER DEFAULT 0,
+                incorrect_keystrokes INTEGER DEFAULT 0,
+                session_time REAL DEFAULT 0,
+                is_paused BOOLEAN DEFAULT 1,
+                keystrokes_json TEXT,
+                wpm_history_json TEXT,
+                error_history_json TEXT,
+                mistake_at INTEGER DEFAULT -1,
+                max_correct_position INTEGER DEFAULT -1,
+                typed_chars_json TEXT,
+                skipped_positions_json TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (file_path, auto_indent)
+            )
+        """)
+        # Copy data from old table
+        cur.execute("""
+            INSERT INTO session_progress (file_path, auto_indent, cursor_position, total_characters, 
+                                          correct_keystrokes, incorrect_keystrokes, session_time, is_paused)
+            SELECT file_path, 0, cursor_position, total_characters, 
+                   correct_keystrokes, incorrect_keystrokes, session_time, is_paused
+            FROM session_progress_old
+        """)
+        cur.execute("DROP TABLE session_progress_old")
+
+    # Ensure other columns exist (for even older versions)
     cur.execute("PRAGMA table_info(session_progress)")
     progress_columns = {row[1] for row in cur.fetchall()}
     if "keystrokes_json" not in progress_columns:
@@ -126,6 +195,7 @@ def init_stats_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT NOT NULL,
             language TEXT DEFAULT '',
+            auto_indent INTEGER DEFAULT 0,
             wpm REAL NOT NULL,
             accuracy REAL NOT NULL,
             total_keystrokes INTEGER DEFAULT 0,
@@ -149,6 +219,8 @@ def init_stats_tables():
         cur.execute("ALTER TABLE session_history ADD COLUMN incorrect_keystrokes INTEGER DEFAULT 0")
     if "duration" not in existing_columns:
         cur.execute("ALTER TABLE session_history ADD COLUMN duration REAL DEFAULT 0")
+    if "auto_indent" not in existing_columns:
+        cur.execute("ALTER TABLE session_history ADD COLUMN auto_indent INTEGER DEFAULT 0")
 
     # Create indexes after ensuring columns exist
     cur.execute("""CREATE INDEX IF NOT EXISTS idx_session_history_file_path
@@ -223,16 +295,16 @@ def init_stats_tables():
     conn.close()
 
 
-def get_file_stats(file_path: str) -> Optional[Dict]:
-    """Get statistics for a specific file."""
+def get_file_stats(file_path: str, auto_indent: bool = False) -> Optional[Dict]:
+    """Get statistics for a specific file for a specific indent mode."""
     conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute("""
         SELECT best_wpm, last_wpm, best_accuracy, last_accuracy, 
                times_practiced, completed
         FROM file_stats 
-        WHERE file_path = ?
-    """, (file_path,))
+        WHERE file_path = ? AND auto_indent = ?
+    """, (file_path, 1 if auto_indent else 0))
     row = cur.fetchone()
     conn.close()
     
@@ -248,8 +320,8 @@ def get_file_stats(file_path: str) -> Optional[Dict]:
     return None
 
 
-def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-    """Fetch stats for multiple files with a single query, chunked to avoid SQLite limits."""
+def get_file_stats_for_files(file_paths: List[str], auto_indent: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Fetch stats for multiple files for a specific indent mode."""
     paths = list({path for path in file_paths if path})
     if not paths:
         return {}
@@ -257,20 +329,22 @@ def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, A
     conn = _connect_for_stats()
     cur = conn.cursor()
     stats_map: Dict[str, Dict[str, Any]] = {}
+    indent_val = 1 if auto_indent else 0
     
     # SQLite parameter limit is usually 999. Use 500 for safety.
     CHUNK_SIZE = 500
     for i in range(0, len(paths), CHUNK_SIZE):
         chunk = paths[i:i + CHUNK_SIZE]
         placeholders = ",".join(["?"] * len(chunk))
+        params = chunk + [indent_val]
         cur.execute(
             f"""
             SELECT file_path, best_wpm, last_wpm, best_accuracy, last_accuracy,
                    times_practiced, completed
             FROM file_stats
-            WHERE file_path IN ({placeholders})
+            WHERE file_path IN ({placeholders}) AND auto_indent = ?
             """,
-            chunk,
+            params,
         )
         rows = cur.fetchall()
         for row in rows:
@@ -287,10 +361,11 @@ def get_file_stats_for_files(file_paths: Iterable[str]) -> Dict[str, Dict[str, A
     return stats_map
 
 
-def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bool = False):
-    """Update statistics for a file after a typing session."""
+def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bool = False, auto_indent: bool = False):
+    """Update statistics for a file after a typing session, keyed by indent mode."""
     conn = _connect_for_stats()
     cur = conn.cursor()
+    indent_val = 1 if auto_indent else 0
     
     # Minimum accuracy required to update best WPM
     try:
@@ -298,11 +373,12 @@ def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bo
         min_accuracy = float(min_accuracy_raw) if min_accuracy_raw is not None else 0.9
     except (TypeError, ValueError):
         min_accuracy = 0.9
+    
     min_accuracy = max(0.0, min(1.0, min_accuracy))
     meets_threshold = accuracy >= min_accuracy
 
     # Get current stats
-    cur.execute("SELECT best_wpm, times_practiced FROM file_stats WHERE file_path = ?", (file_path,))
+    cur.execute("SELECT best_wpm, times_practiced FROM file_stats WHERE file_path = ? AND auto_indent = ?", (file_path, indent_val))
     row = cur.fetchone()
     
     if row:
@@ -316,16 +392,16 @@ def update_file_stats(file_path: str, wpm: float, accuracy: float, completed: bo
             SET last_wpm = ?, best_wpm = ?, last_accuracy = ?, 
                 times_practiced = ?, completed = ?,
                 last_practiced = CURRENT_TIMESTAMP
-            WHERE file_path = ?
-        """, (wpm, best_wpm, accuracy, times, completed, file_path))
+            WHERE file_path = ? AND auto_indent = ?
+        """, (wpm, best_wpm, accuracy, times, completed, file_path, indent_val))
     else:
         initial_best = wpm if meets_threshold else 0.0
         cur.execute("""
             INSERT INTO file_stats 
-            (file_path, best_wpm, last_wpm, best_accuracy, last_accuracy, 
+            (file_path, auto_indent, best_wpm, last_wpm, best_accuracy, last_accuracy, 
              times_practiced, completed, last_practiced)
-            VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
-        """, (file_path, initial_best, wpm, accuracy, accuracy, completed))
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+        """, (file_path, indent_val, initial_best, wpm, accuracy, accuracy, completed))
     
     conn.commit()
     conn.close()
@@ -341,8 +417,9 @@ def record_session_history(
     incorrect_keystrokes: int,
     duration: float,
     completed: bool = False,
+    auto_indent: bool = False,
 ):
-    """Append a session result to the historical log."""
+    """Append a session result to the historical log with indent mode."""
     conn = _connect_for_stats()
     cur = conn.cursor()
     cur.execute(
@@ -350,6 +427,7 @@ def record_session_history(
         INSERT INTO session_history (
             file_path,
             language,
+            auto_indent,
             wpm,
             accuracy,
             total_keystrokes,
@@ -358,11 +436,12 @@ def record_session_history(
             duration,
             completed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             file_path,
             language or "",
+            1 if auto_indent else 0,
             wpm,
             accuracy,
             total_keystrokes,
@@ -370,7 +449,7 @@ def record_session_history(
             incorrect_keystrokes,
             duration,
             int(bool(completed)),
-        )
+        ),
     )
     conn.commit()
     conn.close()
@@ -667,6 +746,7 @@ def fetch_session_history(
     max_wpm: Optional[float] = None,
     min_duration: Optional[float] = None,
     max_duration: Optional[float] = None,
+    auto_indent: Optional[bool] = None,
 ) -> List[Dict]:
     """Retrieve session history rows matching the supplied filters."""
     conn = _connect_for_stats()
@@ -674,7 +754,7 @@ def fetch_session_history(
     ignore_sql = _get_global_ignore_sql()
     query = [
         "SELECT id, file_path, language, wpm, accuracy, total_keystrokes,",
-        "       correct_keystrokes, incorrect_keystrokes, duration, recorded_at",
+        "       correct_keystrokes, incorrect_keystrokes, duration, recorded_at, auto_indent",
         f"FROM session_history WHERE 1=1 {ignore_sql}",
     ]
     params: List[Any] = []
@@ -702,6 +782,9 @@ def fetch_session_history(
     if max_duration is not None:
         query.append("AND duration <= ?")
         params.append(max_duration)
+    if auto_indent is not None:
+        query.append("AND auto_indent = ?")
+        params.append(1 if auto_indent else 0)
 
     query.append("ORDER BY recorded_at DESC")
     cur.execute("\n".join(query), params)
@@ -722,6 +805,7 @@ def fetch_session_history(
                 "incorrect": row[7],
                 "duration": row[8],
                 "recorded_at": row[9],
+                "auto_indent": bool(row[10]),
             }
         )
     return history
@@ -772,9 +856,9 @@ def cleanup_old_sessions(retention_days: Optional[int] = None) -> int:
     return rows_deleted
 
 
-def get_session_progress(file_path: str) -> Optional[Dict]:
-    """Get saved progress for a file session."""
-    conn = _connect_for_stats()
+def get_session_progress(file_path: str, auto_indent: bool = False) -> Optional[Dict]:
+    """Get saved progress for a file for a specific indent mode."""
+    conn = _connect()
     cur = conn.cursor()
     cur.execute("""
         SELECT cursor_position, total_characters, correct_keystrokes,
@@ -782,8 +866,8 @@ def get_session_progress(file_path: str) -> Optional[Dict]:
                wpm_history_json, error_history_json, mistake_at, 
                max_correct_position, typed_chars_json, skipped_positions_json
         FROM session_progress
-        WHERE file_path = ?
-    """, (file_path,))
+        WHERE file_path = ? AND auto_indent = ?
+    """, (file_path, 1 if auto_indent else 0))
     row = cur.fetchone()
     conn.close()
     
@@ -814,29 +898,32 @@ def save_session_progress(file_path: str, cursor_pos: int, total_chars: int,
                           mistake_at: int = -1,
                           max_correct_position: int = -1,
                           typed_chars_json: Optional[str] = None,
-                          skipped_positions_json: Optional[str] = None):
-    """Save progress of an incomplete typing session."""
+                          skipped_positions_json: Optional[str] = None,
+                          auto_indent: bool = False):
+    """Save progress of an incomplete typing session for a specific mode."""
     conn = _connect()
     cur = conn.cursor()
+    indent_val = 1 if auto_indent else 0
     cur.execute("""
         INSERT OR REPLACE INTO session_progress
-        (file_path, cursor_position, total_characters, correct_keystrokes,
+        (file_path, auto_indent, cursor_position, total_characters, correct_keystrokes,
          incorrect_keystrokes, session_time, is_paused, keystrokes_json,
          wpm_history_json, error_history_json, mistake_at, 
          max_correct_position, typed_chars_json, skipped_positions_json, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    """, (file_path, cursor_pos, total_chars, correct, incorrect, time, is_paused, 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (file_path, indent_val, cursor_pos, total_chars, correct, incorrect, time, is_paused, 
           keystrokes_json, wpm_history_json, error_history_json, 
           mistake_at, max_correct_position, typed_chars_json, skipped_positions_json))
     conn.commit()
     conn.close()
 
 
-def clear_session_progress(file_path: str):
-    """Clear saved progress for a file (when session is completed or reset)."""
+def clear_session_progress(file_path: str, auto_indent: bool = False):
+    """Clear saved progress for a file for a specific mode."""
     conn = _connect()
     cur = conn.cursor()
-    cur.execute("DELETE FROM session_progress WHERE file_path = ?", (file_path,))
+    cur.execute("DELETE FROM session_progress WHERE file_path = ? AND auto_indent = ?", 
+               (file_path, 1 if auto_indent else 0))
     conn.commit()
     conn.close()
 
@@ -855,20 +942,13 @@ def get_incomplete_sessions() -> List[str]:
     return rows
 
 
-def is_session_incomplete(file_path: str) -> bool:
-    """Check if a file has an incomplete session.
-    
-    Args:
-        file_path: Path to the file
-        
-    Returns:
-        True if file has incomplete session, False otherwise
-    """
+def is_session_incomplete(file_path: str, auto_indent: bool = False) -> bool:
+    """Check if a file has an incomplete session for a specific mode."""
     conn = _connect()
     cur = conn.cursor()
     cur.execute("""
         SELECT 1 FROM session_progress 
-        WHERE file_path = ? 
+        WHERE file_path = ? AND auto_indent = ?
         AND (is_paused = 1 OR cursor_position < total_characters)
     """, (file_path,))
     result = cur.fetchone()
@@ -876,11 +956,12 @@ def is_session_incomplete(file_path: str) -> bool:
     return result is not None
 
 
-def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any]:
+def get_aggregated_stats(languages: Optional[List[str]] = None, auto_indent: Optional[bool] = None) -> Dict[str, Any]:
     """Get aggregated statistics for the stats tab.
     
     Args:
         languages: Optional list of languages to filter by. If None or empty, all languages.
+        auto_indent: Optional filter for smart indent mode.
         
     Returns:
         Dictionary with aggregated stats including:
@@ -894,13 +975,16 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
     conn = _connect_for_stats()
     cur = conn.cursor()
     
-    # Build WHERE clause for language filter
+    # Build WHERE clause for filters
     where_clause = ""
     params: List[Any] = []
     if languages:
         placeholders = ",".join(["?"] * len(languages))
-        where_clause = f"AND language IN ({placeholders})"
-        params = list(languages)
+        where_clause += f" AND language IN ({placeholders})"
+        params.extend(languages)
+    if auto_indent is not None:
+        where_clause += " AND auto_indent = ?"
+        params.append(1 if auto_indent else 0)
     
     ignore_sql = _get_global_ignore_sql()
     
@@ -976,7 +1060,7 @@ def get_aggregated_stats(languages: Optional[List[str]] = None) -> Dict[str, Any
     }
 
 
-def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int = 10) -> List[Dict[str, Any]]:
+def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int = 10, auto_indent: Optional[bool] = None) -> List[Dict[str, Any]]:
     """Get WPM distribution for bar chart.
     
     Args:
@@ -989,13 +1073,16 @@ def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int
     conn = _connect_for_stats()
     cur = conn.cursor()
     
-    # Build WHERE clause for language filter
+    # Build WHERE clause for filters
     where_clause = ""
     params: List[Any] = []
     if languages:
         placeholders = ",".join(["?"] * len(languages))
-        where_clause = f"AND language IN ({placeholders})"
-        params = list(languages)
+        where_clause += f" AND language IN ({placeholders})"
+        params.extend(languages)
+    if auto_indent is not None:
+        where_clause += " AND auto_indent = ?"
+        params.append(1 if auto_indent else 0)
     
     ignore_sql = _get_global_ignore_sql()
     # Get all WPM values from completed sessions
@@ -1039,7 +1126,7 @@ def get_wpm_distribution(languages: Optional[List[str]] = None, bucket_size: int
     return buckets
 
 
-def get_sessions_over_time(languages: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def get_sessions_over_time(languages: Optional[List[str]] = None, auto_indent: Optional[bool] = None) -> List[Dict[str, Any]]:
     """Get session data over time for scatter plot.
     
     Args:
@@ -1051,13 +1138,16 @@ def get_sessions_over_time(languages: Optional[List[str]] = None) -> List[Dict[s
     conn = _connect_for_stats()
     cur = conn.cursor()
     
-    # Build WHERE clause for language filter
+    # Build WHERE clause for filters
     where_clause = ""
     params: List[Any] = []
     if languages:
         placeholders = ",".join(["?"] * len(languages))
-        where_clause = f"AND language IN ({placeholders})"
-        params = list(languages)
+        where_clause += f" AND language IN ({placeholders})"
+        params.extend(languages)
+    if auto_indent is not None:
+        where_clause += " AND auto_indent = ?"
+        params.append(1 if auto_indent else 0)
     
     ignore_sql = _get_global_ignore_sql()
     cur.execute(f"""
@@ -1158,7 +1248,8 @@ def get_trend_data(
 def get_daily_metrics(
     languages: Optional[List[str]] = None,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    auto_indent: Optional[bool] = None
 ) -> List[Dict[str, Any]]:
     """Get comprehensive daily metrics for the date range chart.
     
@@ -1184,6 +1275,10 @@ def get_daily_metrics(
         placeholders = ",".join(["?"] * len(languages))
         where_parts.append(f"language IN ({placeholders})")
         params.extend(languages)
+    
+    if auto_indent is not None:
+        where_parts.append("auto_indent = ?")
+        params.append(1 if auto_indent else 0)
     
     if start_date:
         where_parts.append("DATE(recorded_at) >= ?")

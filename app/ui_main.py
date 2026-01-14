@@ -4318,8 +4318,11 @@ class MainWindow(QMainWindow):
         self._update_auto_indent_buttons(enabled)
         self.auto_indent_changed.emit(enabled)
         # Update engine immediately if it exists
-        if hasattr(self, 'editor_tab') and self.editor_tab.typing_area and self.editor_tab.typing_area.engine:
-            self.editor_tab.typing_area.engine.auto_indent = enabled
+        if hasattr(self, 'editor_tab'):
+            if self.editor_tab.typing_area and self.editor_tab.typing_area.engine:
+                self.editor_tab.typing_area.engine.auto_indent = enabled
+            if self.editor_tab.file_tree:
+                self.editor_tab.file_tree.reload_tree()
 
 
 def create_splash_screen(app):

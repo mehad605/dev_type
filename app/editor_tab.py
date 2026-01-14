@@ -646,7 +646,9 @@ class EditorTab(QWidget):
         
         self.typing_area.reset_session()
         self.stats_display.clear_wpm_history()
-        stats_db.clear_session_progress(self.current_file)
+        # Reset engine and stats
+        cur_auto_indent = self.typing_area.engine.auto_indent if self.typing_area.engine else (settings.get_setting("auto_indent", "0") == "1")
+        stats_db.clear_session_progress(self.current_file, auto_indent=cur_auto_indent)
         self.file_tree.refresh_file_stats(self.current_file)
         self.file_tree.refresh_incomplete_sessions()
         
@@ -745,6 +747,12 @@ class EditorTab(QWidget):
             
         if hasattr(self, 'typing_area') and self.typing_area.engine:
             self.typing_area.engine.auto_indent = enabled
+            
+        # Refresh UI elements that display mode-specific stats
+        if self.current_file:
+            self.file_tree.refresh_file_stats(self.current_file)
+            if hasattr(self, '_update_ghost_button'):
+                 self._update_ghost_button()
     
     def on_mistake_occurred(self):
         """Handle mistake in typing area - reset if instant death mode is enabled."""
@@ -799,7 +807,8 @@ class EditorTab(QWidget):
             self.current_file,
             wpm=stats["wpm"],
             accuracy=stats["accuracy"],
-            completed=True
+            completed=True,
+            auto_indent=self.typing_area.engine.auto_indent
         )
 
         stats_db.record_session_history(
@@ -812,6 +821,7 @@ class EditorTab(QWidget):
             incorrect_keystrokes=stats["incorrect"],
             duration=stats["time"],
             completed=True,
+            auto_indent=self.typing_area.engine.auto_indent
         )
         
         # Update detailed key statistics for heatmap
@@ -833,7 +843,7 @@ class EditorTab(QWidget):
         is_new_best = self._check_and_save_ghost(stats)
 
         # Clear session progress and refresh tree highlights/stats
-        stats_db.clear_session_progress(self.current_file)
+        stats_db.clear_session_progress(self.current_file, auto_indent=self.typing_area.engine.auto_indent)
         self.file_tree.refresh_file_stats(self.current_file)
 
         parent_window = self.window()
@@ -894,7 +904,7 @@ class EditorTab(QWidget):
         engine.pause()
         
         if engine.state.is_complete():
-            stats_db.clear_session_progress(self.current_file)
+            stats_db.clear_session_progress(self.current_file, auto_indent=engine.auto_indent)
         elif engine.state.cursor_position > 0:
             # Get keystrokes for partial recording
             keystrokes = self.typing_area.get_ghost_data()
@@ -923,10 +933,11 @@ class EditorTab(QWidget):
                 mistake_at=engine.mistake_at if engine.mistake_at is not None else -1,
                 max_correct_position=engine.state.max_correct_position,
                 typed_chars_json=typed_chars_json,
-                skipped_positions_json=skipped_pos_json
+                skipped_positions_json=skipped_pos_json,
+                auto_indent=engine.auto_indent
             )
         else:
-            stats_db.clear_session_progress(self.current_file)
+            stats_db.clear_session_progress(self.current_file, auto_indent=engine.auto_indent)
 
         self.file_tree.refresh_incomplete_sessions()
         self.file_tree.refresh_file_stats(self.current_file)
@@ -1056,8 +1067,8 @@ class EditorTab(QWidget):
         space_per_tab = self.typing_area.space_per_tab if hasattr(self.typing_area, 'space_per_tab') else 4
         tab_width = self.typing_area.tab_width if hasattr(self.typing_area, 'tab_width') else 4
         
-        # Check if this is better than existing ghost
-        if ghost_mgr.should_save_ghost(self.current_file, wpm):
+        # Check if this is better than existing ghost for CURRENT mode
+        if ghost_mgr.should_save_ghost(self.current_file, wpm, auto_indent=auto_indent_enabled):
             # Get keystroke data from typing area
             keystrokes = self.typing_area.get_ghost_data()
             
@@ -1107,12 +1118,13 @@ class EditorTab(QWidget):
         if self.current_file:
             from app.ghost_manager import get_ghost_manager
             ghost_mgr = get_ghost_manager()
-            has_ghost = ghost_mgr.has_ghost(self.current_file)
+            auto_indent_enabled = self.smart_indent_btn.isChecked()
+            has_ghost = ghost_mgr.has_ghost(self.current_file, auto_indent=auto_indent_enabled)
             self.ghost_btn.setEnabled(has_ghost)
             
             if has_ghost:
                 # Show ghost stats in tooltip
-                stats = ghost_mgr.get_ghost_stats(self.current_file)
+                stats = ghost_mgr.get_ghost_stats(self.current_file, auto_indent=auto_indent_enabled)
                 if stats:
                     instant_line = ""
                     if stats.get("instant_death") is not None:
@@ -1155,7 +1167,9 @@ class EditorTab(QWidget):
         
         from app.ghost_manager import get_ghost_manager
         ghost_mgr = get_ghost_manager()
-        ghost_data = ghost_mgr.load_ghost(self.current_file)
+        # Always load ghost for the ACTIVE indent mode
+        auto_indent_enabled = self.smart_indent_btn.isChecked()
+        ghost_data = ghost_mgr.load_ghost(self.current_file, auto_indent=auto_indent_enabled)
         
         if not ghost_data:
             QMessageBox.information(
@@ -1207,7 +1221,7 @@ class EditorTab(QWidget):
         self._ghost_engine.auto_indent = recorded_auto_indent
         
         self.typing_area.reset_session()
-        stats_db.clear_session_progress(self.current_file)
+        stats_db.clear_session_progress(self.current_file, auto_indent=user_engine.auto_indent)
         self.file_tree.refresh_file_stats(self.current_file)
         self.file_tree.refresh_incomplete_sessions()
         
@@ -1404,7 +1418,8 @@ class EditorTab(QWidget):
                 self.current_file,
                 wpm=race_wpm,
                 accuracy=race_accuracy,
-                completed=True
+                completed=True,
+                auto_indent=self.typing_area.engine.auto_indent
             )
 
             stats_db.record_session_history(
@@ -1417,6 +1432,7 @@ class EditorTab(QWidget):
                 incorrect_keystrokes=race_incorrect,
                 duration=user_time,
                 completed=True,
+                auto_indent=self.typing_area.engine.auto_indent
             )
             
             # Update detailed key statistics for heatmap
@@ -1448,7 +1464,7 @@ class EditorTab(QWidget):
             is_new_best = self._check_and_save_ghost(race_stats)
 
             # Clear session progress and refresh tree highlights/stats
-            stats_db.clear_session_progress(self.current_file)
+            stats_db.clear_session_progress(self.current_file, auto_indent=self.typing_area.engine.auto_indent)
             self.file_tree.refresh_file_stats(self.current_file)
 
             parent_window = self.window()

@@ -298,7 +298,7 @@ class TypingAreaWidget(QTextEdit):
         
         # Try to load saved progress
         from app import stats_db
-        progress = stats_db.get_session_progress(file_path)
+        progress = stats_db.get_session_progress(file_path, auto_indent=self.engine.auto_indent)
         
         # Start ghost recording (handles resumed state)
         resumed_keystrokes = progress.get("keystrokes") if progress else None

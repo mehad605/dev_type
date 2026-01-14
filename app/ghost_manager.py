@@ -56,10 +56,12 @@ class GhostManager:
             logger.warning(f"Error hashing file {file_path}: {e}")
             return hashlib.sha256(file_path.encode()).hexdigest()[:16]
     
-    def _get_ghost_path(self, file_path: str) -> Path:
-        """Get the ghost file path for a source file."""
+    def _get_ghost_path(self, file_path: str, auto_indent: bool = False) -> Path:
+        """Get the ghost file path for a source file and indent mode."""
         file_hash = self._get_file_hash(file_path)
-        return self.ghosts_dir / f"{file_hash}.json.gz"
+        # Use a suffix for smart indent mode to keep them separate
+        suffix = "_smart" if auto_indent else ""
+        return self.ghosts_dir / f"{file_hash}{suffix}.json.gz"
     
     def get_last_error(self) -> Optional[str]:
         """Get the last error message, if any."""
@@ -69,9 +71,9 @@ class GhostManager:
         """Clear the last error message."""
         self._last_error = None
     
-    def should_save_ghost(self, file_path: str, new_wpm: float) -> bool:
-        """Check if this session is better than existing ghost."""
-        ghost_file = self._get_ghost_path(file_path)
+    def should_save_ghost(self, file_path: str, new_wpm: float, auto_indent: bool = False) -> bool:
+        """Check if this session is better than existing ghost for this mode."""
+        ghost_file = self._get_ghost_path(file_path, auto_indent)
         
         if not ghost_file.exists():
             return True  # First completion
@@ -91,8 +93,8 @@ class GhostManager:
                    final_stats: dict = None, instant_death: Optional[bool] = None,
                    wpm_history: List[tuple] = None, error_history: List[tuple] = None,
                    auto_indent: bool = False, space_per_tab: int = 4, tab_width: int = 4):
-        """Save ghost session (only if it's the best)."""
-        ghost_file = self._get_ghost_path(file_path)
+        """Save ghost session (only if it's the best for this mode)."""
+        ghost_file = self._get_ghost_path(file_path, auto_indent)
         self._last_error = None
         
         if session_date is None:
@@ -147,9 +149,9 @@ class GhostManager:
             self._last_error = error_msg
             return False
     
-    def load_ghost(self, file_path: str) -> Optional[Dict]:
-        """Load ghost for a file, or None if not available."""
-        ghost_file = self._get_ghost_path(file_path)
+    def load_ghost(self, file_path: str, auto_indent: bool = False) -> Optional[Dict]:
+        """Load the best ghost session for a file and mode."""
+        ghost_file = self._get_ghost_path(file_path, auto_indent)
         self._last_error = None
         
         if not ghost_file.exists():
@@ -210,9 +212,9 @@ class GhostManager:
             except Exception:
                 pass
     
-    def has_ghost(self, file_path: str) -> bool:
-        """Check if a ghost exists for this file."""
-        return self._get_ghost_path(file_path).exists()
+    def has_ghost(self, file_path: str, auto_indent: bool = False) -> bool:
+        """Check if a ghost session exists for this file and mode."""
+        return self._get_ghost_path(file_path, auto_indent).exists()
     
     def delete_ghost(self, file_path: str) -> bool:
         """Delete ghost for a file."""
@@ -229,9 +231,9 @@ class GhostManager:
             self._last_error = error_msg
         return False
     
-    def get_ghost_stats(self, file_path: str) -> Optional[Dict]:
-        """Get just the stats without full keystroke data."""
-        ghost_data = self.load_ghost(file_path)
+    def get_ghost_stats(self, file_path: str, auto_indent: bool = False) -> Optional[Dict]:
+        """Get just the stats for a file and mode without full keystroke data."""
+        ghost_data = self.load_ghost(file_path, auto_indent)
         if ghost_data:
             return {
                 "wpm": ghost_data.get("wpm"),

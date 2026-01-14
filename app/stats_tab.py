@@ -2250,7 +2250,23 @@ class StatsTab(QWidget):
         # Language filter bar
         self.filter_bar = LanguageFilterBar()
         self.filter_bar.filter_changed.connect(self._on_filter_changed)
-        main_layout.addWidget(self.filter_bar)
+        
+        # Smart Indent Filter
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(self.filter_bar)
+        
+        self.stats_indent_combo = QComboBox()
+        self.stats_indent_combo.setMinimumWidth(120)
+        self.stats_indent_combo.addItem("All Indent Modes", None)
+        self.stats_indent_combo.addItem("Smart Indent: ON", True)
+        self.stats_indent_combo.addItem("Smart Indent: OFF", False)
+        self.stats_indent_combo.setStyleSheet(self._get_combo_style())
+        self.stats_indent_combo.currentIndexChanged.connect(self._on_indent_filter_changed)
+        
+        filters_layout.addWidget(self.stats_indent_combo)
+        filters_layout.addStretch()
+        
+        main_layout.addLayout(filters_layout)
         
         # Scroll area for content
         self.scroll = QScrollArea()
@@ -2499,6 +2515,10 @@ class StatsTab(QWidget):
         heatmap_idx = self.heatmap_metric_combo.currentIndex()
         if 0 <= heatmap_idx < len(CalendarHeatmap.METRIC_OPTIONS):
             settings.set_setting("stats_heatmap_metric", CalendarHeatmap.METRIC_OPTIONS[heatmap_idx][0])
+
+    def _on_indent_filter_changed(self, index: int):
+        """Handle smart indent filter change."""
+        self._update_all_stats()
     
     def _on_heatmap_metric_changed(self, index: int):
         """Handle heatmap metric dropdown change."""
@@ -2551,18 +2571,19 @@ class StatsTab(QWidget):
     def _update_all_stats(self):
         """Update all statistics and charts based on current filters."""
         langs = list(self._selected_languages) if self._selected_languages else None
+        auto_indent = self.stats_indent_combo.currentData()
         
-        self._update_summary_stats(langs)
+        self._update_summary_stats(langs, auto_indent)
         self._update_calendar_heatmap(langs)
         self._update_keyboard_heatmap()
         self._update_error_type_stats(langs)
-        self._update_scatter_chart(langs)
-        self._update_wpm_distribution(langs)
+        self._update_scatter_chart(langs, auto_indent)
+        self._update_wpm_distribution(langs, auto_indent)
     
-    def _update_summary_stats(self, languages_list=None):
+    def _update_summary_stats(self, languages_list=None, auto_indent=None):
         """Update the summary statistics based on current filters."""
         # Get aggregated stats from database
-        stats = stats_db.get_aggregated_stats(languages=languages_list)
+        stats = stats_db.get_aggregated_stats(languages=languages_list, auto_indent=auto_indent)
         
         # Get streak
         streak = stats_db.get_current_streak()
@@ -2611,7 +2632,7 @@ class StatsTab(QWidget):
         most_sessions = stats.get("most_sessions_day")
         self.summary_cards["most_sessions_day"].set_value(str(most_sessions) if most_sessions else "-")
     
-    def _update_calendar_heatmap(self, languages_list=None):
+    def _update_calendar_heatmap(self, languages_list=None, auto_indent=None):
         """Update the calendar heatmap with daily activity data for the selected year."""
         year_str = self.heatmap_year_combo.currentText()
         if not year_str:
@@ -2631,19 +2652,20 @@ class StatsTab(QWidget):
         daily_data = stats_db.get_daily_metrics(
             languages=languages_list,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            auto_indent=auto_indent
         )
         self.calendar_heatmap.set_data(daily_data)
     
-    def _update_scatter_chart(self, languages_list=None):
+    def _update_scatter_chart(self, languages_list=None, auto_indent=None):
         """Update the WPM and Accuracy scatter charts."""
-        session_data = stats_db.get_sessions_over_time(languages=languages_list)
+        session_data = stats_db.get_sessions_over_time(languages=languages_list, auto_indent=auto_indent)
         self.wpm_scatter_chart.set_data(session_data)
         self.acc_scatter_chart.set_data(session_data)
     
-    def _update_wpm_distribution(self, languages_list=None):
+    def _update_wpm_distribution(self, languages_list=None, auto_indent=None):
         """Update the WPM distribution bar chart."""
-        distribution_data = stats_db.get_wpm_distribution(languages=languages_list)
+        distribution_data = stats_db.get_wpm_distribution(languages=languages_list, auto_indent=auto_indent)
         self.wpm_distribution_chart.set_data(distribution_data)
 
     def _update_keyboard_heatmap(self):
