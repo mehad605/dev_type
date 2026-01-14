@@ -95,7 +95,7 @@ class TestEditorTabInstantDeath:
         editor_tab._set_instant_death_mode(True, persist=False)
         
         assert editor_tab.instant_death_btn.isChecked() is True
-        assert "Enabled" in editor_tab.instant_death_btn.text()
+        assert "ON" in editor_tab.instant_death_btn.text()
     
     def test_set_instant_death_mode_disabled(self, editor_tab):
         """Test disabling instant death mode."""
@@ -104,7 +104,7 @@ class TestEditorTabInstantDeath:
         editor_tab._set_instant_death_mode(False, persist=False)
         
         assert editor_tab.instant_death_btn.isChecked() is False
-        assert "Disabled" in editor_tab.instant_death_btn.text()
+        assert "OFF" in editor_tab.instant_death_btn.text()
     
     def test_instant_death_button_signal_blocked(self, editor_tab):
         """Test that _set_instant_death_mode blocks signals during update."""

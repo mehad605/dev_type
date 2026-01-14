@@ -36,6 +36,10 @@ def get_demo_db_path() -> Path:
         # Store in the Dev_Type_Data folder
         from app.portable_data import get_data_dir
         data_dir = get_data_dir()
+        if data_dir is None:
+            # Fallback to user home if portable data dir is not available
+            import os
+            data_dir = Path.home() / "Dev_Type_Data"
         _demo_db_path = data_dir / "demo_stats.db"
     return _demo_db_path
 

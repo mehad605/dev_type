@@ -1,6 +1,7 @@
 """Integration test for frozen executable portable mode detection."""
 import subprocess
 import sys
+import pytest
 from pathlib import Path
 
 
@@ -10,9 +11,7 @@ def test_frozen_exe_portable_mode():
     exe_path = Path(__file__).parent.parent / "dist" / "dev_type.exe"
     
     if not exe_path.exists():
-        print(f"Executable not found at {exe_path}")
-        print("Build the executable first with: python build.py --windows --clean")
-        sys.exit(1)
+        pytest.skip("Executable not found. Build it first with: python build.py --windows --clean")
     
     # Test script that checks frozen mode detection
     test_code = """

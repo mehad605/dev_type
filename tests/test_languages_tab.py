@@ -16,6 +16,19 @@ def app():
 
 
 @pytest.fixture
+def mock_icon_manager():
+    """Mock for IconManager to avoid network/graphics issues."""
+    with patch('app.languages_tab._get_icon_manager') as mock_getter:
+        mock_im = MagicMock()
+        # Ensure get_icon returns None so fallback logic is used
+        mock_im.get_icon.return_value = None
+        # Ensure get_download_error returns None
+        mock_im.get_download_error.return_value = None
+        mock_getter.return_value = mock_im
+        yield mock_im
+
+
+@pytest.fixture
 def db_setup(tmp_path):
     """Set up temporary database for testing."""
     from app import settings
@@ -118,84 +131,84 @@ class TestLanguageCard:
 class TestLanguagesTab:
     """Test LanguagesTab widget."""
     
-    def test_languages_tab_initialization(self, app, db_setup):
+    def test_languages_tab_initialization(self, app, db_setup, mock_icon_manager):
         """Test LanguagesTab initializes correctly."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
-        
+
         assert tab is not None
         assert tab._loaded is False
         assert tab._loading is False
         # _cached_language_files may have data from cache file
         assert isinstance(tab._cached_language_files, dict)
     
-    def test_languages_tab_has_card_container(self, app, db_setup):
+    def test_languages_tab_has_card_container(self, app, db_setup, mock_icon_manager):
         """Test that tab has card container."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
-        
+
         assert hasattr(tab, 'card_container')
         assert hasattr(tab, 'card_layout')
     
-    def test_show_message(self, app, db_setup):
+    def test_show_message(self, app, db_setup, mock_icon_manager):
         """Test _show_message displays correctly."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
         tab._show_message("Test message")
-        
+
         assert tab._status_label is not None
         assert "Test message" in tab._status_label.text()
     
-    def test_clear_cards(self, app, db_setup):
+    def test_clear_cards(self, app, db_setup, mock_icon_manager):
         """Test _clear_cards removes all widgets."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
         tab._show_message("First message")
-        
+
         assert tab.card_layout.count() > 0
-        
+
         tab._clear_cards()
-        
+
         assert tab.card_layout.count() == 0
         assert tab._status_label is None
     
-    def test_mark_dirty(self, app, db_setup):
+    def test_mark_dirty(self, app, db_setup, mock_icon_manager):
         """Test mark_dirty resets loaded state."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
         tab._loaded = True
         tab._cached_language_files = {"Python": ["/test.py"]}
-        
+
         tab.mark_dirty()
-        
+
         assert tab._loaded is False
         assert tab._cached_language_files == {}
     
     @patch('app.languages_tab.settings')
-    def test_ensure_loaded_no_folders(self, mock_settings, app, db_setup):
+    def test_ensure_loaded_no_folders(self, mock_settings, app, db_setup, mock_icon_manager):
         """Test ensure_loaded with no folders."""
         from app.languages_tab import LanguagesTab
-        
+
         mock_settings.get_folders.return_value = []
-        
+
         tab = LanguagesTab()
         tab.ensure_loaded()
-        
+
         assert tab._loaded is True
         assert "No folders" in tab._status_label.text()
     
-    def test_populate_cards_empty(self, app, db_setup):
+    def test_populate_cards_empty(self, app, db_setup, mock_icon_manager):
         """Test _populate_cards with empty data."""
         from app.languages_tab import LanguagesTab
-        
+
         tab = LanguagesTab()
         tab._populate_cards({})
-        
+
         assert "No code files" in tab._status_label.text()
     
     @patch('app.languages_tab.stats_db')
@@ -212,6 +225,10 @@ class TestLanguagesTab:
         
         mock_stats_db.get_file_stats_for_files.return_value = {}
         mock_stats_db.get_recent_wpm_average.return_value = {"average": 70.0, "count": 5}
+        mock_stats_db.get_bulk_recent_wpm_averages.return_value = {
+            "Python": {"average": 75.0, "count": 3},
+            "JavaScript": {"average": 65.0, "count": 2}
+        }
         
         tab = LanguagesTab()
         tab._populate_cards({

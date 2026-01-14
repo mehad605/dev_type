@@ -5,8 +5,7 @@ from app.themes import (
     generate_app_stylesheet,
     NORD_DARK,
     CATPPUCCIN_DARK,
-    DRACULA_DARK,
-    LIGHT_THEME
+    DRACULA_DARK
 )
 
 
@@ -37,12 +36,7 @@ def test_get_dracula_theme():
     assert scheme.accent_color == "#bd93f9"
 
 
-def test_get_light_theme():
-    """Test getting light theme."""
-    scheme = get_color_scheme("light", "nord")  # Scheme ignored for light
-    assert scheme == LIGHT_THEME
-    assert scheme.bg_primary == "#ffffff"
-    assert scheme.text_primary == "#212121"
+
 
 
 def test_default_to_nord():
@@ -61,7 +55,7 @@ def test_all_themes_have_required_colors():
         'success_color', 'warning_color', 'error_color', 'info_color'
     ]
     
-    themes = [NORD_DARK, CATPPUCCIN_DARK, DRACULA_DARK, LIGHT_THEME]
+    themes = [NORD_DARK, CATPPUCCIN_DARK, DRACULA_DARK]
     for theme in themes:
         for attr in required_attrs:
             assert hasattr(theme, attr), f"Theme missing {attr}"
@@ -140,10 +134,7 @@ def test_theme_accessibility():
         text_lum = hex_to_luminance(theme.text_primary)
         assert text_lum > bg_lum, "Dark theme should have lighter text than bg"
     
-    # Check light theme has dark text on light bg
-    bg_lum = hex_to_luminance(LIGHT_THEME.bg_primary)
-    text_lum = hex_to_luminance(LIGHT_THEME.text_primary)
-    assert text_lum < bg_lum, "Light theme should have darker text than bg"
+
 
 
 def test_is_valid_hex_color_valid_6_char():

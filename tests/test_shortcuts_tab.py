@@ -71,3 +71,56 @@ def test_shortcuts_tab_theme_propagation(qapp):
             tab.apply_theme()
             # It should have called apply_theme on all its children ShortcutItems
             assert mock_item_apply.call_count >= 10
+
+def test_shortcuts_tab_filtering(qapp):
+    """Test the search/filtering functionality."""
+    with patch('app.themes.get_color_scheme'), \
+         patch('app.settings.get_setting', return_value="dracula"):
+        
+        tab = ShortcutsTab()
+        
+        # Initially many items visible (not hidden)
+        shortcuts = [tab.container_layout.itemAt(i).widget() for i in range(tab.container_layout.count()) 
+                    if isinstance(tab.container_layout.itemAt(i).widget(), ShortcutItem)]
+        assert all(not s.isHidden() for s in shortcuts)
+        
+        # Filter by something specific - call method directly to ensure coverage
+        tab._filter_shortcuts("profile")
+        
+        # "Switch Profile" should be visible, others hidden
+        found_match = False
+        found_hidden = False
+        for s in shortcuts:
+            if "Profile" in s.desc_label.text():
+                assert not s.isHidden()
+                found_match = True
+            else:
+                if s.isHidden():
+                    found_hidden = True
+                    
+        assert found_match is True
+        assert found_hidden is True
+        
+        # Clear filter
+        tab._filter_shortcuts("")
+        assert all(not s.isHidden() for s in shortcuts)
+
+def test_shortcut_item_filtering(qapp):
+    """Test individual item filtering logic."""
+    item = ShortcutItem("Ctrl+F", "Find something")
+    
+    # Match in description
+    assert item.set_visible_by_filter("find") is True
+    assert item.isVisible() is True
+    
+    # Match in key
+    assert item.set_visible_by_filter("ctrl") is True
+    assert item.isVisible() is True
+    
+    # No match
+    assert item.set_visible_by_filter("none") is False
+    assert item.isVisible() is False
+    
+    # Reset
+    assert item.set_visible_by_filter("") is True
+    assert item.isVisible() is True

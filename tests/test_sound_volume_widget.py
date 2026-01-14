@@ -2,7 +2,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtGui import QPaintEvent, QWheelEvent, QMouseEvent
 
 
 @pytest.fixture(scope="module")
@@ -156,6 +157,199 @@ class TestSignals:
         widget = SoundVolumeWidget()
         
         assert hasattr(widget, 'enabled_changed')
+
+
+class TestPaintEvent:
+    """Test paintEvent method."""
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QPainter')
+    def test_paint_event_enabled(self, mock_painter_class, mock_setting, app):
+        """Test paintEvent when sound is enabled."""
+        mock_setting.side_effect = lambda key, default: default
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = True
+        widget.hover = False
+
+        mock_painter = MagicMock()
+        mock_painter_class.return_value = mock_painter
+
+        event = QPaintEvent(widget.rect())
+        widget.paintEvent(event)
+
+        # Check that painter methods were called
+        mock_painter.setRenderHint.assert_called()
+        mock_painter.setPen.assert_called()
+        mock_painter.setBrush.assert_called()
+        mock_painter.drawRect.assert_called()
+        mock_painter.drawPolygon.assert_called()
+        mock_painter.drawArc.assert_called()
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QPainter')
+    def test_paint_event_disabled(self, mock_painter_class, mock_setting, app):
+        """Test paintEvent when sound is disabled."""
+        mock_setting.side_effect = lambda key, default: default
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = False
+        widget.hover = True
+
+        mock_painter = MagicMock()
+        mock_painter_class.return_value = mock_painter
+
+        event = QPaintEvent(widget.rect())
+        widget.paintEvent(event)
+
+        # Check that painter methods were called for disabled state
+        mock_painter.setRenderHint.assert_called()
+        mock_painter.setPen.assert_called()
+        mock_painter.setBrush.assert_called()
+        mock_painter.drawLine.assert_called()  # Cross out for disabled
+
+
+class TestEventHandlers:
+    """Test event handler methods."""
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QToolTip')
+    @patch('app.sound_volume_widget.QCursor')
+    def test_enter_event_enabled(self, mock_cursor, mock_tooltip, mock_setting, app):
+        """Test enterEvent when enabled."""
+        mock_setting.side_effect = lambda key, default: default
+        mock_cursor.pos.return_value = QPoint(0, 0)
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = True
+        widget.volume = 50
+
+        # Mock event
+        event = MagicMock()
+        widget.enterEvent(event)
+
+        assert widget.hover is True
+        mock_tooltip.showText.assert_called_with(
+            QPoint(0, 0),
+            "Volume: 50%",
+            widget
+        )
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QToolTip')
+    @patch('app.sound_volume_widget.QCursor')
+    def test_enter_event_disabled(self, mock_cursor, mock_tooltip, mock_setting, app):
+        """Test enterEvent when disabled."""
+        mock_setting.side_effect = lambda key, default: default
+        mock_cursor.pos.return_value = QPoint(0, 0)
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = False
+
+        event = MagicMock()
+        widget.enterEvent(event)
+
+        assert widget.hover is True
+        mock_tooltip.showText.assert_called_with(
+            QPoint(0, 0),
+            "Sound Muted",
+            widget
+        )
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QToolTip')
+    def test_leave_event(self, mock_tooltip, mock_setting, app):
+        """Test leaveEvent."""
+        mock_setting.side_effect = lambda key, default: default
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.hover = True
+
+        event = MagicMock()
+        widget.leaveEvent(event)
+
+        assert widget.hover is False
+        mock_tooltip.hideText.assert_called()
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QToolTip')
+    @patch('app.sound_volume_widget.QCursor')
+    def test_wheel_event_enabled_increase(self, mock_cursor, mock_tooltip, mock_setting, app):
+        """Test wheelEvent increases volume when enabled."""
+        mock_setting.side_effect = lambda key, default: default
+        mock_cursor.pos.return_value = QPoint(0, 0)
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = True
+        widget.volume = 50
+
+        # Mock wheel event with positive delta
+        event = MagicMock()
+        event.angleDelta.return_value = QPoint(0, 120)  # Mock QPoint with y=120
+
+        widget.wheelEvent(event)
+
+        assert widget.volume == 55
+        mock_tooltip.showText.assert_called_with(
+            QPoint(0, 0),
+            "Volume: 55%",
+            widget
+        )
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    def test_wheel_event_disabled(self, mock_setting, app):
+        """Test wheelEvent does nothing when disabled."""
+        mock_setting.side_effect = lambda key, default: default
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = False
+        widget.volume = 50
+
+        event = MagicMock()
+        event.angleDelta.return_value = QPoint(0, 120)
+
+        widget.wheelEvent(event)
+
+        assert widget.volume == 50
+
+    @patch('app.sound_volume_widget.settings.get_setting')
+    @patch('app.sound_volume_widget.QToolTip')
+    @patch('app.sound_volume_widget.QCursor')
+    def test_mouse_double_click_toggle_enabled(self, mock_cursor, mock_tooltip, mock_setting, app):
+        """Test mouseDoubleClickEvent toggles enabled state."""
+        mock_setting.side_effect = lambda key, default: default
+        mock_cursor.pos.return_value = QPoint(0, 0)
+
+        from app.sound_volume_widget import SoundVolumeWidget
+
+        widget = SoundVolumeWidget()
+        widget.enabled = True
+
+        event = MagicMock()
+        event.button.return_value = Qt.LeftButton
+
+        widget.mouseDoubleClickEvent(event)
+
+        assert widget.enabled is False
+        mock_tooltip.showText.assert_called_with(
+            QPoint(0, 0),
+            "Sound Muted",
+            widget
+        )
 
 
 class TestHoverState:

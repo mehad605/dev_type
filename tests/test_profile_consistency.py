@@ -15,24 +15,36 @@ def multi_profile_env(tmp_path):
     data_dir.mkdir()
     
     with patch("app.portable_data.get_data_manager") as mock_gdm:
-        from app.portable_data import PortableDataManager
+        from app.portable_data import PortableDataManager, _portable_data_manager
         # Standard way to get the singleton
         pdm = PortableDataManager()
         # Force the data dir for testing
         pdm._data_dir = data_dir
         pdm._detect_and_setup = lambda: None # Don't re-detect
         mock_gdm.return_value = pdm
-        
+        # Also set the global singleton
+        _portable_data_manager = pdm
+
         pm = ProfileManager()
         pm.create_profile("User1")
         pm.create_profile("User2")
-        
+
+        # Ensure profile directories exist
+        profile_dir = data_dir / "profiles"
+        profile_dir.mkdir(exist_ok=True)
+        (profile_dir / "User1").mkdir(exist_ok=True)
+        (profile_dir / "User2").mkdir(exist_ok=True)
+
         yield pm, pdm
 
 def test_ghost_manager_switches_directory(multi_profile_env):
     """VERIFY BUG: GhostManager should point to active profile's ghosts."""
     pm, pdm = multi_profile_env
-    
+
+    # Reset ghost manager singleton to ensure fresh instance
+    from app import ghost_manager
+    ghost_manager._ghost_manager = None
+
     # 1. Start with User1
     pm.switch_profile("User1")
     gm = get_ghost_manager()

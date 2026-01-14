@@ -326,10 +326,14 @@ class FolderCardWidget(QFrame):
 
     def _force_update_size(self):
         """Force list widget to recognize new height requirements."""
-        if self._list_item and self._list_widget:
-            self.adjustSize()
-            self._list_item.setSizeHint(self.sizeHint())
-            self._list_widget.updateGeometries()
+        try:
+            if self._list_item and self._list_widget:
+                self.adjustSize()
+                self._list_item.setSizeHint(self.sizeHint())
+                self._list_widget.updateGeometries()
+        except RuntimeError:
+            # Widget might have been deleted (e.g. list cleared) before timer fired
+            pass
     
     def folder_exists(self) -> bool:
         """Check if the folder path exists."""

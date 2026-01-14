@@ -1,8 +1,9 @@
 """Tests for progress bar widget."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QPaintEvent
 
 from app import settings
 from app.progress_bar_widget import ProgressBarWidget
@@ -222,3 +223,48 @@ def test_multiple_progress_updates(app, db_setup):
         bar.set_progress(current_pos=i, total_chars=100)
         assert bar.progress == i / 100
         assert bar.current_pos == i
+
+
+class TestPaintEvent:
+    """Test paintEvent method."""
+
+    @patch('app.progress_bar_widget.settings.get_setting')
+    @patch('app.progress_bar_widget.QPainter')
+    def test_paint_event_user_progress(self, mock_painter_class, mock_setting, app, db_setup):
+        """Test paintEvent with user progress."""
+        mock_setting.side_effect = lambda key, default: default or "#4CAF50"
+
+        bar = ProgressBarWidget()
+        bar.set_progress(current_pos=50, total_chars=100)
+
+        mock_painter = MagicMock()
+        mock_painter_class.return_value = mock_painter
+
+        event = QPaintEvent(bar.rect())
+        bar.paintEvent(event)
+
+        # Check that painter methods were called
+        mock_painter.setRenderHint.assert_called()
+        mock_painter.setPen.assert_called()
+        mock_painter.setBrush.assert_called()
+        mock_painter.drawRoundedRect.assert_called()
+
+    @patch('app.progress_bar_widget.settings.get_setting')
+    @patch('app.progress_bar_widget.QPainter')
+    def test_paint_event_with_ghost(self, mock_painter_class, mock_setting, app, db_setup):
+        """Test paintEvent with ghost progress."""
+        mock_setting.side_effect = lambda key, default: default or "#4CAF50"
+
+        bar = ProgressBarWidget()
+        bar.set_progress(current_pos=30, total_chars=100, ghost_pos=60)
+
+        mock_painter = MagicMock()
+        mock_painter_class.return_value = mock_painter
+
+        event = QPaintEvent(bar.rect())
+        bar.paintEvent(event)
+
+        # Check that painter methods were called for both bars
+        mock_painter.setRenderHint.assert_called()
+        # Should have multiple drawRoundedRect calls
+        assert mock_painter.drawRoundedRect.call_count >= 2

@@ -61,3 +61,7 @@ Thumbs.db
 # assets/icon.png
 # assets/icon.ico
 BUILD_RELEASE_GUIDE.md
+cov_*.txt
+.coverage
+htmlcov/
+TESTING_STATUS.md
