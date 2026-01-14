@@ -1,333 +1,205 @@
-"""Icon manager for downloading and caching language icons.
 
-This module handles downloading language icons from the devicon.dev CDN,
-caching them locally, and providing fallback emoji for languages without icons.
-"""
+"""Icon manager using Material Icon Theme assets."""
 import logging
-import urllib.request
-import urllib.error
+import json
+import os
 from pathlib import Path
 from typing import Optional, Dict
-from PySide6.QtGui import QPixmap, QIcon, QPainter
-from PySide6.QtCore import QSize, QObject, Signal, QUrl, QByteArray, Qt
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
-from app.settings import get_data_dir
+from PySide6.QtCore import QSize, Qt, QObject
+
+from app.settings import get_icons_dir
 
 logger = logging.getLogger(__name__)
 
-
-# Mapping of language names to devicon icon names
-DEVICON_MAP = {
-    "Python": "python",
-    "JavaScript": "javascript",
-    "TypeScript": "typescript",
-    "Java": "java",
-    "C": "c",
-    "C++": "cplusplus",
-    "C/C++ Header": "c",
-    "C++ Header": "cplusplus",
-    "C#": "csharp",
-    "Go": "go",
-    "Rust": "rust",
-    "Ruby": "ruby",
-    "PHP": "php",
-    "Swift": "swift",
-    "Kotlin": "kotlin",
-    "Objective-C": "objectivec",
-    "Scala": "scala",
-    "R": "r",
-    "Dart": "dart",
-    "Lua": "lua",
-    "Perl": "perl",
-    "Shell": "bash",
-    "Bash": "bash",
-    "Zsh": "bash",
-    "Fish": "bash",
-    "PowerShell": "powershell",
-    "SQL": "mysql",  # Generic SQL icon
-    "HTML": "html5",
-    "CSS": "css3",
-    "SCSS": "sass",
-    "Sass": "sass",
-    "Less": "less",
-    "XML": "xml",
-    "JSON": "json",
-    "Markdown": "markdown",
-    # Text and TOML don't have standard devicons
-
-}
-
-# Languages known to have no devicon (prevent useless 404 requests)
-SKIP_ICONS = {
-    "Text", "TOML", "Brainfuck", "Bf", 
-    "Yaml", "Json", "Xml", # Sometimes capitalization varies, though we have specific mappings for some
-}
-
-# Dynamic lookup helper
-def get_devicon_name(language: str) -> Optional[str]:
-    """Get the devicon library name for a language."""
-    if language in SKIP_ICONS:
-        return None
-        
-    # 1. Check strict map
-    if language in DEVICON_MAP:
-        return DEVICON_MAP[language]
-    
-    # 2. Heuristic: try lowercase name (e.g. Brainfuck -> brainfuck)
-    # Most devicons match the language name in lowercase
-    return language.lower()
-
-
-
-# Emoji fallbacks for languages
-
-
-
 class IconManager(QObject):
-    """Manages downloading and caching of language icons."""
-    
-    icon_downloaded = Signal(str)  # Emits language name when icon is ready
-
+    """Manages icon retrieval using VS Code Material Icon Theme."""
     
     def __init__(self):
         super().__init__()
-        from app.settings import get_icons_dir, get_data_dir
-        
         self.icon_dir = get_icons_dir()
-        self.icon_dir.mkdir(parents=True, exist_ok=True)
+        self.manifest_path = self.icon_dir / "icons.json"
         
-        # MIGRATION: Move icons from legacy location (Dev_Type_Data/icons) to shared location
-        legacy_icon_dir = get_data_dir() / "icons"
-        if legacy_icon_dir.exists() and legacy_icon_dir.is_dir() and legacy_icon_dir != self.icon_dir:
-            try:
-                import shutil
-                logger.info(f"Migrating icons from legacy location: {legacy_icon_dir} -> {self.icon_dir}")
-                for icon_file in legacy_icon_dir.glob("*.svg"):
-                    dest_file = self.icon_dir / icon_file.name
-                    if not dest_file.exists():
-                        shutil.move(str(icon_file), str(dest_file))
+        self.icon_definitions: Dict[str, str] = {}
+        self.file_extensions: Dict[str, str] = {}
+        self.file_names: Dict[str, str] = {}
+        self.folder_names: Dict[str, str] = {}
+        self.folder_names_expanded: Dict[str, str] = {}
+        self.language_ids: Dict[str, str] = {}
+        self.light_files: Dict[str, str] = {} # For checking if light variant exists
+        
+        self._cache: Dict[str, QPixmap] = {}
+        
+        self._load_manifest()
+
+    def _load_manifest(self):
+        """Load the icons.json manifest."""
+        if not self.manifest_path.exists():
+            logger.error(f"Icon manifest not found at {self.manifest_path}")
+            return
+
+        try:
+            with open(self.manifest_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
                 
-                # Cleanup legacy folder if empty
-                if not any(legacy_icon_dir.iterdir()):
-                    legacy_icon_dir.rmdir()
-                    logger.info("Removed empty legacy icons folder")
-            except Exception as e:
-                logger.warning(f"Failed to migrate legacy icons: {e}")
+            # 1. Parse Definitions
+            # "iconDefinitions": { "javascript": { "iconPath": "./../icons/javascript.svg" } }
+            defs = data.get("iconDefinitions", {})
+            for icon_id, props in defs.items():
+                path_str = props.get("iconPath", "")
+                # Extract filename "javascript.svg" from "./../icons/javascript.svg"
+                filename = os.path.basename(path_str)
+                self.icon_definitions[icon_id] = filename
 
-        self._icon_cache: Dict[str, Optional[QPixmap]] = {}
-        self._download_errors: Dict[str, str] = {}  # Track download failures for tooltips
-        self._network_manager = QNetworkAccessManager(self)
-        self._pending_downloads: Dict[QNetworkReply, str] = {} # Map reply -> language
-
-    
-    def get_icon_path(self, language: str) -> Optional[Path]:
-        """Get the local path for a language icon.
-        
-        Args:
-            language: Language name (e.g., "Python", "JavaScript")
+            # 2. Parse Mappings
+            self.file_extensions = data.get("fileExtensions", {})
+            self.file_names = data.get("fileNames", {})
+            self.folder_names = data.get("folderNames", {})
+            self.folder_names_expanded = data.get("folderNamesExpanded", {}) # Some themes have this
+            self.language_ids = data.get("languageIds", {})
             
-        Returns:
-            Path to icon file if it exists, None otherwise
-        """
-        icon_name = get_devicon_name(language)
-        if not icon_name:
-             return None
+            # Map common language names to their IDs if missing
+            # This helps bridging the gap between our app's "Python" and the theme's "python"
+            self._ensure_language_mappings()
 
-        icon_path = self.icon_dir / f"{icon_name}.svg"
-        
-        if icon_path.exists():
-            return icon_path
-        
-        return None
+            logger.info(f"Loaded {len(self.icon_definitions)} icons from manifest")
 
-    
-    def download_icon(self, language: str) -> None:
-        """Initiate async download icon for a language from devicon CDN.
-        
-        Args:
-            language: Language name (e.g., "Python", "JavaScript")
-        """
-        icon_name = get_devicon_name(language)
-        if not icon_name:
-            return
+        except Exception as e:
+            logger.error(f"Failed to load icon manifest: {e}")
 
-        # Check if already downloading this language? (Optional optimization)
-        
-        icon_path = self.icon_dir / f"{icon_name}.svg"
-        
-        # Don't re-download if exists
-        if icon_path.exists():
-            return
-        
-        # Devicon CDN URL - using plain colored version
-        url = QUrl(f"https://cdn.jsdelivr.net/gh/devicons/devicon/icons/{icon_name}/{icon_name}-original.svg")
-        request = QNetworkRequest(url)
-        request.setHeader(QNetworkRequest.UserAgentHeader, 'Mozilla/5.0 (Dev Typing App)')
-        
-        reply = self._network_manager.get(request)
-        self._pending_downloads[reply] = language
-        reply.finished.connect(lambda: self._on_download_finished(reply))
+    def _ensure_language_mappings(self):
+        """Add manual mappings for known language names to IDs."""
+        # The theme usually uses lowercase IDs.
+        # Our app uses Capitalized names (Python, Rust).
+        # We can also rely on lowercasing the input request.
+        pass
 
-    def _on_download_finished(self, reply: QNetworkReply):
-        language = self._pending_downloads.pop(reply, None)
-        if not language:
-            reply.deleteLater()
-            return
-
-        if reply.error() != QNetworkReply.NoError:
-            # 404s (ContentNotFoundError) are expected for unknown languages/heuristics
-            # We treat them as "no icon available".
-            error_code = reply.error()
-            error_msg = f"Network error ({error_code}): {reply.errorString()}"
-            
-            # Log as debug/info essentially ignoring it unless debugging
-            logger.debug(f"Could not download icon for {language}: {error_msg}")
-            
-            # Reset error tracking so we don't show a tooltip error for just a missing icon
-            # unless it's a critical network failure (e.g. no internet)?
-            # Actually, simply NOT setting _download_errors[language] means no tooltip.
-            # If we want to show "Offline" vs "Not Found", we'd distinguish.
-            # For now, let's clearer: if it's 404, forget it. If it's connection ref, maybe show.
-            if error_code == QNetworkReply.ContentNotFoundError:
-                self._download_errors.pop(language, None)
-            else:
-                 # Real network error (timeout, dns, etc) - maybe worth noting
-                 self._download_errors[language] = error_msg
-        else:
-            data = reply.readAll()
-            if data:
-                icon_name = get_devicon_name(language)
-                icon_path = self.icon_dir / f"{icon_name}.svg"
-                try:
-                    icon_path.write_bytes(data.data())
-                    logger.info(f"Downloaded icon for {language}")
-                    self._download_errors.pop(language, None)
-                    
-                    # Invalidate cache entry if it was None/placeholder
-                    keys_to_remove = [k for k in self._icon_cache if k.startswith(f"{language}_")]
-                    for k in keys_to_remove:
-                        del self._icon_cache[k]
-                        
-                    self.icon_downloaded.emit(language)
-                except Exception as e:
-                    logger.error(f"Failed to save icon for {language}: {e}")
-        
-        reply.deleteLater()
-    
-    def get_icon(self, language: str, size: int = 48) -> Optional[QPixmap]:
-        """Get icon pixmap for a language, downloading if necessary.
-        
-        Args:
-            language: Language name (e.g., "Python", "JavaScript")
-            size: Desired icon size in pixels
-            
-        Returns:
-            QPixmap with icon, or None if unavailable
-        """
-        # Check cache
-        cache_key = f"{language}_{size}"
-        if cache_key in self._icon_cache:
-            return self._icon_cache[cache_key]
-        
-        # Try to get/download icon
-        icon_path = self.get_icon_path(language)
-        
-        if not icon_path:
-            # Trigger async download
-            self.download_icon(language)
+    def _get_pixmap_from_svg(self, filename: str, size: int) -> Optional[QPixmap]:
+        """Render SVG to QPixmap."""
+        if not filename:
             return None
-        
-        # Load icon if available
-        if icon_path and icon_path.exists():
-            if icon_path.suffix.lower() == ".svg":
-                # Sharp rendering for SVGs
-                renderer = QSvgRenderer(str(icon_path))
-                if renderer.isValid():
-                    pixmap = QPixmap(size, size)
-                    pixmap.fill(Qt.transparent)
-                    painter = QPainter(pixmap)
-                    painter.setRenderHint(QPainter.Antialiasing)
-                    renderer.render(painter)
-                    painter.end()
-                    self._icon_cache[cache_key] = pixmap
-                    return pixmap
             
-            # Fallback for non-SVG or failed SVG
-            pixmap = QPixmap(str(icon_path))
-            if not pixmap.isNull():
-                # Scale to desired size
-                pixmap = pixmap.scaled(
-                    size, size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self._icon_cache[cache_key] = pixmap
-                return pixmap
+        cache_key = f"{filename}_{size}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+            
+        path = self.icon_dir / filename
+        if not path.exists():
+            return None
+            
+        renderer = QSvgRenderer(str(path))
+        if not renderer.isValid():
+            return None
+            
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        renderer.render(painter)
+        painter.end()
         
-        # No icon available
-        self._icon_cache[cache_key] = None
-        return None
-    
+        self._cache[cache_key] = pixmap
+        return pixmap
 
-    
-    def preload_icons(self, languages: list[str]) -> None:
-        """Preload icons for multiple languages in background.
+    def get_icon(self, language: str, size: int = 48) -> Optional[QPixmap]:
+        """Legacy compatibility: Get icon by Language Name (e.g. "Python")."""
+        # Try finding ID in language_ids
+        # 1. Try exact match
+        icon_id = self.language_ids.get(language)
         
-        This can be called to download icons for all detected languages
-        without blocking the UI.
+        # 2. Try lower case match
+        if not icon_id:
+            icon_id = self.language_ids.get(language.lower())
+            
+        # 3. If no mapping, try to use the language name as the icon ID directly
+        if not icon_id:
+            # Check if an icon definition exists with this name
+            if language.lower() in self.icon_definitions:
+                icon_id = language.lower()
+                
+        # 4. Fallback: try looking up extension
+        if not icon_id:
+             ext = language.lower()
+             if not ext.startswith("."): # e.g. "python" -> ".py" ?? HARD without map
+                 # Maybe we have "python" in fileExtensions? No, keys are extensions "py"
+                 pass
+
+        if icon_id:
+            filename = self.icon_definitions.get(icon_id)
+            return self._get_pixmap_from_svg(filename, size)
+            
+        # Default fallback
+        return self._get_pixmap_from_svg("file.svg", size)
+
+    def get_file_icon(self, filename: str, size: int = 16) -> QPixmap:
+        """Get icon for a specific file (e.g. 'package.json', 'script.py')."""
+        name = filename.lower()
         
-        Args:
-            languages: List of language names to preload
-        """
-        for language in languages:
-            if language in DEVICON_MAP:
-                self.download_icon(language)
-    
+        # 1. Check exact filename
+        icon_id = self.file_names.get(name)
+        
+        # 2. Check extensions
+        if not icon_id:
+            parts = name.split(".")
+            if len(parts) > 1:
+                # Try compound extension (e.g. .test.tsx) - logic simplified here
+                ext = parts[-1]
+                icon_id = self.file_extensions.get(ext)
+                
+                # Try long extension if no short one found? (e.g. .d.ts)
+                # Material Theme usually handles this in the generation or keys
+                
+        # 3. Default
+        if not icon_id:
+            icon_id = "file"
+            
+        svg_file = self.icon_definitions.get(icon_id)
+        pm = self._get_pixmap_from_svg(svg_file, size)
+        if pm: return pm
+        return QPixmap()
+
+    def get_folder_icon(self, foldername: str, is_open: bool = False, size: int = 16) -> QPixmap:
+        """Get icon for a folder."""
+        name = foldername.lower()
+        
+        # 1. Check specific folder name (e.g. 'src', 'test')
+        if is_open:
+            # We assume expanded keys might exist or we suffix
+            # Material theme usually has separate keys or logic
+            # For simplicity: check folderNames for base ID, then append '-open' if valid
+            pass
+            
+        # Material Theme logic:
+        # folderNames["src"] = "folder-src"
+        # iconDefinitions["folder-src"] -> "folder-src.svg"
+        # iconDefinitions["folder-src-open"] -> "folder-src-open.svg"
+        
+        icon_id = self.folder_names.get(name)
+        if not icon_id:
+            icon_id = "folder"
+            
+        if is_open:
+            # Try to find corresponding open version
+            open_id = f"{icon_id}-open"
+            if open_id in self.icon_definitions:
+                icon_id = open_id
+            else:
+                # Fallback to generic open
+                icon_id = "folder-open"
+                
+        svg_file = self.icon_definitions.get(icon_id)
+        pm = self._get_pixmap_from_svg(svg_file, size)
+        if pm: return pm
+        return QPixmap()
+
     def get_download_error(self, language: str) -> Optional[str]:
-        """Get download error message for a language if icon failed to download.
-        
-        Args:
-            language: Language name
-            
-        Returns:
-            Error message if download failed, None if icon available or not attempted
-        """
-        return self._download_errors.get(language)
-    
-    def clear_cache(self) -> None:
-        """Clear the in-memory icon cache and download errors."""
-        self._icon_cache.clear()
-        self._download_errors.clear()
-    
-    def delete_all_icons(self) -> int:
-        """Delete all downloaded icons from disk.
-        
-        Returns:
-            Number of icons deleted
-        """
-        count = 0
-        if self.icon_dir.exists():
-            for icon_file in self.icon_dir.glob("*.svg"):
-                try:
-                    icon_file.unlink()
-                    count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to delete icon {icon_file}: {e}")
-        self.clear_cache()
-        return count
+        return None # No downloading anymore
 
-
-# Global icon manager instance
-_icon_manager: Optional[IconManager] = None
-
+# Global instance
+_icon_manager = None
 
 def get_icon_manager() -> IconManager:
-    """Get the global IconManager instance.
-    
-    Returns:
-        Global IconManager singleton
-    """
     global _icon_manager
     if _icon_manager is None:
         _icon_manager = IconManager()

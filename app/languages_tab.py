@@ -87,7 +87,7 @@ class LanguageCard(QFrame):
 
         # Language icon - try to get from icon manager
         self.icon_manager = _get_icon_manager()
-        self.icon_manager.icon_downloaded.connect(self._on_icon_ready)
+        # self.icon_manager.icon_downloaded.connect(self._on_icon_ready) # Removed: Icons are local now
         
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)

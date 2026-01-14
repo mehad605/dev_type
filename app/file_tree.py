@@ -122,6 +122,10 @@ class InternalFileTree(QTreeWidget):
         if path:
             self.expanded_paths.add(path)
             self._save_expansion_state_to_db()
+            
+            # Update folder icon to open state
+            if item.data(0, Qt.UserRole + 1) == "folder":
+                self._update_folder_icon(item, True)
 
     def _on_item_collapsed(self, item):
         """Handle item collapse."""
@@ -130,6 +134,10 @@ class InternalFileTree(QTreeWidget):
             if path in self.expanded_paths:
                 self.expanded_paths.remove(path)
                 self._save_expansion_state_to_db()
+            
+            # Update folder icon to closed state
+            if item.data(0, Qt.UserRole + 1) == "folder":
+                self._update_folder_icon(item, False)
     
     def _load_ignore_settings(self):
         """Load global ignore settings."""
@@ -173,7 +181,10 @@ class InternalFileTree(QTreeWidget):
         root_item = FileTreeItem(self, [root_path.name, "", ""])
         root_item.setData(0, Qt.UserRole, str(root_path))
         root_item.setData(0, Qt.UserRole + 1, "folder")
-        root_item.setIcon(0, self.folder_icon)
+        
+        # Initial icon
+        self._update_folder_icon(root_item, True)
+        
         self._populate_tree(root_item, root_path)
         root_item.setExpanded(True)
         self.setSortingEnabled(True)
@@ -193,10 +204,14 @@ class InternalFileTree(QTreeWidget):
             root_item = FileTreeItem(self, [root_path.name, "", ""])
             root_item.setData(0, Qt.UserRole, str(root_path))
             root_item.setData(0, Qt.UserRole + 1, "folder")
-            root_item.setIcon(0, self.folder_icon)
+            
+            # Check persistence
+            is_expanded = str(root_path) in self.expanded_paths
+            self._update_folder_icon(root_item, is_expanded)
+            
             self._populate_tree(root_item, root_path)
-            # Check persistence for root items in multi-folder view
-            if str(root_path) in self.expanded_paths:
+            
+            if is_expanded:
                 root_item.setExpanded(True)
             else:
                 root_item.setExpanded(False)
@@ -227,7 +242,9 @@ class InternalFileTree(QTreeWidget):
             folder_item = FileTreeItem(self, [folder_path.name, "", ""])
             folder_item.setData(0, Qt.UserRole, folder)
             folder_item.setData(0, Qt.UserRole + 1, "folder")
-            folder_item.setIcon(0, self.folder_icon)
+            
+            is_expanded = str(folder) in self.expanded_paths
+            self._update_folder_icon(folder_item, is_expanded)
             
             for file_path in sorted(file_list):
                 file_path_obj = Path(file_path)
@@ -235,7 +252,6 @@ class InternalFileTree(QTreeWidget):
                 stats = stats_cache.get(file_path)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
-                language = LANGUAGE_MAP.get(file_path_obj.suffix.lower())
                 
                 file_item = FileTreeItem(folder_item, [
                     file_path_obj.name,
@@ -244,18 +260,16 @@ class InternalFileTree(QTreeWidget):
                 ])
                 file_item.setData(0, Qt.UserRole, str(file_path))
                 file_item.setData(0, Qt.UserRole + 1, "file")
-                icon, icon_error = self._icon_for_language(language)
-                file_item.setIcon(0, icon)
-                if icon_error:
-                    file_item.setToolTip(0, f"{file_path}\n(Icon unavailable: {icon_error})")
-                else:
-                    file_item.setToolTip(0, str(file_path))
+                
+                self._apply_file_icon(file_item, file_path_obj.name)
+                
+                file_item.setToolTip(0, str(file_path))
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path)
             
             # Check persistence
-            if str(folder) in self.expanded_paths:
+            if is_expanded:
                 folder_item.setExpanded(True)
             else:
                 folder_item.setExpanded(False)
@@ -287,11 +301,14 @@ class InternalFileTree(QTreeWidget):
                 folder_item = FileTreeItem(parent_item, [item.name, " ", " "])
                 folder_item.setData(0, Qt.UserRole, str(item))
                 folder_item.setData(0, Qt.UserRole + 1, "folder")
-                folder_item.setIcon(0, self.folder_icon)
+                
+                is_expanded = str(item) in self.expanded_paths
+                self._update_folder_icon(folder_item, is_expanded)
+                
                 self._populate_tree(folder_item, item)
                 
                 # Check persistence
-                if str(item) in self.expanded_paths:
+                if is_expanded:
                     folder_item.setExpanded(True)
             elif item.is_file():
                 # Only show supported file types
@@ -312,12 +329,10 @@ class InternalFileTree(QTreeWidget):
                 ])
                 file_item.setData(0, Qt.UserRole, file_path_str)
                 file_item.setData(0, Qt.UserRole + 1, "file")
-                icon, icon_error = self._icon_for_language(language)
-                file_item.setIcon(0, icon)
-                if icon_error:
-                    file_item.setToolTip(0, f"{file_path_str}\n(Icon unavailable: {icon_error})")
-                else:
-                    file_item.setToolTip(0, file_path_str)
+                
+                self._apply_file_icon(file_item, item.name)
+                
+                file_item.setToolTip(0, file_path_str)
                 
                 # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path_str)
@@ -413,36 +428,35 @@ class InternalFileTree(QTreeWidget):
         
         return None
 
-    def _icon_for_language(self, language: Optional[str]) -> tuple[QIcon, Optional[str]]:
-        """Return an icon appropriate for the detected language.
-        
-        Returns:
-            Tuple of (QIcon, error_message) where error_message is None if icon loaded successfully
-        """
-        if not language:
-            return self.generic_file_icon, None
+    def _update_folder_icon(self, item: QTreeWidgetItem, expanded: bool):
+        """Update the folder icon based on its expansion state."""
+        path_str = item.data(0, Qt.UserRole)
+        if not path_str:
+            return
+            
+        path = Path(path_str)
+        manager = _get_icon_manager()
+        pixmap = manager.get_folder_icon(path.name, is_open=expanded, size=24)
+        if pixmap:
+            item.setIcon(0, QIcon(pixmap))
+        else:
+            item.setIcon(0, self.folder_icon)
 
-        cache_key = f"lang::{language}"
-        error_key = f"err::{language}"
+    def _apply_file_icon(self, item: QTreeWidgetItem, filename: str):
+        """Apply the appropriate file icon."""
+        cache_key = f"file::{filename}"
         if cache_key in self._icon_cache:
-            return self._icon_cache[cache_key], self._icon_cache.get(error_key)
+             item.setIcon(0, self._icon_cache[cache_key])
+             return
 
         manager = _get_icon_manager()
-        pixmap = manager.get_icon(language, size=24)
+        pixmap = manager.get_file_icon(filename, size=24)
         if pixmap:
             icon = QIcon(pixmap)
             self._icon_cache[cache_key] = icon
-            return icon, None
-
-        # Fallback to local 'CODE' icon
-        icon = get_icon("CODE")
-        self._icon_cache[cache_key] = icon
-        
-        # Store any download error for tooltip
-        error = manager.get_download_error(language)
-        if error:
-            self._icon_cache[error_key] = error
-        return icon, error
+            item.setIcon(0, icon)
+        else:
+            item.setIcon(0, self.generic_file_icon)
 
 
     

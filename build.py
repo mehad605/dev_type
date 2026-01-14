@@ -164,6 +164,7 @@ class Builder:
             "--add-data=assets/icon.png;assets",
             "--add-data=assets/icon.ico;assets",
             "--add-data=assets/sounds;assets/sounds",  # Include sounds directory
+            "--add-data=assets/icon-theme.zip;assets", # Bundle icon theme zip
             
             # Hidden imports that PyInstaller might miss
             "--hidden-import=PySide6.QtSvg",
@@ -262,6 +263,7 @@ if __name__ == "__main__":
             "--add-data=assets/icon.svg:assets",
             "--add-data=assets/icon.png:assets",
             "--add-data=assets/sounds:assets/sounds",
+            "--add-data=assets/icon-theme.zip:assets",
             
             # Hidden imports
             "--hidden-import=PySide6.QtSvg",

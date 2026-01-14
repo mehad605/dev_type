@@ -275,6 +275,65 @@ class PortableDataManager:
                     except Exception as e:
                         logger.warning(f"Failed to copy default sounds: {e}")
 
+            # Copy and Extract Icon Theme (if needed)
+            icons_dest = self.get_icons_dir()
+            # Check if icons exist (look for manifest)
+            if not (icons_dest / "icons.json").exists():
+                import zipfile
+                import shutil
+                
+                icons_dest.mkdir(parents=True, exist_ok=True)
+                
+                # Locate zip bundle
+                if hasattr(sys, '_MEIPASS'):
+                     zip_src = Path(sys._MEIPASS) / "assets" / "icon-theme.zip"
+                else:
+                     zip_src = self._base_dir / "assets" / "icon-theme.zip"
+                     
+                if zip_src.exists():
+                     try:
+                         logger.info(f"Extracting icon theme from {zip_src} to {icons_dest}")
+                         with zipfile.ZipFile(zip_src, 'r') as zf:
+                             # Extract to temp then move, or extract directly depending on structure
+                             # The zip we have has extension/icons
+                             temp_extract = icons_dest / "_temp_extract"
+                             if temp_extract.exists():
+                                 shutil.rmtree(temp_extract)
+                             zf.extractall(temp_extract)
+                             
+                             # Search for manifest to find root
+                             source_icons_dir = None
+                             source_manifest = None
+                             
+                             for root, dirs, files in os.walk(temp_extract):
+                                 root_p = Path(root)
+                                 if "material-icons.json" in files:
+                                     source_manifest = root_p / "material-icons.json"
+                                     # Look for icons dir relative to manifest or in same dir
+                                     if (root_p / "icons").exists():
+                                         source_icons_dir = root_p / "icons"
+                                     elif (root_p / "../icons").resolve().exists():
+                                         source_icons_dir = (root_p / "../icons").resolve()
+                                     break
+                             
+                             if source_manifest and source_icons_dir:
+                                 # Move files
+                                 shutil.copy2(source_manifest, icons_dest / "icons.json")
+                                 for svg in source_icons_dir.glob("*.svg"):
+                                     shutil.copy2(svg, icons_dest / svg.name)
+                                 logger.info("Icon theme extracted successfully.")
+                             else:
+                                 logger.warning("Could not find manifest or icons in zip bundle.")
+                             
+                             # Cleanup temp
+                             if temp_extract.exists():
+                                 shutil.rmtree(temp_extract)
+                             
+                     except Exception as e:
+                         logger.error(f"Failed to extract icon theme: {e}")
+                else:
+                    logger.warning(f"Icon theme zip not found at {zip_src}")
+
             return True
             
         except PermissionError as e:
