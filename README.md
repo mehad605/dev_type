@@ -61,7 +61,7 @@ If you want to run the latest development version:
 - **Git**
 
 ### Using uv (⭐ Recommended)
-[uv](https://github.com/astral-sh/uv) is a blazing fast Python package manager. 
+uv is a blazing fast Python package manager. 
 *Don't have uv?* [Install it here](https://docs.astral.sh/uv/getting-started/installation/).
 
 1. **Clone & Enter:**

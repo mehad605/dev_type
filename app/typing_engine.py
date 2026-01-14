@@ -56,8 +56,13 @@ class TypingState:
         return (self._get_calculable_chars() / 5.0) / minutes
 
     def _get_calculable_chars(self) -> int:
-        """Get characters that count towards WPM (only correctly typed characters)."""
-        return self.correct_keystrokes
+        """Get characters that count towards WPM (only correctly typed characters).
+        
+        Using max_correct_position ensures that characters satisfied by Tab or 
+        Auto-Indent still contribute to typing speed, while correct_keystrokes 
+        can be used for physical key press statistics.
+        """
+        return max(0, self.max_correct_position + 1)
     
     def is_complete(self) -> bool:
         return self.cursor_position >= len(self.content)
@@ -120,12 +125,13 @@ class TypingEngine:
                 return True
         return False
     
-    def process_keystroke(self, typed_char: str) -> Tuple[bool, str, int]:
+    def process_keystroke(self, typed_char: str, increment_stats: bool = True) -> Tuple[bool, str, int]:
         """
         Process a single keystroke.
         
         Args:
             typed_char: The character that was typed
+            increment_stats: Whether to increment keystroke counters (False for substeps of Tab)
             
         Returns:
             (is_correct, expected_char, skipped_count) tuple
@@ -138,7 +144,8 @@ class TypingEngine:
         if self.state.is_paused:
             self.start()
         
-        self.state.last_keystroke_time = time.time()
+        if increment_stats:
+            self.state.last_keystroke_time = time.time()
         
         if self.state.cursor_position >= len(self.state.content):
             return False, "", 0
@@ -149,16 +156,19 @@ class TypingEngine:
         # If there's a mistake and we're not allowing continuation, block input
         if self.mistake_at is not None and not self.allow_continue_mistakes:
             # Count as incorrect keystroke but don't advance
-            self.state.incorrect_keystrokes += 1
+            if increment_stats:
+                self.state.incorrect_keystrokes += 1
             return False, expected_char, 0
             
         if is_correct:
             # Only increment correct_keystrokes if this position hasn't been correctly typed before
             if self.state.cursor_position > self.state.max_correct_position:
-                self.state.correct_keystrokes += 1
+                if increment_stats:
+                    self.state.correct_keystrokes += 1
                 self.state.max_correct_position = self.state.cursor_position
                 
-            self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
+            if increment_stats:
+                self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
             self.state.cursor_position += 1
             
             # Clear mistake marker if we were allowing continuation and typed correctly
@@ -170,8 +180,9 @@ class TypingEngine:
                 self.state.is_finished = True
                 self.pause()  # Properly pause to accumulate final time
         else:
-            self.state.incorrect_keystrokes += 1
-            self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
+            if increment_stats:
+                self.state.incorrect_keystrokes += 1
+                self.state.key_misses[expected_char] = self.state.key_misses.get(expected_char, 0) + 1
             
             # Categorize Error Type (Heuristics)
             # 1. Swapped: User typed the next character
@@ -180,17 +191,18 @@ class TypingEngine:
             next_next_char = self.state.content[self.state.cursor_position + 2] if self.state.cursor_position + 2 < len(self.state.content) else None
             
             if typed_char == next_char:
-                self.state.error_types['transposition'] += 1
+                if increment_stats: self.state.error_types['transposition'] += 1
             elif typed_char == next_next_char:
-                self.state.error_types['omission'] += 1
+                if increment_stats: self.state.error_types['omission'] += 1
             else:
-                self.state.error_types['insertion'] += 1 # Default to insertion if not transposition or omission
+                if increment_stats: self.state.error_types['insertion'] += 1 # Default to insertion if not transposition or omission
             
             # Record what was typed instead
-            if expected_char not in self.state.key_confusions:
-                self.state.key_confusions[expected_char] = {}
-            actual_char = typed_char if typed_char else "[NONE]"
-            self.state.key_confusions[expected_char][actual_char] = self.state.key_confusions[expected_char].get(actual_char, 0) + 1
+            if increment_stats:
+                if expected_char not in self.state.key_confusions:
+                    self.state.key_confusions[expected_char] = {}
+                actual_char = typed_char if typed_char else "[NONE]"
+                self.state.key_confusions[expected_char][actual_char] = self.state.key_confusions[expected_char].get(actual_char, 0) + 1
             
             if self.allow_continue_mistakes:
                 # Allow cursor to advance even on mistakes

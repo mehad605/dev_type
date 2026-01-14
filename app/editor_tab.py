@@ -1044,6 +1044,9 @@ class EditorTab(QWidget):
         wpm = stats["wpm"]
         accuracy = stats["accuracy"]
         instant_death_enabled = self.instant_death_btn.isChecked()
+        auto_indent_enabled = self.auto_indent_btn.isChecked()
+        space_per_tab = self.typing_area.space_per_tab if hasattr(self.typing_area, 'space_per_tab') else 4
+        tab_width = self.typing_area.tab_width if hasattr(self.typing_area, 'tab_width') else 4
         
         # Check if this is better than existing ghost
         if ghost_mgr.should_save_ghost(self.current_file, wpm):
@@ -1075,7 +1078,10 @@ class EditorTab(QWidget):
                 final_stats=final_stats,
                 instant_death=instant_death_enabled,
                 wpm_history=wpm_history,
-                error_history=error_history
+                error_history=error_history,
+                auto_indent=auto_indent_enabled,
+                space_per_tab=space_per_tab,
+                tab_width=tab_width
             )
             
             if success:
@@ -1103,10 +1109,23 @@ class EditorTab(QWidget):
                     instant_line = ""
                     if stats.get("instant_death") is not None:
                         instant_line = "\nInstant Death: " + ("On" if stats["instant_death"] else "Off")
+                    
+                    indent_line = ""
+                    if stats.get("auto_indent") is not None:
+                        indent_line = "\nAuto Indent: " + ("On" if stats["auto_indent"] else "Off")
+                    
+                    space_line = ""
+                    if stats.get("space_per_tab") is not None:
+                        space_line = f"\nSpace/Tab: {stats['space_per_tab']}"
+                    
+                    tab_line = ""
+                    if stats.get("tab_width") is not None:
+                        tab_line = f"\nTab Factor: {stats['tab_width']}"
+
                     self.ghost_btn.setToolTip(
                         "Race Your Ghost\n\n"
                         f"Best: {stats['wpm']:.1f} WPM at {stats['accuracy']:.1f}% accuracy\n"
-                        f"Recorded: {stats['date'][:10]}{instant_line}"
+                        f"Recorded: {stats['date'][:10]}{instant_line}{indent_line}{space_line}{tab_line}"
                     )
                 else:
                     self.ghost_btn.setToolTip("Race Your Ghost\n\nBest run data not available.")
@@ -1163,12 +1182,21 @@ class EditorTab(QWidget):
         
         user_engine = self.typing_area.engine
         pause_delay = getattr(user_engine, "pause_delay", 7.0) if user_engine else 7.0
+        
+        # Ghost must use its own recorded settings (auto_indent, space_per_tab, tab_width)
+        # and its content must be expanded with its recorded expansion factor (default 4)
+        recorded_tab_width = int(ghost_data.get("tab_width", 4))
+        ghost_content = self.typing_area.original_content.replace('\t', ' ' * recorded_tab_width)
+        recorded_auto_indent = bool(ghost_data.get("auto_indent", False))
+        self._ghost_space_per_tab = int(ghost_data.get("space_per_tab", 4))
+
         # Ghost should always allow continuing through mistakes - it's just replaying a recording
         self._ghost_engine = TypingEngine(
-            self.typing_area.original_content,
+            ghost_content,
             pause_delay=pause_delay,
             allow_continue_mistakes=True,  # Ghost must always continue to replay correctly
         )
+        self._ghost_engine.auto_indent = recorded_auto_indent
         
         self.typing_area.reset_session()
         stats_db.clear_session_progress(self.current_file)
@@ -1188,20 +1216,10 @@ class EditorTab(QWidget):
         self.ghost_btn.setText(" Cancel")
         self.ghost_btn.setToolTip("Cancel the current ghost race")
         
-        recorded_instant_death = ghost_data.get("instant_death_mode")
-        self._instant_death_pre_race = self.instant_death_btn.isChecked()
-        self._instant_death_tooltip_pre_race = self.instant_death_btn.toolTip()
-        
-        # Save backup to settings in case of crash during race
-        from app import settings
-        settings.set_setting("_race_instant_death_backup", "1" if self._instant_death_pre_race else "0")
-        
-        if recorded_instant_death is not None:
-            # Temporarily apply ghost's instant death mode WITHOUT persisting to disk
-            # This prevents corruption if app crashes during race
-            self._set_instant_death_mode(bool(recorded_instant_death), persist=False)
+        # Lock instant death button during race to ensure session consistency, 
+        # but DON'T change its value to match the ghost. User's preference stands.
         self.instant_death_btn.setEnabled(False)
-        self.instant_death_btn.setToolTip("Instant Death is locked during the race")
+        self.instant_death_btn.setToolTip("Settings are locked during the race")
         
         self._race_pending_start = True
         self.is_racing = False
@@ -1276,8 +1294,10 @@ class EditorTab(QWidget):
         elif key_char == "\b":
             self._ghost_engine.process_backspace()
         elif key_char == "\t":
-            for _ in range(4):
-                self._ghost_engine.process_keystroke(" ")
+            # Replay tab using the ghost's SPECIFIC recorded space_per_tab setting
+            for _ in range(self._ghost_space_per_tab):
+                self._ghost_engine.process_keystroke(" ", increment_stats=False)
+            self._ghost_engine.state.correct_keystrokes += 1
         elif key_char == "\n":
             self._ghost_engine.process_keystroke("\n")
         elif key_char == " ":
@@ -1454,19 +1474,7 @@ class EditorTab(QWidget):
         self._update_ghost_button()
         
         self.instant_death_btn.setEnabled(True)
-        if self._instant_death_pre_race is not None:
-            # Restore UI/engine state - don't persist since original preference is already saved
-            self._set_instant_death_mode(self._instant_death_pre_race, persist=False)
-        if self._instant_death_tooltip_pre_race is not None:
-            self.instant_death_btn.setToolTip(self._instant_death_tooltip_pre_race)
-        else:
-            self.instant_death_btn.setToolTip("Reset to top on any mistake")
-        self._instant_death_pre_race = None
-        self._instant_death_tooltip_pre_race = None
-        
-        # Clear crash recovery backup - race completed normally
-        from app import settings
-        settings.remove_setting("_race_instant_death_backup")
+        self.instant_death_btn.setToolTip("Reset to top on any mistake (Ctrl+D)")
         
         ghost_data = self._current_ghost_data
         user_stats = self.typing_area.get_stats()

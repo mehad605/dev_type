@@ -89,7 +89,8 @@ class GhostManager:
     def save_ghost(self, file_path: str, wpm: float, accuracy: float, 
                    keystrokes: List[Dict], session_date: str = None, 
                    final_stats: dict = None, instant_death: Optional[bool] = None,
-                   wpm_history: List[tuple] = None, error_history: List[tuple] = None):
+                   wpm_history: List[tuple] = None, error_history: List[tuple] = None,
+                   auto_indent: bool = False, space_per_tab: int = 4, tab_width: int = 4):
         """Save ghost session (only if it's the best)."""
         ghost_file = self._get_ghost_path(file_path)
         self._last_error = None
@@ -104,7 +105,10 @@ class GhostManager:
             "wpm": round(wpm, 1),
             "acc": round(accuracy * 100, 1),  # Store as percentage
             "keys": keystrokes,  # Already in compact format: {t, k, c}
-            "final_stats": final_stats
+            "final_stats": final_stats,
+            "auto_indent": auto_indent,
+            "space_per_tab": space_per_tab,
+            "tab_width": tab_width
         }
         if instant_death is not None:
             ghost_data["instant_death_mode"] = bool(instant_death)
@@ -234,7 +238,10 @@ class GhostManager:
                 "accuracy": ghost_data.get("acc"),
                 "date": ghost_data.get("date"),
                 "keystroke_count": len(ghost_data.get("keys", [])),
-                "instant_death": ghost_data.get("instant_death_mode")
+                "instant_death": ghost_data.get("instant_death_mode"),
+                "auto_indent": ghost_data.get("auto_indent"),
+                "space_per_tab": ghost_data.get("space_per_tab"),
+                "tab_width": ghost_data.get("tab_width")
             }
         return None
 

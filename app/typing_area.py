@@ -855,6 +855,7 @@ class TypingAreaWidget(QTextEdit):
             spaces_processed = 0
             
             # Process up to 'space_per_tab' characters, but stop if we hit non-whitespace
+            tab_was_attempted = False
             for _ in range(self.space_per_tab):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
@@ -866,9 +867,10 @@ class TypingAreaWidget(QTextEdit):
                 if expected_actual not in (' ', '\t'):
                     break
                 
-                # Type the exact whitespace character expected (handles mixed spaces/tabs)
+                # Physical key press already processed sound; use virtual processing for engine
+                tab_was_attempted = True
                 char_to_type = expected_actual
-                is_correct, expected_from_engine, _ = self.engine.process_keystroke(char_to_type)
+                is_correct, expected_from_engine, _ = self.engine.process_keystroke(char_to_type, increment_stats=False)
                 
                 if not is_correct:
                     all_correct = False
@@ -899,6 +901,16 @@ class TypingAreaWidget(QTextEdit):
                     )
                 self._apply_display_for_position(position)
                 spaces_processed += 1
+                
+            # Manual stats increment: one physical key press = one keystroke
+            if tab_was_attempted:
+                if all_correct:
+                    self.engine.state.correct_keystrokes += 1
+                    # Also increment hit count for space (as a representative of the action)
+                    self.engine.state.key_hits[' '] = self.engine.state.key_hits.get(' ', 0) + 1
+                else:
+                    self.engine.state.incorrect_keystrokes += 1
+                    self.engine.state.key_misses[' '] = self.engine.state.key_misses.get(' ', 0) + 1
                 
             if spaces_processed > 0:
                 self._record_keystroke('\t', all_correct)
