@@ -382,13 +382,23 @@ class TypingEngine:
             "status_color": "#a3be8c"  # Green for finished
         }
     
-    def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float):
+    def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float,
+                      mistake_at: int = -1, max_correct_pos: int = -1, skipped_positions: set = None):
         """Load saved progress into the engine."""
         self.state.cursor_position = cursor_pos
         self.state.correct_keystrokes = correct
         self.state.incorrect_keystrokes = incorrect
         self.state.elapsed_time = elapsed
-        self.state.max_correct_position = max(self.state.max_correct_position, cursor_pos - 1)
+        
+        # Restore max_correct_position if provided, else fallback to cursor-1
+        if max_correct_pos != -1:
+            self.state.max_correct_position = max_correct_pos
+        else:
+            self.state.max_correct_position = max(self.state.max_correct_position, cursor_pos - 1)
+            
         self.state.is_paused = True
         self.state.start_time = time.time() - elapsed  # Adjust start time
-        self.mistake_at = None  # Don't load mistake state
+        self.mistake_at = mistake_at if mistake_at != -1 else None
+        
+        if skipped_positions:
+            self.state.skipped_positions = skipped_positions

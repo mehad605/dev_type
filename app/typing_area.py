@@ -305,12 +305,34 @@ class TypingAreaWidget(QTextEdit):
         self.start_ghost_recording(resumed_keystrokes)
 
         if progress:
+            # Parse stored fields
+            mistake_at = progress.get("mistake_at", -1)
+            max_correct_pos = progress.get("max_correct_position", -1)
+            
+            skipped_pos = None
+            if progress.get("skipped_positions"):
+                try:
+                    skipped_pos = set(json.loads(progress["skipped_positions"]))
+                except: pass
+                
             self.engine.load_progress(
                 cursor_pos=progress["cursor_position"],
                 correct=progress["correct"],
                 incorrect=progress["incorrect"],
-                elapsed=progress["time"]
+                elapsed=progress["time"],
+                mistake_at=mistake_at,
+                max_correct_pos=max_correct_pos,
+                skipped_positions=skipped_pos
             )
+            
+            # Restore highlighter's detailed typing record
+            typed_chars_raw = progress.get("typed_chars")
+            if typed_chars_raw:
+                try:
+                    # JSON keys are strings, convert back to integer keys for positions
+                    raw_map = json.loads(typed_chars_raw)
+                    self.highlighter.typed_chars = {int(k): v for k, v in raw_map.items()}
+                except: pass
             self.current_typing_position = self._engine_to_display_position(self.engine.state.cursor_position)
             self._update_cursor_position()
             if self.highlighter:

@@ -905,6 +905,10 @@ class EditorTab(QWidget):
             wpm_h_json = json.dumps(wpm_h) if wpm_h else None
             err_h_json = json.dumps(err_h) if err_h else None
             
+            # Serialize typed_chars and skipped_positions for UI/logic recovery
+            typed_chars_json = json.dumps(self.typing_area.highlighter.typed_chars)
+            skipped_pos_json = json.dumps(list(engine.state.skipped_positions))
+            
             stats_db.save_session_progress(
                 self.current_file,
                 cursor_pos=engine.state.cursor_position,
@@ -915,7 +919,11 @@ class EditorTab(QWidget):
                 is_paused=True,
                 keystrokes_json=keystrokes_json,
                 wpm_history_json=wpm_h_json,
-                error_history_json=err_h_json
+                error_history_json=err_h_json,
+                mistake_at=engine.mistake_at if engine.mistake_at is not None else -1,
+                max_correct_position=engine.state.max_correct_position,
+                typed_chars_json=typed_chars_json,
+                skipped_positions_json=skipped_pos_json
             )
         else:
             stats_db.clear_session_progress(self.current_file)

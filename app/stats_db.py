@@ -94,6 +94,10 @@ def init_stats_tables():
             keystrokes_json TEXT,
             wpm_history_json TEXT,
             error_history_json TEXT,
+            mistake_at INTEGER DEFAULT -1,
+            max_correct_position INTEGER DEFAULT -1,
+            typed_chars_json TEXT,
+            skipped_positions_json TEXT,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -107,6 +111,14 @@ def init_stats_tables():
         cur.execute("ALTER TABLE session_progress ADD COLUMN wpm_history_json TEXT")
     if "error_history_json" not in progress_columns:
         cur.execute("ALTER TABLE session_progress ADD COLUMN error_history_json TEXT")
+    if "mistake_at" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN mistake_at INTEGER DEFAULT -1")
+    if "max_correct_position" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN max_correct_position INTEGER DEFAULT -1")
+    if "typed_chars_json" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN typed_chars_json TEXT")
+    if "skipped_positions_json" not in progress_columns:
+        cur.execute("ALTER TABLE session_progress ADD COLUMN skipped_positions_json TEXT")
 
     # Historical session table for aggregations
     cur.execute("""
@@ -767,7 +779,8 @@ def get_session_progress(file_path: str) -> Optional[Dict]:
     cur.execute("""
         SELECT cursor_position, total_characters, correct_keystrokes,
                incorrect_keystrokes, session_time, is_paused, keystrokes_json,
-               wpm_history_json, error_history_json
+               wpm_history_json, error_history_json, mistake_at, 
+               max_correct_position, typed_chars_json, skipped_positions_json
         FROM session_progress
         WHERE file_path = ?
     """, (file_path,))
@@ -784,7 +797,11 @@ def get_session_progress(file_path: str) -> Optional[Dict]:
             "is_paused": bool(row[5]),
             "keystrokes": row[6],
             "wpm_history": row[7],
-            "error_history": row[8]
+            "error_history": row[8],
+            "mistake_at": row[9],
+            "max_correct_position": row[10],
+            "typed_chars": row[11],
+            "skipped_positions": row[12]
         }
     return None
 
@@ -793,7 +810,11 @@ def save_session_progress(file_path: str, cursor_pos: int, total_chars: int,
                           correct: int, incorrect: int, time: float, is_paused: bool = True,
                           keystrokes_json: Optional[str] = None,
                           wpm_history_json: Optional[str] = None,
-                          error_history_json: Optional[str] = None):
+                          error_history_json: Optional[str] = None,
+                          mistake_at: int = -1,
+                          max_correct_position: int = -1,
+                          typed_chars_json: Optional[str] = None,
+                          skipped_positions_json: Optional[str] = None):
     """Save progress of an incomplete typing session."""
     conn = _connect()
     cur = conn.cursor()
@@ -801,10 +822,12 @@ def save_session_progress(file_path: str, cursor_pos: int, total_chars: int,
         INSERT OR REPLACE INTO session_progress
         (file_path, cursor_position, total_characters, correct_keystrokes,
          incorrect_keystrokes, session_time, is_paused, keystrokes_json,
-         wpm_history_json, error_history_json, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         wpm_history_json, error_history_json, mistake_at, 
+         max_correct_position, typed_chars_json, skipped_positions_json, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, (file_path, cursor_pos, total_chars, correct, incorrect, time, is_paused, 
-          keystrokes_json, wpm_history_json, error_history_json))
+          keystrokes_json, wpm_history_json, error_history_json, 
+          mistake_at, max_correct_position, typed_chars_json, skipped_positions_json))
     conn.commit()
     conn.close()
 
