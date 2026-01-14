@@ -2428,8 +2428,9 @@ class MainWindow(QMainWindow):
         self.tab_width_spin.setFixedWidth(60)
         self.tab_width_spin.setFixedHeight(36)
         self.tab_width_spin.setSuffix(" spaces")
-        tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
-        self.tab_width_spin.setValue(tab_width)
+        # Use space_per_tab for the shortcut behavior
+        space_per_tab = int(settings.get_setting("space_per_tab", settings.get_default("space_per_tab")))
+        self.tab_width_spin.setValue(space_per_tab)
         self.tab_width_spin.valueChanged.connect(self.on_tab_width_changed)
         
         # Reuse the button style from fonts section
@@ -2482,7 +2483,7 @@ class MainWindow(QMainWindow):
         tab_width_row.addWidget(self.tab_width_spin)
         tab_width_row.addWidget(tab_plus_btn)
         tab_width_row.addStretch()
-        typing_layout.addRow("Tab width:", tab_width_row)
+        typing_layout.addRow("Space insert per tab:", tab_width_row)
         
         # Pause delay - modern stepper with +/- buttons
         pause_delay_row = QHBoxLayout()
@@ -3097,8 +3098,8 @@ class MainWindow(QMainWindow):
         self.pause_delay_changed.emit(float(delay))
     
     def on_tab_width_changed(self, width: int):
-        """Handle tab width change."""
-        settings.set_setting("tab_width", str(width))
+        """Handle tab width (shortcut value) change."""
+        settings.set_setting("space_per_tab", str(width))
         self.tab_width_changed.emit(width)
     
     def _load_custom_fonts(self):

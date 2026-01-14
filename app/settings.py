@@ -84,6 +84,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     # Display characters
     "space_char": "␣",
     "tab_width": "4",
+    "space_per_tab": "4",
     
     # Sound settings
     "sound_enabled": "1",

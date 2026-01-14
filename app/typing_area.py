@@ -154,7 +154,11 @@ class TypingAreaWidget(QTextEdit):
         
         # Load settings
         self.space_char = settings.get_setting("space_char", settings.get_default("space_char"))
-        self.tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
+        # tab_width is now used ONLY for visual expansion of \t characters (fixed to 4 for consistency)
+        self.tab_width = 4 
+        # space_per_tab controls how many characters the Tab key shortcut processes
+        self.space_per_tab = int(settings.get_setting("space_per_tab", "4"))
+        
         self.enter_char = "⏎"  # Default enter character display
         self.original_content = ""  # Original file content (without special chars)
         self.display_content = ""  # Content with special chars for display
@@ -263,9 +267,8 @@ class TypingAreaWidget(QTextEdit):
             self.original_content = "Error: Could not decode file with any supported encoding (tried UTF-8, CP1252, Latin-1)"
         
         # 1. Initialize engine with expanded tabs FIRST
-        # This ensures 'typing_content' is the source of truth for ALL indices
-        self.tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
-        typing_content = self.original_content.replace('\t', ' ' * self.tab_width)
+        # Use a fixed width of 4 for consistent visual mapping
+        typing_content = self.original_content.replace('\t', ' ' * 4)
         
         pause_delay = settings.get_setting_float("pause_delay", 7.0, min_val=0.0, max_val=60.0)
         allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
@@ -851,8 +854,8 @@ class TypingAreaWidget(QTextEdit):
             all_correct = True
             spaces_processed = 0
             
-            # Process up to 'tab_width' characters, but stop if we hit non-whitespace
-            for _ in range(self.tab_width):
+            # Process up to 'space_per_tab' characters, but stop if we hit non-whitespace
+            for _ in range(self.space_per_tab):
                 if self.engine.state.cursor_position >= len(self.engine.state.content):
                     break
                 
@@ -869,8 +872,15 @@ class TypingAreaWidget(QTextEdit):
                 
                 if not is_correct:
                     all_correct = False
+                    # Log failure
+                    if self.logging_enabled:
+                        print(f"Tab Processing - Expected: '{expected_from_engine}', Typed: ' ' (FAILED)")
                     # Stop to prevent drawing multiple red indicators at one spot
                     break
+                
+                # Log success
+                if self.logging_enabled:
+                     print(f"Tab Processing - Expected: '{expected_from_engine}', Typed: ' '")
                 
                 if expected_from_engine == "" and not is_correct:
                     # strict mode block
@@ -1139,25 +1149,10 @@ class TypingAreaWidget(QTextEdit):
                 self._refresh_typed_display()
     
     def update_tab_width(self, width: int):
-        """Update tab width setting dynamically."""
-        self.tab_width = width
-        
-        # If content is loaded, regenerate display content
-        if self.original_content:
-            self.display_content = self._prepare_display_content(self.original_content)
-            
-            # Save cursor position
-            cursor_pos = self.current_typing_position
-            
-            # Update text
-            self.setPlainText(self.display_content)
-            
-            # Restore cursor and highlighting
-            self.current_typing_position = cursor_pos
-            self._update_cursor_position()
-            if self.highlighter:
-                self.highlighter.rehighlight()
-                self._refresh_typed_display()
+        """Update space per tab setting dynamically."""
+        self.space_per_tab = width
+        # This setting no longer mutates the existing file content or display width
+        # ensuring visual stability while allowing the shortcut to behave as configured.
     
     def update_pause_delay(self, delay: float):
         """Update pause delay setting dynamically."""
