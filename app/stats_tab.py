@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -64,26 +65,26 @@ def get_theme_colors() -> Dict[str, QColor]:
     }
 
 
-class LanguageFilterChip(QFrame):
-    """A clickable chip for language filtering."""
+class FilterChip(QFrame):
+    """A generic styleable chip for filtering."""
     
-    toggled = Signal(str, bool, bool)  # language, is_selected, ctrl_held
+    toggled = Signal(object, bool)  # value, is_selected
     
-    def __init__(self, language: str, is_all: bool = False, parent=None):
+    def __init__(self, label: str, value: Any, parent=None, is_header: bool = False):
         super().__init__(parent)
-        self.language = language
-        self.is_all = is_all
-        self._selected = is_all  # "All" starts selected by default
+        self.label_text = label
+        self.value = value
+        self.is_header = is_header
+        self._selected = False
         
-        self.setObjectName("languageChip")
+        self.setObjectName("filterChip")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(32)
+        self.setFixedHeight(28)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 0, 12, 0)
         
-        self.label = QLabel(language)
+        self.label = QLabel(label)
         self.label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.label)
         
@@ -94,51 +95,45 @@ class LanguageFilterChip(QFrame):
         colors = get_theme_colors()
         
         if self._selected:
-            accent = colors["accent"].name()
-            self.setStyleSheet(f"""
-                QFrame#languageChip {{
-                    background-color: {accent};
-                    border-radius: 16px;
-                    border: 2px solid {accent};
-                    padding: 0 4px;
-                }}
-                QLabel {{
-                    color: #ffffff;
-                    font-weight: 600;
-                    font-size: 12px;
-                    background: transparent;
-                    border: none;
-                }}
-            """)
+            bg = colors["accent"].name()
+            color = "#ffffff"
+            border = bg
         else:
             bg = colors["bg_secondary"].name()
-            border = colors["border"].name()
-            bg_hover = colors["bg_tertiary"].name()
-            text = colors["text_secondary"].name()
-            self.setStyleSheet(f"""
-                QFrame#languageChip {{
-                    background-color: {bg};
-                    border-radius: 16px;
-                    border: 2px solid transparent;
-                    padding: 0 4px;
-                }}
-                QFrame#languageChip:hover {{
-                    background-color: {bg_hover};
-                    border: 2px solid {colors["accent"].name()};
-                }}
-                QLabel {{
-                    color: {text};
-                    font-size: 12px;
-                    font-weight: 500;
-                    background: transparent;
-                    border: none;
-                }}
-            """)
-    
-    def apply_theme(self):
-        """Apply current theme colors."""
-        self._update_style()
-    
+            color = colors["text_secondary"].name()
+            border = "transparent"
+            
+            if self.is_header:
+                 # Header style unselected - match normal chips if user wants borders
+                 # Previously was transparent, lets make it bg_secondary to show shape
+                 bg = colors["bg_secondary"].name()
+                 color = colors["text_primary"].name()
+                 border = "transparent" # Or colors["border"].name() if we want outlines
+        
+        if self.is_header and self._selected:
+             # Header style selected (e.g. Mode chips)
+             bg = colors["accent"].name() # Match normal chip selected BG
+             color = "#ffffff"            # Match normal chip selected Text
+             border = bg
+
+        self.setStyleSheet(f"""
+            QFrame#filterChip {{
+                background-color: {bg};
+                border-radius: 6px;
+                border: 1px solid {border};
+            }}
+            QFrame#filterChip:hover {{
+                border-color: {colors['accent'].name()};
+            }}
+            QLabel {{
+                color: {color};
+                font-weight: 600;
+                font-size: 12px;
+                background: transparent;
+                border: none;
+            }}
+        """)
+
     @property
     def selected(self) -> bool:
         return self._selected
@@ -148,111 +143,275 @@ class LanguageFilterChip(QFrame):
         if self._selected != value:
             self._selected = value
             self._update_style()
-    
+
     def mousePressEvent(self, event):
-        """Handle click to toggle selection."""
         if event.button() == Qt.LeftButton:
-            ctrl_held = event.modifiers() & Qt.ControlModifier
-            self.toggled.emit(self.language, not self._selected, bool(ctrl_held))
-        super().mousePressEvent(event)
+            self.toggled.emit(self.value, not self._selected)
+
+    def apply_theme(self):
+        self._update_style()
 
 
-class LanguageFilterBar(QWidget):
-    """Bar of language filter chips with "All" option."""
+class IndentationFilter(QWidget):
+    """Row 1: Indentation Filter (All / On / Off)."""
     
-    filter_changed = Signal(set)  # Set of selected languages (empty = all)
+    filter_changed = Signal(object) # param: bool or None
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._chips: Dict[str, LanguageFilterChip] = {}
-        self._selected_languages: Set[str] = set()
+        self._chips = []
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         
-        # "All" chip
-        self._all_chip = LanguageFilterChip("All", is_all=True)
-        self._all_chip.toggled.connect(self._on_all_toggled)
-        layout.addWidget(self._all_chip)
+        # Label
+        self.label = QLabel("Indentation:")
+        self.label.setStyleSheet(f"color: {get_theme_colors()['text_secondary'].name()}; font-weight: bold;")
+        layout.addWidget(self.label)
         
-        # Container for language chips
-        self._chips_container = QHBoxLayout()
-        self._chips_container.setSpacing(8)
-        layout.addLayout(self._chips_container)
+        # Chips
+        self.chip_all = FilterChip("All", None)
+        self.chip_on = FilterChip("Smart Indent: On", True)
+        self.chip_off = FilterChip("Smart Indent: Off", False)
         
+        for chip in [self.chip_all, self.chip_on, self.chip_off]:
+            chip.toggled.connect(self._on_chip_toggled)
+            layout.addWidget(chip)
+            self._chips.append(chip)
+            
         layout.addStretch()
-    
-    def set_languages(self, languages: List[str]):
-        """Set available languages, creating chips for each."""
-        # Clear existing chips
-        for chip in self._chips.values():
-            chip.deleteLater()
-        self._chips.clear()
         
-        # Create new chips
-        for lang in sorted(languages):
-            chip = LanguageFilterChip(lang)
-            chip.toggled.connect(self._on_language_toggled)
-            self._chips[lang] = chip
-            self._chips_container.addWidget(chip)
+        # Default
+        self.chip_all.selected = True
+
+    def _on_chip_toggled(self, value, is_selected):
+        # Enforce radio behavior - keep at least one selected
+        sender = self.sender()
+        if not is_selected and sender.selected:
+             # Prevent deselecting the active one directly
+             sender.selected = True
+             return
+
+        for chip in self._chips:
+            chip.selected = (chip.value == value)
+            
+        self.filter_changed.emit(value)
+
+    def get_selected_value(self):
+        for chip in self._chips:
+            if chip.selected:
+                return chip.value
+        return None
         
-        # Reset to "All" selected
-        self._selected_languages.clear()
-        self._all_chip.selected = True
-        for chip in self._chips.values():
-            chip.selected = False
-    
-    def _on_all_toggled(self, language: str, is_selected: bool, ctrl_held: bool = False):
-        """Handle \"All\" chip toggle."""
-        if is_selected or not self._selected_languages:
-            # Select "All" and deselect others
-            self._all_chip.selected = True
-            self._selected_languages.clear()
-            for chip in self._chips.values():
-                chip.selected = False
-            self.filter_changed.emit(set())  # Empty set = all languages
-    
-    def _on_language_toggled(self, language: str, is_selected: bool, ctrl_held: bool = False):
-        """Handle individual language chip toggle.
-        
-        Without Ctrl: exclusive selection (deselect all others)
-        With Ctrl: additive selection (toggle this language)
-        """
-        if ctrl_held:
-            # Ctrl+click: additive toggle
-            if is_selected:
-                self._selected_languages.add(language)
-                self._chips[language].selected = True
-            else:
-                self._selected_languages.discard(language)
-                self._chips[language].selected = False
-        else:
-            # Regular click: exclusive selection
-            # Deselect all others, select only this one
-            self._selected_languages.clear()
-            for lang, chip in self._chips.items():
-                chip.selected = (lang == language)
-            self._selected_languages.add(language)
-        
-        # Update "All" chip state
-        self._all_chip.selected = len(self._selected_languages) == 0
-        
-        # If nothing selected, revert to "All"
-        if not self._selected_languages:
-            self._all_chip.selected = True
-        
-        self.filter_changed.emit(self._selected_languages.copy())
-    
-    def get_selected_languages(self) -> Set[str]:
-        """Get currently selected languages (empty = all)."""
-        return self._selected_languages.copy()
-    
     def apply_theme(self):
-        """Apply current theme to all chips."""
-        self._all_chip.apply_theme()
+        self.label.setStyleSheet(f"color: {get_theme_colors()['text_secondary'].name()}; font-weight: bold;")
+        for chip in self._chips:
+            chip.apply_theme()
+
+
+class LanguageFilterBar(QWidget):
+    """Rows 2 & 3: Language Filter with Modes."""
+    
+    filter_changed = Signal(object) # set[str] or None (for all)
+    
+    MODE_ALL = "all"
+    MODE_EXCLUDE = "exclude"
+    MODE_SINGLE = "single"
+    MODE_MULTIPLE = "multiple"
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._current_mode = self.MODE_ALL
+        self._chips: Dict[str, FilterChip] = {}
+        self._selected_languages: Set[str] = set()
+        self._available_languages: List[str] = []
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        
+        # --- Row 2: Header & Modes ---
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        
+        # Label
+        self.label = QLabel("Language:")
+        self.label.setStyleSheet(f"color: {get_theme_colors()['text_secondary'].name()}; font-weight: bold;")
+        row2.addWidget(self.label)
+        
+        # Mode Chips
+        self.mode_chips = {}
+        modes = [
+            ("All", self.MODE_ALL),
+            ("Exclude", self.MODE_EXCLUDE),
+            ("Single", self.MODE_SINGLE),
+            ("Multiple", self.MODE_MULTIPLE)
+        ]
+        
+        for label_text, mode_val in modes:
+            chip = FilterChip(label_text, mode_val, is_header=True)
+            chip.toggled.connect(self._on_mode_toggled)
+            row2.addWidget(chip)
+            self.mode_chips[mode_val] = chip
+            
+        row2.addStretch()
+        layout.addLayout(row2)
+        
+        # --- Row 3: Language Chips ---
+        # --- Row 3: Language Chips ---
+        # Since FlowLayout isn't standard, we'll use a wrapping grid or horizontal layout with wrapping
+        # For simplicity in this codebase, let's use a HBox with addStretch for now, 
+        # but if there are many languages, a custom FlowLayout is better.
+        # Given existing code didn't have FlowLayout, we will stick to a ScrollArea-friendly generic layout or basic wrap.
+        # Let's use a wrapping logic using QGridLayout for now to be safe if no FlowLayout exists.
+        
+        self.chips_container = QWidget()
+        self.chips_grid = QGridLayout(self.chips_container)
+        self.chips_grid.setContentsMargins(0, 0, 0, 0)
+        self.chips_grid.setSpacing(8)
+        self.chips_grid.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        layout.addWidget(self.chips_container)
+    
+        self._update_mode_ui()
+
+    def apply_theme(self):
+        self.label.setStyleSheet(f"color: {get_theme_colors()['text_secondary'].name()}; font-weight: bold;")
         for chip in self._chips.values():
             chip.apply_theme()
+        for chip in self.mode_chips.values():
+            chip.apply_theme()
+        self._update_mode_ui()
+
+    def set_languages(self, languages: List[str]):
+        """Set available languages."""
+        self._available_languages = sorted(languages)
+        
+        # Clear existing
+        for i in reversed(range(self.chips_grid.count())): 
+            self.chips_grid.itemAt(i).widget().setParent(None)
+        self._chips.clear()
+        
+        # Add new chips
+        row, col = 0, 0
+        max_cols = 8 # Limit columns per row
+        
+        for lang in self._available_languages:
+            chip = FilterChip(lang, lang)
+            chip.toggled.connect(self._on_language_toggled)
+            self.chips_grid.addWidget(chip, row, col)
+            self._chips[lang] = chip
+            
+            col += 1
+            if col >= max_cols:
+                col = 0
+                row += 1
+                
+        # Re-apply mode logic
+        self._apply_visuals_for_mode()
+
+    def _on_mode_toggled(self, mode, is_selected):
+        if not is_selected: 
+            # Force keeping one selected (radio behavior) if attempting to deselect active
+            self.mode_chips[mode].selected = True
+            return
+            
+        self._current_mode = mode
+        
+        # Reset selection state based on mode switch
+        if mode == self.MODE_ALL:
+            self._selected_languages.clear()
+        elif mode == self.MODE_EXCLUDE:
+            # Start with ALL selected (visuals will invert logic effectively)
+            # In "Exclude" mode, selected means "Visible". 
+            # So start with all visible (all in set).
+            self._selected_languages = set(self._available_languages)
+        elif mode == self.MODE_SINGLE:
+            if not self._selected_languages and self._available_languages:
+                 self._selected_languages = {self._available_languages[0]}
+            elif len(self._selected_languages) > 1:
+                 # Keep only one
+                 first = list(self._selected_languages)[0]
+                 self._selected_languages = {first}
+        elif mode == self.MODE_MULTIPLE:
+            if not self._selected_languages and self._available_languages:
+                 self._selected_languages = {self._available_languages[0]}
+        
+        self._update_mode_ui()
+        self._apply_visuals_for_mode()
+        self._emit_change()
+
+    def _on_language_toggled(self, lang, is_selected):
+        # Handle logic based on current mode
+        
+        if self._current_mode == self.MODE_ALL:
+            # Click on language -> Switch to SINGLE, select ONLY this
+            self._current_mode = self.MODE_SINGLE
+            self._selected_languages = {lang}
+            self._update_mode_ui()
+            
+        elif self._current_mode == self.MODE_SINGLE:
+            # Click another -> Switch selection to that one
+            self._selected_languages = {lang}
+            
+        elif self._current_mode == self.MODE_MULTIPLE:
+             if lang in self._selected_languages:
+                 if len(self._selected_languages) > 1:
+                     self._selected_languages.remove(lang)
+             else:
+                 self._selected_languages.add(lang)
+
+        elif self._current_mode == self.MODE_EXCLUDE:
+             # If it's in the set, remove it (hide it). If not, add it (show it).
+             # Wait, "Exclude" usually means "Click to Remove". 
+             # Let's say _selected_languages tracks what is VISIBLE.
+             if lang in self._selected_languages:
+                 self._selected_languages.remove(lang)
+             else:
+                 self._selected_languages.add(lang)
+
+        self._apply_visuals_for_mode()
+        self._emit_change()
+
+    def _update_mode_ui(self):
+        for mode, chip in self.mode_chips.items():
+            chip.selected = (mode == self._current_mode)
+
+    def _apply_visuals_for_mode(self):
+        for lang, chip in self._chips.items():
+            if self._current_mode == self.MODE_ALL:
+                chip.selected = True # Visually all on
+                chip.setDisabled(False)
+            
+            elif self._current_mode in [self.MODE_SINGLE, self.MODE_MULTIPLE]:
+                chip.selected = (lang in self._selected_languages)
+                chip.setDisabled(False)
+                
+            elif self._current_mode == self.MODE_EXCLUDE:
+                # If it's in selected_languages (visible), it's highlighted.
+                # If removed, it's gray.
+                is_visible = (lang in self._selected_languages)
+                chip.selected = is_visible 
+                # Optional: visuals for 'excluded' state could be strikethrough or dim
+                # For now standard selected/unselected works.
+
+    def _emit_change(self):
+        if self._current_mode == self.MODE_ALL:
+            self.filter_changed.emit(None) # None = All
+        else:
+            self.filter_changed.emit(self._selected_languages.copy())
+
+    def get_selected_languages(self) -> Optional[Set[str]]:
+        if self._current_mode == self.MODE_ALL:
+            return None
+        return self._selected_languages.copy()
+
+    def apply_theme(self):
+        for chip in self.mode_chips.values():
+            chip.apply_theme()
+        for chip in self._chips.values():
+            chip.apply_theme()
+
 
 
 class SummaryStatCard(QFrame):
@@ -2239,46 +2398,57 @@ class StatsTab(QWidget):
         
         # Main layout
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # --- Top Section (Sticky) ---
+        self.top_frame = QFrame()
+        self.top_frame.setObjectName("statsHeader")
+        self.top_frame.setStyleSheet(f"""
+            QFrame#statsHeader {{
+                border-bottom: 1px solid {colors['bg_secondary'].name()};
+                background: {colors['bg_primary'].name()};
+            }}
+        """)
+        
+        top_layout = QVBoxLayout(self.top_frame)
+        top_layout.setContentsMargins(16, 16, 16, 16)
+        top_layout.setSpacing(16)
         
         # Header
         self.header = QLabel("Statistics")
-        self.header.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {colors['text_primary'].name()};")
-        main_layout.addWidget(self.header)
+        self.header.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {colors['text_primary'].name()}; border: none;")
+        top_layout.addWidget(self.header)
         
-        # Language filter bar
+        # --- Filter Section ---
+        filter_container = QVBoxLayout()
+        filter_container.setSpacing(16)
+        
+        # 1. Indentation Filter
+        self.indent_filter = IndentationFilter()
+        self.indent_filter.filter_changed.connect(self._on_indent_filter_changed)
+        filter_container.addWidget(self.indent_filter)
+        
+        # 2. Language Filter
         self.filter_bar = LanguageFilterBar()
         self.filter_bar.filter_changed.connect(self._on_filter_changed)
+        filter_container.addWidget(self.filter_bar)
         
-        # Smart Indent Filter
-        filters_layout = QHBoxLayout()
-        filters_layout.addWidget(self.filter_bar)
-        
-        self.stats_indent_combo = QComboBox()
-        self.stats_indent_combo.setMinimumWidth(120)
-        self.stats_indent_combo.addItem("All Indent Modes", None)
-        self.stats_indent_combo.addItem("Smart Indent: ON", True)
-        self.stats_indent_combo.addItem("Smart Indent: OFF", False)
-        self.stats_indent_combo.setStyleSheet(self._get_combo_style())
-        self.stats_indent_combo.currentIndexChanged.connect(self._on_indent_filter_changed)
-        
-        filters_layout.addWidget(self.stats_indent_combo)
-        filters_layout.addStretch()
-        
-        main_layout.addLayout(filters_layout)
+        top_layout.addLayout(filter_container)
+        main_layout.addWidget(self.top_frame)
         
         # Scroll area for content
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.scroll.setContentsMargins(16, 16, 16, 16) # Add padding to scroll area content view wrapper if needed, or better on content
         
         # Content widget
         self.content = QWidget()
         self.content.setStyleSheet("background: transparent;")
         self.content_layout = QVBoxLayout(self.content)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setContentsMargins(16, 16, 16, 16) # Add padding here since main layout has 0
         self.content_layout.setSpacing(24)
         
         # Summary stats section
@@ -2516,7 +2686,7 @@ class StatsTab(QWidget):
         if 0 <= heatmap_idx < len(CalendarHeatmap.METRIC_OPTIONS):
             settings.set_setting("stats_heatmap_metric", CalendarHeatmap.METRIC_OPTIONS[heatmap_idx][0])
 
-    def _on_indent_filter_changed(self, index: int):
+    def _on_indent_filter_changed(self, value):
         """Handle smart indent filter change."""
         self._update_all_stats()
     
@@ -2534,7 +2704,9 @@ class StatsTab(QWidget):
     
     def _on_heatmap_year_changed(self, index: int):
         """Handle heatmap year dropdown change."""
-        self._update_calendar_heatmap(list(self._selected_languages) if self._selected_languages else None)
+        langs = list(self._selected_languages) if self._selected_languages else None
+        auto_indent = self.indent_filter.get_selected_value()
+        self._update_calendar_heatmap(langs, auto_indent)
 
     def _on_kb_shift_toggled(self):
         """Handle keyboard heatmap shift toggle."""
@@ -2571,7 +2743,7 @@ class StatsTab(QWidget):
     def _update_all_stats(self):
         """Update all statistics and charts based on current filters."""
         langs = list(self._selected_languages) if self._selected_languages else None
-        auto_indent = self.stats_indent_combo.currentData()
+        auto_indent = self.indent_filter.get_selected_value()
         
         self._update_summary_stats(langs, auto_indent)
         self._update_calendar_heatmap(langs)
@@ -2721,8 +2893,32 @@ class StatsTab(QWidget):
         """)
         self.content.setStyleSheet(f"background-color: {bg_primary};")
         
-        # Update header
-        self.header.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {text_primary}; margin-bottom: 8px;")
+        # Update sticky header
+        if hasattr(self, 'top_frame'):
+            # Use bg_tertiary instead of secondary for more visible border
+             self.top_frame.setStyleSheet(f"""
+                QFrame#statsHeader {{
+                    border-bottom: 2px solid {colors['bg_tertiary'].name()};
+                    background: {colors['bg_primary'].name()};
+                }}
+            """)
+        
+        # Update header label (border handled by parent frame)
+        self.header.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {text_primary}; border: none;")
+        
+        # Propagate to filters
+        if hasattr(self, 'indent_filter'):
+            self.indent_filter.apply_theme()
+        if hasattr(self, 'filter_bar'):
+            self.filter_bar.apply_theme()
+            
+        # Propagate to cards
+        if hasattr(self, 'summary_cards'):
+             for card in self.summary_cards.values():
+                 card.apply_theme()
+                 
+        if hasattr(self, 'error_pie_chart'):
+            self.error_pie_chart.apply_theme()
         
         # Update summary label
         self.summary_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {text_secondary};")
