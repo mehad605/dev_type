@@ -221,6 +221,15 @@ class EditorTab(QWidget):
         self.sound_widget.setFixedHeight(30)
         self.sound_widget.volume_changed.connect(self.on_sound_volume_changed)
         self.sound_widget.enabled_changed.connect(self.on_sound_enabled_changed)
+        
+        # RECORD BUTTON (For Indent Testing only)
+        from app import settings
+        if settings.get_indent_test_mode():
+            self.record_btn = QPushButton("Record")
+            self.record_btn.setStyleSheet(header_btn_style)
+            self.record_btn.setFixedHeight(30)
+            self.record_btn.clicked.connect(self.on_record_clicked)
+            right_header_layout.addWidget(self.record_btn)
 
         right_header_layout.addStretch()
         right_header_layout.addWidget(self.reset_btn)
@@ -601,6 +610,26 @@ class EditorTab(QWidget):
             return
         if self.typing_area.engine and not self.typing_area.engine.state.is_paused and not self.typing_area.engine.state.is_finished:
             self.on_stats_updated()
+    
+    def on_record_clicked(self):
+        """Enable recording/logging mode for indent testing."""
+        if not self._loaded or not hasattr(self, 'typing_area') or not self.typing_area.engine:
+            print("[EditorTab] Cannot record: engine not loaded")
+            return
+            
+        print("\n" + "="*40)
+        print("BEGIN RECORDING SESSION")
+        print("="*40)
+        print("FILE CONTENT:")
+        print(self.typing_area.engine.state.content)
+        print("\n--- END FILE CONTENT ---\n")
+        print("Ready for input...")
+        
+        self.typing_area.set_logging_enabled(True)
+        # Disable button to indicate it's active
+        self.record_btn.setEnabled(False)
+        self.record_btn.setText("Recording...")
+    
     
     def on_reset_clicked(self):
         """Handle reset button click."""

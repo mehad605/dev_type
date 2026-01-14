@@ -200,6 +200,9 @@ class TypingAreaWidget(QTextEdit):
         self.ghost_accumulated_ms = 0
         self.ghost_segment_start_perf = None
         self._has_emitted_first_key = False
+        
+        # Logging for Intent Test
+        self.logging_enabled = False
 
         # Sliding Window / Large File Optimization (Infinite Runner)
         self.WINDOW_SIZE = 100        # Lines per window
@@ -259,17 +262,22 @@ class TypingAreaWidget(QTextEdit):
             # All encodings failed
             self.original_content = "Error: Could not decode file with any supported encoding (tried UTF-8, CP1252, Latin-1)"
         
-        # Convert content for display (replace spaces, enters, tabs)
-        self.display_content = self._prepare_display_content(self.original_content)
+        # 1. Initialize engine with expanded tabs FIRST
+        # This ensures 'typing_content' is the source of truth for ALL indices
+        self.tab_width = int(settings.get_setting("tab_width", settings.get_default("tab_width")))
+        typing_content = self.original_content.replace('\t', ' ' * self.tab_width)
         
-        # Fast index mapping
-        self._recalculate_index_maps()
-        
-        # Initialize engine
         pause_delay = settings.get_setting_float("pause_delay", 7.0, min_val=0.0, max_val=60.0)
         allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
-        self.engine = TypingEngine(self.original_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
+        self.engine = TypingEngine(typing_content, pause_delay=pause_delay, allow_continue_mistakes=allow_continue)
         self.engine.auto_indent = settings.get_setting("auto_indent", "0") == "1"
+
+        # 2. Prepare display content from the expanded engine content
+        # This guarantees 1-to-1 visual correspondence
+        self.display_content = self._prepare_display_content(typing_content)
+        
+        # 3. Fast index mapping (will now use engine.state.content)
+        self._recalculate_index_maps()
         
         # Setup highlighter but don't set document yet
         self.highlighter = TypingHighlighter(self.document(), self.engine, parent_widget=self)
@@ -342,7 +350,7 @@ class TypingAreaWidget(QTextEdit):
 
     def _recalculate_index_maps(self):
         """Build precise character position mapping and line indices for fast lookup."""
-        content = self.original_content
+        content = self.engine.state.content if self.engine else self.original_content
         self.engine_to_display_map = [0] * (len(content) + 1)
         self.line_starts_engine = [0]
         self.line_starts_display = [0]
@@ -906,6 +914,10 @@ class TypingAreaWidget(QTextEdit):
             # Process keystroke
             is_correct, expected, skipped_count = self.engine.process_keystroke(char)
             
+            # Log expected vs actual if enabled
+            if self.logging_enabled:
+                print(f"Expected: '{expected}', Typed: '{char}'")
+            
             # If engine was paused and is now running, emit typing_resumed signal
             if was_paused and not self.engine.state.is_paused:
                 self._resume_ghost_recording()
@@ -1186,4 +1198,10 @@ class TypingAreaWidget(QTextEdit):
         """Toggle visibility of the ghost text."""
         if self.highlighter:
             self.highlighter.update_show_ghost_text(enabled)
+
+    def set_logging_enabled(self, enabled: bool):
+        """Enable or disable logging of typed characters to terminal."""
+        self.logging_enabled = enabled
+        if enabled:
+            print("[TypingArea] Logging enabled")
 

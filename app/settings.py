@@ -8,6 +8,8 @@ APIs:
  - get_folders()
  - add_folder(path)
  - remove_folder(path)
+ - get_indent_test_mode()
+ - set_indent_test_mode(enabled)
 """
 import sqlite3
 import os
@@ -24,6 +26,20 @@ except ImportError:
         return None
     def is_portable():
         return False
+
+# =============================================================================
+# RUNTIME FLAGS (Not persisted)
+# =============================================================================
+INDENT_TEST_MODE = False
+
+def set_indent_test_mode(enabled: bool):
+    """Set the runtime flag for indent testing mode."""
+    global INDENT_TEST_MODE
+    INDENT_TEST_MODE = enabled
+
+def get_indent_test_mode() -> bool:
+    """Get the runtime flag for indent testing mode."""
+    return INDENT_TEST_MODE
 
 # =============================================================================
 # SINGLE SOURCE OF TRUTH FOR ALL SETTING DEFAULTS
@@ -421,4 +437,3 @@ def remove_folder(path: str):
     cur.execute("DELETE FROM folders WHERE path=?", (path,))
     conn.commit()
     conn.close()
-

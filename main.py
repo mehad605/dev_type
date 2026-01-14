@@ -23,7 +23,16 @@ def main():
         action="store_true",
         help="Persist demo data between runs. If not set, data is regenerated each time. Only relevant with --demo."
     )
+    parser.add_argument(
+        "--indent_test",
+        action="store_true",
+        help="Enable indent testing mode - shows Record button in editor"
+    )
     args = parser.parse_args()
+    
+    # Store indent test mode flag in settings
+    from app import settings
+    settings.set_indent_test_mode(args.indent_test)
     
     # Show instant splash BEFORE heavy imports
     splash = None
