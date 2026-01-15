@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="https://via.placeholder.com/150" alt="Dev Type Logo" width="120" height="120" />
-  <h1>Dev Type</h1>
+  <img src="assets/icon.png" alt="Dev Type Logo" width="50" height="50" style="vertical-align: middle; margin-right: 10px;" />
+  <span style="font-size: 40px; font-weight: bold; vertical-align: middle;">Dev Type</span>
   <p>
     <strong>The uncompromising typing app for developers.</strong>
   </p>
@@ -14,6 +14,12 @@
 
 <br />
 
+<div align="center">
+  <h3>🌟 If you enjoy the project, please consider giving it a star! 🌟</h3>
+</div>
+
+<br />
+
 ### Why Dev Type?
 
 Most typing tutors treat you like a secretary from 1995. They feed you random paragraphs of prose or nonsensical dictionary words.
@@ -22,7 +28,6 @@ Most typing tutors treat you like a secretary from 1995. They feed you random pa
 
 **Dev Type** is different. It's a local-first, high-performance desktop app that lets you practice on **your own code**. Point it at your project folder, pick a file, and start racing.
 
-If you enjoy the project, please consider giving it a star! 🌟
 
 ---
 
