@@ -1003,6 +1003,9 @@ class MetricScatterPlot(QWidget):
         self.text_color = colors["text_primary"]
         self.grid_color = colors["border"]
         self.active_color = self.wpm_color if self.metric_type == 'wpm' else self.acc_color
+        self.wpm_trend_color = QColor(self.wpm_color).lighter(150)
+        self.acc_trend_color = QColor(self.acc_color).lighter(150)
+        self.trend_color = self.wpm_trend_color if self.metric_type == 'wpm' else self.acc_trend_color
     
     def apply_theme(self):
         """Apply current theme colors."""
@@ -1111,14 +1114,17 @@ class MetricScatterPlot(QWidget):
         slope, intercept = self._calculate_trend_line(values)
         
         closest_info = None
-        if self._ctrl_held and len(self.data) >= 2 and rect.contains(x, y):
-            x_ratio = (x - rect.x()) / rect.width()
-            x_idx = x_ratio * (len(self.data) - 1)
-            trend_val = slope * x_idx + intercept
-            py_trend = self._val_to_y(trend_val, min_r, max_r)
-            if abs(y - py_trend) < 20:
-                closest_info = (int(x_idx), 'trend')
+        if self._ctrl_held:
+            # Only hover trend line when Ctrl is held
+            if len(self.data) >= 2 and rect.contains(x, y):
+                x_ratio = (x - rect.x()) / rect.width()
+                x_idx = x_ratio * (len(self.data) - 1)
+                trend_val = slope * x_idx + intercept
+                py_trend = self._val_to_y(trend_val, min_r, max_r)
+                if abs(y - py_trend) < 20:
+                    closest_info = (int(x_idx), 'trend')
         else:
+            # Normal mode: hover points first, then trend if no point
             closest_dist = float('inf')
             for i, val in enumerate(values):
                 px = self._date_to_x(i)
@@ -1201,7 +1207,7 @@ class MetricScatterPlot(QWidget):
                            Qt.AlignRight | Qt.AlignVCenter, label)
         
         hover_idx, hover_type = self.hover_info if self.hover_info else (None, None)
-        point_opacity = 0.25 if self._ctrl_held else 1.0
+        point_opacity = 1.0
         
         # Points
         for i, val in enumerate(values):
@@ -1220,11 +1226,11 @@ class MetricScatterPlot(QWidget):
             slope, intercept = self._calculate_trend_line(values)
             x_start = self._date_to_x(0)
             x_end = self._date_to_x(len(self.data) - 1)
-            base_width = 4 if self._ctrl_held else 2
-            line_style = Qt.SolidLine if self._ctrl_held else Qt.DashLine
+            base_width = 2
+            line_style = Qt.DashLine
             y_start = self._val_to_y(intercept, min_r, max_r)
             y_end = self._val_to_y(slope * (len(self.data) - 1) + intercept, min_r, max_r)
-            trend_pen = QPen(self.active_color, base_width, line_style)
+            trend_pen = QPen(self.trend_color, base_width, line_style)
             if hover_type == 'trend' or self._ctrl_held:
                 trend_pen.setWidth(base_width + 2)
             painter.setPen(trend_pen)
@@ -1261,7 +1267,7 @@ class MetricScatterPlot(QWidget):
                     t = d.get("total", c + inc)
                     cp = (c/t*100) if t>0 else 0; ip = (inc/t*100) if t>0 else 0
                     tooltip_text = f"{format_date_display(d['date'])} | {file_name}\n{c} ({cp:.1f}%) ✓ | {inc} ({ip:.1f}%) ✗ | {t} total"
-            
+
             painter.setFont(font); fm = QFontMetrics(font)
             lines = tooltip_text.split('\n')
             tw = max(fm.horizontalAdvance(l) for l in lines)
@@ -1272,11 +1278,23 @@ class MetricScatterPlot(QWidget):
             t_rect = QRectF(tx, ty, tw + 16, th + 12)
             painter.setPen(Qt.NoPen); painter.setBrush(QColor("#2d2d2d"))
             painter.drawRoundedRect(t_rect, 4, 4)
-            painter.setPen(QPen(self.active_color, 1))
+            tooltip_border_color = self.trend_color if p_type == 'trend' else self.active_color
+            painter.setPen(QPen(tooltip_border_color, 1))
+            painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(t_rect, 4, 4)
             painter.setPen(QColor("white"))
             for i, line in enumerate(lines):
                 painter.drawText(t_rect.adjusted(8, 6 + i*fm.height(), -8, 0), Qt.AlignLeft | Qt.AlignTop, line)
+
+        # Hint for dense data
+        if len(self.data) > 50 and not self._ctrl_held:
+            hint_font = QFont()
+            hint_font.setPointSize(10)
+            hint_font.setBold(True)
+            painter.setFont(hint_font)
+            painter.setPen(self.text_color)
+            hint_rect = QRectF(rect.x(), self.height() - 25, rect.width(), 20)
+            painter.drawText(hint_rect, Qt.AlignCenter, "Press Ctrl to focus on trend line")
 
 
 class DateRangeChart(QWidget):
