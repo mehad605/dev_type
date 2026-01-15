@@ -401,6 +401,26 @@ class InternalFileTree(QTreeWidget):
             if current_text.endswith(" (paused)"):
                 item.setText(0, current_text[:-9]) # len(" (paused)") == 9
     
+    def update_active_status(self, file_path: str, is_active: bool):
+        """Update the active status of a file (remove/add 'paused' suffix)."""
+        if not file_path:
+            return
+            
+        item = self._find_file_item(file_path)
+        if not item:
+            return
+            
+        current_text = item.text(0)
+        
+        if is_active:
+            # We are actively typing/viewing this file, so it's not "paused" in the background sense
+            if current_text.endswith(" (paused)"):
+                item.setText(0, current_text.replace(" (paused)", ""))
+        else:
+            # We paused or left the file, so if it's incomplete, mark it paused
+            if file_path in self.incomplete_files and not current_text.endswith(" (paused)"):
+                item.setText(0, f"{current_text} (paused)")
+
     def _find_file_item(self, file_path: str) -> Optional[QTreeWidgetItem]:
         """Recursively search for a file item by its path."""
         def search_item(parent: QTreeWidgetItem) -> Optional[QTreeWidgetItem]:
@@ -723,3 +743,7 @@ class FileTreeWidget(QWidget):
     def reload_tree(self):
         """Reload the tree using the last used load method."""
         self.tree.reload_tree()
+        
+    def update_active_status(self, file_path: str, is_active: bool):
+        """Update active status of a file."""
+        self.tree.update_active_status(file_path, is_active)

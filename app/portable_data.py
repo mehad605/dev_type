@@ -264,16 +264,20 @@ class PortableDataManager:
             
             if not sounds_dest.exists():
                 sounds_dest.mkdir(parents=True, exist_ok=True)
-                if sounds_src.exists():
-                    try:
-                        import shutil
-                        # Copy all wav/mp3 files
-                        for snd in sounds_src.glob("*.*"):
-                            if snd.suffix.lower() in ['.wav', '.mp3']:
-                                shutil.copy2(snd, sounds_dest / snd.name)
-                        logger.info(f"Copied default sounds to {sounds_dest}")
-                    except Exception as e:
-                        logger.warning(f"Failed to copy default sounds: {e}")
+            
+            if sounds_src.exists():
+                try:
+                    import shutil
+                    # Copy all wav/mp3 files
+                    for snd in sounds_src.glob("*.*"):
+                        if snd.suffix.lower() in ['.wav', '.mp3']:
+                            dest_file = sounds_dest / snd.name
+                            # Efficiently copy only new/missing files
+                            if not dest_file.exists():
+                                shutil.copy2(snd, dest_file)
+                                logger.info(f"Copied new sound to {dest_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to copy default sounds: {e}")
 
             # Copy and Extract Icon Theme (if needed)
             icons_dest = self.get_icons_dir()

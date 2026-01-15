@@ -1142,8 +1142,9 @@ class TypingAreaWidget(QTextEdit):
     def update_font(self, family: str, size: int, ligatures: bool):
         """Update font settings dynamically."""
         font = QFont(family, size)
-        # Ligatures support removed
         self.setFont(font)
+        # Override global stylesheet font settings which might force UI font
+        self.setStyleSheet(f"font-family: \"{family}\"; font-size: {size}pt;")
         self._update_cursor_geometry()
     
     def update_colors(self):

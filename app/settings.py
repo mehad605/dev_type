@@ -49,19 +49,19 @@ def get_indent_test_mode() -> bool:
 # =============================================================================
 SETTING_DEFAULTS: Dict[str, str] = {
     # Theme settings
-    "dark_scheme": "dracula",
+    "dark_scheme": "nord",
     "custom_themes": "{}",
     
     # Confirmation dialogs
-    "delete_confirm": "1",
+    "delete_confirm": "0",
     
     # Typing behavior
     "pause_delay": "7",
-    "allow_continue_mistakes": "0",
-    "show_typed_characters": "0",
+    "allow_continue_mistakes": "1",
+    "show_typed_characters": "1",
     "show_ghost_text": "1",
     "instant_death_mode": "0",
-    "auto_indent": "0",
+    "auto_indent": "1",
     
     # Color settings (Dracula theme colors)
     "color_untyped": "#6272a4",
@@ -82,7 +82,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "custom_fonts": "[]",
     
     # Display characters
-    "space_char": "␣",
+    "space_char": "·",
     "tab_width": "4",
     "space_per_tab": "4",
     
@@ -114,13 +114,10 @@ SETTING_DEFAULTS: Dict[str, str] = {
     
     # Global Exclusions (user-configurable)
     "ignored_files": (
-        # Binaries & Executables
-        "*.exe\n*.dll\n*.so\n*.dylib\n*.bin\n*.obj\n*.o\n*.a\n*.lib\n"
-        # Caches & Temp files
+        "*.exe\n.gitignore\n.python-version\nLICENSE\n*.env\n*.spec\n"
+        "*.dll\n*.so\n*.dylib\n*.bin\n*.obj\n*.o\n*.a\n*.lib\n"
         "*.pyc\n*.pyo\n*.pyd\n*.class\n*.log\n*.tmp\n"
-        # Archives
         "*.zip\n*.tar\n*.gz\n*.7z\n*.rar\n*.iso\n"
-        # Media & Documents
         "*.pdf\n*.png\n*.jpg\n*.jpeg\n*.gif\n*.svg\n*.ico\n*.mp3\n*.mp4\n"
         "*.doc\n*.docx\n*.xls\n*.xlsx\n*.ppt\n*.pptx"
     ),

@@ -59,21 +59,30 @@ class SoundManager(QObject):
                 "file": "keystrokes.wav"
             }
         
-        # Scan for keypress_*.wav and keypress_*.mp3 files
+        # Scan for all .wav files to be inclusive of new user additions
         if self.sounds_dir.exists():
-            for file in self.sounds_dir.glob("keypress_*"):
-                if file.suffix.lower() == '.wav':
-                    # Extract name from filename (keypress_something.wav -> something)
-                    name_part = file.stem.replace("keypress_", "")
-                    # Capitalize name
-                    display_name = name_part.capitalize()
+            for file in self.sounds_dir.glob("*.wav"):
+                # Skip the default keystrokes.wav if we already handled it
+                if file.name == "keystrokes.wav":
+                    continue
                     
-                    profile_id = name_part.lower()
-                    profiles[profile_id] = {
-                        "name": display_name,
-                        "builtin": True,
-                        "file": file.name
-                    }
+                # Extract name
+                stem = file.stem
+                
+                # User requested full names like keypress_1, keypress_2
+                # We use the stem directly for both ID and display name
+                name_part = stem
+                
+                # For display, we can just use the stem as requested 
+                # (or we could Title Case it, but user asked for "keypress_1")
+                display_name = name_part
+                profile_id = name_part.lower()
+                
+                profiles[profile_id] = {
+                    "name": display_name,
+                    "builtin": True,
+                    "file": file.name
+                }
         
         return profiles
     
@@ -255,20 +264,10 @@ class SoundManager(QObject):
 
     def _load_profile(self, profile: str):
         """Load sound file for a profile."""
-        # Clean up old sound
-        if self.sound_effect:
-            try:
-                self.sound_effect.stop()
-                self.sound_effect.setSource(QUrl())  # Clear source URL
-            except RuntimeError:
-                pass  # Already deleted
-            
-            # Important: Delete immediately and clear reference
-            old_effect = self.sound_effect
-            self.sound_effect = None
-            old_effect.deleteLater()
-        
         if profile == "none":
+            if self.sound_effect:
+                self.sound_effect.stop()
+                self.sound_effect.setSource(QUrl())
             return
         
         # Get profile data (built-in or custom)
@@ -278,11 +277,11 @@ class SoundManager(QObject):
             return
         
         # Determine file path
+        sound_path = None
         if profile_data.get("builtin"):
             # Built-in profile
-            if not profile_data.get("file"):
-                return
-            sound_path = self.sounds_dir / profile_data["file"]
+            if profile_data.get("file"):
+                sound_path = self.sounds_dir / profile_data["file"]
         else:
             # Custom profile - use file_path if available, fallback to old structure
             if "file_path" in profile_data:
@@ -295,14 +294,19 @@ class SoundManager(QObject):
                 except:
                     custom_sounds_dir = self.sounds_dir / "custom"
                 sound_path = custom_sounds_dir / profile / profile_data["file"]
-            else:
-                return
         
+        if not sound_path:
+             return
+
         # Load sound file
         if sound_path.exists():
-            self.sound_effect = QSoundEffect(self)  # Set parent to prevent premature deletion
+            if self.sound_effect is None:
+                self.sound_effect = QSoundEffect(self)
+                self.sound_effect.setVolume(self.volume)
+            else:
+                self.sound_effect.stop()
+            
             self.sound_effect.setSource(QUrl.fromLocalFile(str(sound_path)))
-            self.sound_effect.setVolume(self.volume)
             self._last_error = None  # Clear any previous error
             
             logger.debug(f"Loaded sound profile '{profile}': {sound_path}")
@@ -310,7 +314,8 @@ class SoundManager(QObject):
             error_msg = f"Sound file not found: {sound_path.name}"
             logger.warning(f"Sound profile '{profile}': {error_msg}")
             self._last_error = error_msg
-            self.sound_effect = None
+            if self.sound_effect:
+                self.sound_effect.setSource(QUrl())
     
     def set_profile(self, profile: str):
         """Change sound profile."""

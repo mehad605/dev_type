@@ -1755,8 +1755,8 @@ class MainWindow(QMainWindow):
         auto_indent_button_row = QHBoxLayout()
         auto_indent_button_row.setSpacing(8)
 
-        self.auto_indent_enabled_btn = QPushButton("ON")
-        self.auto_indent_disabled_btn = QPushButton("OFF")
+        self.auto_indent_enabled_btn = QPushButton("Enabled")
+        self.auto_indent_disabled_btn = QPushButton("Disabled")
         for btn in (self.auto_indent_enabled_btn, self.auto_indent_disabled_btn):
             btn.setCheckable(True)
             btn.setMinimumHeight(30)
@@ -1823,25 +1823,11 @@ class MainWindow(QMainWindow):
         explorer_desc.setStyleSheet("color: #888888; font-size: 9pt;")
         explorer_layout.addWidget(explorer_desc)
         
-        input_style = """
-            QTextEdit {
-                background-color: #2e3440;
-                color: #d8dee9;
-                border: 1px solid #4c566a;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QTextEdit:focus {
-                border: 1px solid #88c0d0;
-            }
-        """
-        
         # Ignored Files
         explorer_layout.addWidget(QLabel("Ignored Files/Patterns (one per line):"))
         self.ignored_files_edit = QTextEdit()
         self.ignored_files_edit.setPlaceholderText("*.exe\n*.zip\n*.pyc\nconfig.json\n\"CaseSensitiveName.py\"")
         self.ignored_files_edit.setMaximumHeight(100)
-        self.ignored_files_edit.setStyleSheet(input_style)
         self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
         explorer_layout.addWidget(self.ignored_files_edit)
         
@@ -1850,9 +1836,14 @@ class MainWindow(QMainWindow):
         self.ignored_folders_edit = QTextEdit()
         self.ignored_folders_edit.setPlaceholderText(".git\nnode_modules\nvenv\nbuild\n\"ExactFolderName\"")
         self.ignored_folders_edit.setMaximumHeight(100)
-        self.ignored_folders_edit.setStyleSheet(input_style)
         self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))
         explorer_layout.addWidget(self.ignored_folders_edit)
+
+        # Apply initial theme styling
+        from app.themes import get_color_scheme
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        initial_scheme = get_color_scheme("dark", scheme_name)
+        self._update_ignore_inputs_style(initial_scheme)
         
         # Use a timer to debounce save
         self._ignore_save_timer = QTimer()
@@ -3564,6 +3555,8 @@ class MainWindow(QMainWindow):
             self.editor_tab.apply_theme()
             if hasattr(self.editor_tab, 'typing_area'):
                 self.update_typing_colors(scheme)
+                # Re-apply font settings as global stylesheet might have overridden them
+                self._emit_font_changed()
         if DEBUG_STARTUP_TIMING:
             print(f"  [THEME] update_typing_colors: {time.time() - t:.3f}s")
         
@@ -3588,6 +3581,8 @@ class MainWindow(QMainWindow):
             
         if not isinstance(self.settings_tab, QLabel):
             self.update_color_buttons_from_theme()
+
+        self._update_ignore_inputs_style(scheme)
 
         # Update tab icons (ensures icons match theme colors)
         self.tabs.setTabIcon(self.tabs.indexOf(self.folders_tab), get_icon("FOLDER"))
@@ -3616,6 +3611,30 @@ class MainWindow(QMainWindow):
             
             # Trigger rehighlight to apply changes
             typing_area.highlighter.rehighlight()
+
+    def _update_ignore_inputs_style(self, scheme):
+        """Update styles for the ignored files/folders input areas."""
+        if not hasattr(self, 'ignored_files_edit') or not hasattr(self, 'ignored_folders_edit'):
+            return
+            
+        style = f"""
+            QTextEdit {{
+                background-color: {scheme.bg_secondary};
+                color: {scheme.text_primary};
+                border: 1px solid {scheme.border_color};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QTextEdit:focus {{
+                border: 1px solid {scheme.accent_color};
+                background-color: {scheme.bg_tertiary};
+            }}
+        """
+        
+        if self.ignored_files_edit:
+            self.ignored_files_edit.setStyleSheet(style)
+        if self.ignored_folders_edit:
+            self.ignored_folders_edit.setStyleSheet(style)
     
     def update_color_buttons_from_theme(self):
         """Update color picker button displays and labels to reflect theme colors."""
@@ -4314,8 +4333,13 @@ class MainWindow(QMainWindow):
         """Refresh the button styles for the auto-indent setting."""
         if not hasattr(self, "auto_indent_enabled_btn"): return
         
-        active_style = "background-color: #6272a4; color: white; border: none;"
-        inactive_style = "background-color: #3b4252; color: #888; border: 1px solid #444;"
+        active_style = (
+            "background-color: #5e81ac; color: white; border: none; border-radius: 6px;"
+            " font-weight: bold;"
+        )
+        inactive_style = (
+            "background-color: #3b4252; color: #d8dee9; border: 1px solid #434c5e; border-radius: 6px;"
+        )
         
         self.auto_indent_enabled_btn.setChecked(enabled)
         self.auto_indent_disabled_btn.setChecked(not enabled)

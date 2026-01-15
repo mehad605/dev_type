@@ -562,6 +562,11 @@ class EditorTab(QWidget):
         self.file_tree.refresh_file_stats(file_path)
         self.file_tree.refresh_incomplete_sessions()
         
+        # Mark as active only if engine is running (not paused)
+        # This ensures if we load a paused session, it still shows as (paused) in the tree
+        is_active = not self.typing_area.engine.state.is_paused if self.typing_area.engine else True
+        self.file_tree.update_active_status(self.current_file, is_active)
+        
         # Reset progress bars to show 0% on new file load
         self.user_progress_bar.reset()
         self.user_progress_label.setText("0%")
@@ -1306,6 +1311,10 @@ class EditorTab(QWidget):
     
     def _on_typing_resumed(self):
         """Resume the ghost playback when user starts typing again after pause."""
+        # Update file tree to show as active (remove paused suffix)
+        if self.current_file:
+            self.file_tree.update_active_status(self.current_file, True)
+
         # Only resume ghost if we're in an active race (not pending start) and ghost is paused
         if self.is_racing and not self._race_pending_start and self._race_paused_at is not None:
             # Adjust start time to account for pause duration
@@ -1319,6 +1328,10 @@ class EditorTab(QWidget):
 
     def _on_typing_paused(self):
         """Pause the ghost playback when user auto-pauses due to inactivity."""
+        # Update file tree to show as paused
+        if self.current_file:
+            self.file_tree.update_active_status(self.current_file, False)
+
         # Only pause ghost if we're in an active race and not already paused
         if self.is_racing and not self._race_pending_start and self._race_paused_at is None:
             self._race_paused_at = time.perf_counter()
