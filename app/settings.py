@@ -56,7 +56,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "delete_confirm": "0",
     
     # Typing behavior
-    "pause_delay": "7",
+    "pause_delay": "8",
     "allow_continue_mistakes": "1",
     "show_typed_characters": "1",
     "show_ghost_text": "1",
@@ -71,7 +71,7 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "color_cursor": "#8be9fd",
     
     # Cursor settings
-    "cursor_type": "static",
+    "cursor_type": "blinking",
     "cursor_style": "underscore",
     
     # Font settings
@@ -82,13 +82,13 @@ SETTING_DEFAULTS: Dict[str, str] = {
     "custom_fonts": "[]",
     
     # Display characters
-    "space_char": "·",
+    "space_char": "␣",
     "tab_width": "4",
     "space_per_tab": "4",
     
     # Sound settings
     "sound_enabled": "1",
-    "sound_profile": "default_1",
+    "sound_profile": "keypress_2",
     "sound_volume": "50",
     "custom_sound_profiles": "{}",
     
