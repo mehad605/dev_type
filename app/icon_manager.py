@@ -31,6 +31,17 @@ class IconManager(QObject):
         
         self._cache: Dict[str, QPixmap] = {}
         
+        # Import here to avoid potential circular imports at module level if file_scanner changes later
+        from app.file_scanner import LANGUAGE_MAP
+        self.language_map = LANGUAGE_MAP
+        
+        # Build inverse map: Language Name -> [extensions]
+        self.name_to_exts: Dict[str, list] = {}
+        for ext, name in self.language_map.items():
+            if name not in self.name_to_exts:
+                self.name_to_exts[name] = []
+            self.name_to_exts[name].append(ext)
+        
         self._load_manifest()
 
     def _load_manifest(self):
@@ -120,10 +131,18 @@ class IconManager(QObject):
                 
         # 4. Fallback: try looking up extension
         if not icon_id:
-             ext = language.lower()
-             if not ext.startswith("."): # e.g. "python" -> ".py" ?? HARD without map
-                 # Maybe we have "python" in fileExtensions? No, keys are extensions "py"
-                 pass
+            candidates = []
+            # Try extensions from language map (e.g. "Text" -> ".txt")
+            if language in self.name_to_exts:
+                candidates.extend([ext.lstrip(".") for ext in self.name_to_exts[language]])
+            
+            # Try language name as extension (e.g. "Env" -> "env", "Spec" -> "spec")
+            candidates.append(language.lower())
+            
+            for ext in candidates:
+                if ext in self.file_extensions:
+                    icon_id = self.file_extensions[ext]
+                    break
 
         if icon_id:
             filename = self.icon_definitions.get(icon_id)
@@ -150,7 +169,15 @@ class IconManager(QObject):
                 # Try long extension if no short one found? (e.g. .d.ts)
                 # Material Theme usually handles this in the generation or keys
                 
-        # 3. Default
+        # 3. Fallback: check language map
+        if not icon_id:
+            ext = "." + parts[-1] if len(parts) > 1 else ""
+            if ext and ext in self.language_map:
+                language_name = self.language_map[ext]
+                # Delegate to get_icon which handles language IDs
+                return self.get_icon(language_name, size)
+            
+        # 4. Default
         if not icon_id:
             icon_id = "file"
             
