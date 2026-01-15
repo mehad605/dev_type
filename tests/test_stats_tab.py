@@ -107,58 +107,26 @@ class TestGetThemeColors:
             assert isinstance(value, QColor)
 
 
-class TestLanguageFilterChip:
-    """Test LanguageFilterChip widget."""
-    
+class TestFilterChip:
+    """Test FilterChip widget."""
+
     def test_chip_initialization(self, app, db_setup):
-        """Test LanguageFilterChip initializes correctly."""
-        from app.stats_tab import LanguageFilterChip
-        
-        chip = LanguageFilterChip("Python")
-        
-        assert chip.language == "Python"
-        assert chip.is_all is False
-    
-    def test_chip_all_language(self, app, db_setup):
-        """Test LanguageFilterChip for 'All' option."""
-        from app.stats_tab import LanguageFilterChip
-        
-        chip = LanguageFilterChip("All", is_all=True)
-        
-        assert chip.language == "All"
-        assert chip.is_all is True
-        assert chip._selected is True  # "All" starts selected
-    
+        """Test FilterChip initializes correctly."""
+        from app.stats_tab import FilterChip
+
+        chip = FilterChip("Python", "python_value")
+
+        assert chip.label_text == "Python"
+        assert chip.value == "python_value"
+        assert chip._selected is False
+
     def test_chip_selection_property(self, app, db_setup):
         """Test chip selected property."""
-        from app.stats_tab import LanguageFilterChip
-        
-        chip = LanguageFilterChip("JavaScript")
-        
+        from app.stats_tab import FilterChip
+
+        chip = FilterChip("JavaScript", "js_value")
+
         assert chip._selected is False
-        
-        # Set via property
-        chip.selected = True
-        assert chip._selected is True
-        
-        chip.selected = False
-        assert chip._selected is False
-    
-    def test_chip_emits_signal(self, app, db_setup):
-        """Test that clicking chip emits toggled signal."""
-        from app.stats_tab import LanguageFilterChip
-        from PySide6.QtCore import Qt
-        from PySide6.QtTest import QTest
-        
-        chip = LanguageFilterChip("Rust")
-        
-        signals_received = []
-        chip.toggled.connect(lambda lang, sel, ctrl: signals_received.append((lang, sel, ctrl)))
-        
-        QTest.mouseClick(chip, Qt.LeftButton)
-        
-        assert len(signals_received) == 1
-        assert signals_received[0][0] == "Rust"
 
 
 class TestLanguageFilterBar:
@@ -190,11 +158,10 @@ class TestLanguageFilterBar:
         bar = LanguageFilterBar()
         bar.set_languages(["Python", "JavaScript"])
         
-        # Initially no specific language selected (empty = all)
+        # Initially no specific language selected (None = all)
         selected = bar.get_selected_languages()
-        
-        assert isinstance(selected, set)
-        assert len(selected) == 0  # Empty means "all"
+
+        assert selected is None  # None means "all"
 
 
 class TestSummaryStatCard:

@@ -344,14 +344,14 @@ def test_auto_indent():
     assert engine.state.cursor_position == 17
     assert engine.state.content[engine.state.cursor_position] == "p" # Next char
     
-    # 3. Wpm calculation should exclude these 4 chars
-    # Typed 12 + 1 = 13 manual characters.
-    assert engine.state._get_calculable_chars() == 13
+    # 3. Wpm calculation now includes auto-skipped characters
+    # Typed 12 + 1 + 4 = 17 characters total.
+    assert engine.state._get_calculable_chars() == 17
     
     # 4. Backspacing over skipped chars
     engine.process_backspace()
-    assert engine.state.cursor_position == 16
-    assert len(engine.state.skipped_positions) == 3
+    assert engine.state.cursor_position == 12  # Now removes all auto-skipped chars at once
+    assert len(engine.state.skipped_positions) == 0
     
     # 5. Ctrl+Backspace should clear skipped positions in range
     # Reset to state before backspace

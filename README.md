@@ -1,67 +1,121 @@
-# ⌨️ Dev Type
-
-A modern, high-performance typing practice application designed specifically for developers. Practice your typing skills by typing real code from your projects, with features tailored for programmers.
-
----
-
-## 📥 Downloads
-
-If you just want to use the app, you can download the latest pre-built binaries from the GitHub Releases page:
-
-- **Windows**: `dev_type_vX.Y.Z.exe` (Portable executable)
-*   **Linux**: `dev_type_vX.Y.Z.deb` (Debian/Ubuntu package)
-
-👉 **[Download Latest Release](https://github.com/mehad605/dev_type/releases/latest)**
+<div align="center">
+  <img src="https://via.placeholder.com/150" alt="Dev Type Logo" width="120" height="120" />
+  <h1>Dev Type</h1>
+  <p>
+    <strong>The uncompromising typing app for developers.</strong>
+  </p>
+</div>
 
 ---
-
-## 🎬 Demo
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/ef18ab02-c152-4711-a8ab-fa79f8841734" width="70%"> </video>
+  <video src="https://github.com/user-attachments/assets/ef18ab02-c152-4711-a8ab-fa79f8841734" width="70%" controls muted autoplay loop style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></video>
 </div>
+
+<br />
+
+### Why Dev Type?
+
+Most typing tutors treat you like a secretary from 1995. They feed you random paragraphs of prose or nonsensical dictionary words.
+
+**You are a developer.** You type syntax, brackets, camelCase, snake_case, and complex indentation patterns. 
+
+**Dev Type** is different. It's a local-first, high-performance desktop app that lets you practice on **your own code**. Point it at your project folder, pick a file, and start racing.
+
+If you enjoy the project, please consider giving it a star! 🌟
+
+---
+
+## 📸 Gallery
+
+| **Folders Layout** | **Languages Overview** |
+| :---: | :---: |
+| <img src="assets/Screenshots/folder_tab.png" width="100%" style="border-radius: 6px;" /> | <img src="assets/Screenshots/language_tab.png" width="100%" style="border-radius: 6px;" /> |
+
+| **Typing Interface** | **Session History** |
+| :---: | :---: |
+| <img src="assets/Screenshots/typing_tab.png" width="100%" style="border-radius: 6px;" /> | <img src="assets/Screenshots/history_tab.png" width="100%" style="border-radius: 6px;" /> |
+
+| **Detailed Statistics** | **Extensive Settings** |
+| :---: | :---: |
+| <img src="assets/Screenshots/stats_tab.png" width="100%" style="border-radius: 6px;" /> | <img src="assets/Screenshots/settings_tab.png" width="100%" style="border-radius: 6px;" /> |
 
 ---
 
 ## ✨ Features
 
-- **📁 Code Folder Integration**: Add folders containing your code projects and practice typing on real code files.
-- **🔍 Language Detection**: Automatically scans and categorizes files by programming language.
-- **⚡ Typing Practice**: High-performance interactive typing interface with real-time syntax highlighting feedback.
-- **📊 Statistics Tracking**: Comprehensive stats including WPM, accuracy, and detailed progress charts.
-- **👻 Ghost Replays**: Race against your previous best performances.
-- **🔊 Sound Effects**: Mechanical keyboard sounds with customizable profiles.
-- **🎨 Color Schemes**: Beautiful dark themes including Nord, Catppuccin, and Dracula.
-- **💾 Portable Data**: Keep your stats and settings in a local folder or move them between machines.
+### 📁 Your Code, Your Practice
+Don't type random snippets. `File > Open Folder`. We scan your local projects, ignore the binary junk (`.exe`, `node_modules`, `venv`), and let you type the real files you work with every day.
+
+> **Warning:** Dev Type is designed for **completed projects** or **fixed codebases**. Because ghost replays rely on exact text matching, constantly changing the file content will break your previous ghost records. If you must edit the file, the ghost functionality for that specific file will be disabled until you reset.
+
+### 📊 Deep Statistics
+Go beyond WPM. We track your accuracy, key-by-key confusion matrix (which keys you miss most), and even generate a **keyboard heatmap** of your typing patterns.
+
+### ⏸️ Portable & Resumable
+- **Portable Data**: All your stats and profiles live in the `Dev_Type_Data` folder next to the app. Moving machines? Just copy the folder.
+- **Auto-Pause**: Get interrupted? The app auto-pauses after a few seconds of inactivity. You can close the app and resume a 5,000-line file explicitly where you left off next week. Data is always safe.
+
+### 👻 Race Your Best Ghost
+Push your limits by racing against your own best performance. We automatically save only your **fastest run** for each file, letting you compete against your peak efficiency.
+
+### 💀 Instant Death Mode
+For the perfectionists. One mistake and it's game over. Reset to the top. This high-stakes mode forces you to slow down and prioritize 100% accuracy over raw speed.
+
+### ⌨️ Keyboard Shortcuts
+Keep your hands on the home row. We support extensive keyboard shortcuts for navigation and control:
+- `Esc`: Reset cursor to top of file
+- `Ctrl + R`: Random file from current view
+- `Ctrl + T`: Cycle through themes
+- `Ctrl + P`: Toggle Pause/Resume
+- `Ctrl + Backspace`: Delete word
+
+### 🧠 Smart Indent Logic
+Simulates IDE behavior while respecting the constraints of typing drills. Since backspacing out of a deep nested block isn't visually viable when tracing pre-written code, our smart indent automatically handles level jumps for you, keeping the flow seamless.
+
+### 👥 Multi-Profile Support
+Share the app without mixing your stats. Create separate profiles for yourself, your family members, or even different keyboard layouts (e.g., "QWERTY" vs "Colemak"). Every profile gets its own isolated history, settings, and progress.
+
+### 🔒 Privacy First
+No cloud. No login. No tracking. Your speed stats, your history, and your code stay on your machine. All data is stored in a local SQLite database that you control.
 
 ---
 
-## 📸 Screenshots
+## 📥 Downloads
 
-| Typing Practice | Folder Explorer |
-| :---: | :---: |
-| ![Typing](assets/Screenshots/typing_tab.png) | ![Folders](assets/Screenshots/folder_tab.png) |
+If you just want to use the app, download the standalone binaries:
 
-| Session History | Language Stats |
-| :---: | :---: |
-| ![History](assets/Screenshots/history_tab.png) | ![Languages](assets/Screenshots/language_tab.png) |
+👉 **[Download Latest Release](https://github.com/mehad605/dev_type/releases/latest)**
 
-| Performance Stats | Extensive Settings |
-| :---: | :---: |
-| ![Stats](assets/Screenshots/stats_tab.png) | ![Settings](assets/Screenshots/settings_tab.png) |
+- **Windows**: `dev_type_vX.Y.Z.exe` (Portable executable)
+- **Linux**: `dev_type_vX.Y.Z.deb` (Debian/Ubuntu package)
 
 ---
 
-## 🚀 Development Setup (Run from Source)
+## 🚀 Development
 
-If you want to run the latest development version:
+### CLI Flags
+The app supports various command-line flags for advanced usage or debugging.
+```bash
+# Example usage:
+python main.py --profile "Work" --instant-death --sound-off
+```
+Common flags:
+- `--profile`: Start with a specific profile loaded
+- `--instant-death`: Force enable instant death mode
+- `--sound-off`: Start with sound disabled
 
-### Prerequisites
-- **Python 3.13** or higher
-- **Git**
+For a complete list, see [docs/CLI_FLAGS.md](docs/CLI_FLAGS.md).
 
-### Using uv (⭐ Recommended)
-uv is a blazing fast Python package manager. 
+### Tests
+We have a comprehensive test suite. If you are contributing, please check [docs/TESTS.md](docs/TESTS.md) for detailed information on how to run and interpret the tests.
+
+### Setup
+If you want to modify the code or run the latest development version:
+
+**Prerequisites:** Python 3.13+, Git
+
+#### Using uv (⭐ Recommended)
 *Don't have uv?* [Install it here](https://docs.astral.sh/uv/getting-started/installation/).
 
 1. **Clone & Enter:**
@@ -75,7 +129,7 @@ uv is a blazing fast Python package manager.
    uv run main.py
    ```
 
-### Using standard pip
+#### Using standard pip
 1. **Clone & Enter:**
    ```bash
    git clone https://github.com/mehad605/dev_type.git
@@ -84,10 +138,8 @@ uv is a blazing fast Python package manager.
 2. **Create Virtual Environment:**
    ```bash
    python -m venv .venv
-   # Windows:
-   .venv\Scripts\activate
-   # Linux/macOS:
-   source .venv/bin/activate
+   # Windows: .venv\Scripts\activate
+   # Linux/macOS: source .venv/bin/activate
    ```
 3. **Install & Run:**
    ```bash
@@ -122,12 +174,14 @@ This will generate a Debian package `dev_type_vX.Y.Z.deb` in the `dist/` folder,
 
 ---
 
-## 📄 License
+## 📄 License & Philosophy
 
-This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**.
+**CC BY-NC-SA 4.0**
 
-- **Non-Commercial**: You cannot use this for financial gain.
-- **ShareAlike**: Derivatives must use the same open license.
-- **Attribution**: You must give appropriate credit.
+TL;DR:
+*   **Hack on it.** (Go wild)
+*   **Share it.** (With friends, enemies, your cat)
+*   **Learn from it.** (It's 100% open source)
+*   **Keep it free.** (No selling, please)
 
-[Full License Details](LICENSE)
+[Read Full License](LICENSE)

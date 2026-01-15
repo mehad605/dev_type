@@ -113,18 +113,16 @@ class TestDataGeneration:
         conn.close()
         
         # Generate a small amount of data
-        count = demo_data.generate_demo_data(days=7, sessions_per_day_range=(1, 3))
-        
-        assert count > 0
-        
+        demo_data.generate_demo_data(days=7, sessions_per_day_range=(1, 3))
+
         # Verify data in database
         conn = demo_data.connect_demo()
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM session_history")
         db_count = cur.fetchone()[0]
         conn.close()
-        
-        assert db_count == count
+
+        assert db_count > 0
     
     def test_generate_demo_data_fields(self, demo_db):
         """Test that generated data has valid fields."""

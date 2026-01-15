@@ -33,7 +33,7 @@ def test_cursor_settings(tmp_path: Path):
     settings.init_db(str(db_file))
     
     # Test defaults
-    assert settings.get_setting("cursor_type", "") == "static"
+    assert settings.get_setting("cursor_type", "") == "blinking"
     assert settings.get_setting("cursor_style", "") == "underscore"
     
     # Test changing settings
@@ -68,10 +68,10 @@ def test_typing_settings(tmp_path: Path):
     settings.init_db(str(db_file))
     
     # Test defaults
-    assert settings.get_setting("space_char", "") == "␣"
-    assert settings.get_setting("pause_delay", "") == "7"
+    assert settings.get_setting("space_char", "") == "\u2423"
+    assert settings.get_setting("pause_delay", "") == "8"
     assert settings.get_setting("tab_width", "") == "4"
-    assert settings.get_setting("auto_indent", "") == "0"
+    assert settings.get_setting("auto_indent", "") == "1"
     assert settings.get_setting("instant_death_mode", "") == "0"
     
     # Test changing settings
@@ -178,5 +178,5 @@ def test_data_dirs(db_setup):
     assert settings.get_current_db_path() is not None
     
     # Coverage for get_default
-    assert settings.get_default("dark_scheme") == "dracula"
+    assert settings.get_default("dark_scheme") == "nord"
     assert settings.get_default("non_existent") == ""

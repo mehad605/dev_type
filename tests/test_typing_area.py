@@ -229,10 +229,10 @@ class TestTabWidthSetting:
     def test_update_tab_width(self, typing_area):
         """Test updating tab width dynamically."""
         typing_area.update_tab_width(2)
-        assert typing_area.tab_width == 2
-        
+        assert typing_area.space_per_tab == 2
+
         typing_area.update_tab_width(8)
-        assert typing_area.tab_width == 8
+        assert typing_area.space_per_tab == 8
     
     def test_tab_expansion_in_display_content(self, typing_area, tmp_path):
         """Test that tabs are expanded to correct number of spaces."""
@@ -271,14 +271,14 @@ class TestTabWidthSetting:
         initial_display = typing_area.display_content
         assert space_char * 4 in initial_display
         
-        # Change to 2 spaces
+        # Change to 2 spaces (affects Tab key behavior, not display)
         typing_area.update_tab_width(2)
         updated_display = typing_area.display_content
-        
-        # Should now have 2 spaces, not 4
-        assert space_char * 2 in updated_display
-        # The display should be different
-        assert initial_display != updated_display
+
+        # Display should remain the same (tabs always show as 4 spaces)
+        assert initial_display == updated_display
+        # But space_per_tab should be updated
+        assert typing_area.space_per_tab == 2
     
     def test_display_char_for_tab(self, typing_area):
         """Test _display_char_for returns correct tab representation."""
