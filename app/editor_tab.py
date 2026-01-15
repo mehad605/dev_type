@@ -948,6 +948,11 @@ class EditorTab(QWidget):
         engine = self.typing_area.engine
         engine.pause()
         
+        # Pause ghost if racing
+        if self.is_racing and not self._race_pending_start:
+            self._race_paused_at = time.perf_counter()
+            self._ghost_timer.stop()
+        
         if engine.state.is_complete():
             stats_db.clear_session_progress(self.current_file, auto_indent=engine.auto_indent)
         elif engine.state.cursor_position > 0:
@@ -964,6 +969,16 @@ class EditorTab(QWidget):
             typed_chars_json = json.dumps(self.typing_area.highlighter.typed_chars)
             skipped_pos_json = json.dumps(list(engine.state.skipped_positions))
             
+            # Serialize race state if in a race
+            race_state_json = None
+            if self.is_racing and self._ghost_engine:
+                race_state = {
+                    'ghost_index': self._ghost_index,
+                    'ghost_cursor_position': self._ghost_cursor_position,
+                    'race_paused_at': self._race_paused_at,
+                }
+                race_state_json = json.dumps(race_state)
+            
             stats_db.save_session_progress(
                 self.current_file,
                 cursor_pos=engine.state.cursor_position,
@@ -979,14 +994,15 @@ class EditorTab(QWidget):
                 max_correct_position=engine.state.max_correct_position,
                 typed_chars_json=typed_chars_json,
                 skipped_positions_json=skipped_pos_json,
-                auto_indent=engine.auto_indent
+                auto_indent=engine.auto_indent,
+                race_state_json=race_state_json
             )
         else:
             stats_db.clear_session_progress(self.current_file, auto_indent=engine.auto_indent)
-
+        
         self.file_tree.refresh_incomplete_sessions()
         self.file_tree.refresh_file_stats(self.current_file)
-
+    
     def save_active_progress(self):
         """Pause the active session and persist progress, if any."""
         self._save_current_progress()
@@ -1036,11 +1052,10 @@ class EditorTab(QWidget):
                 # Pause
                 self.typing_area.engine.pause()
                 
-                # Pause ghost if racing
-                if self.is_racing:
+                # Pause ghost if racing - always stop timer to ensure ghost pauses
+                if self.is_racing and not self._race_pending_start:
                     self._race_paused_at = time.perf_counter()
-                    if self._ghost_timer.isActive():
-                        self._ghost_timer.stop()
+                self._ghost_timer.stop()  # Stop timer regardless of state
             
             # Update stats immediately
             self.on_stats_updated()
@@ -1134,7 +1149,7 @@ class EditorTab(QWidget):
                 elif wpm_history and wpm_history[-1][0] == final_second:
                     wpm_history[-1] = (final_second, wpm)
 
-            # Save the ghost
+# Save the ghost
             success = ghost_mgr.save_ghost(
                 self.current_file,
                 wpm,
@@ -1151,6 +1166,14 @@ class EditorTab(QWidget):
             )
             
             if success:
+                # Update file stats in database so file tree shows the new best
+                stats_db.update_file_stats(
+                    self.current_file,
+                    wpm=wpm,
+                    accuracy=accuracy,
+                    completed=True,
+                    auto_indent=auto_indent_enabled
+                )
                 # Update ghost button state
                 self._update_ghost_button()
                 return True
