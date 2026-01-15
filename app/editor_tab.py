@@ -1441,16 +1441,17 @@ class EditorTab(QWidget):
         winner = "user" if user_time <= ghost_time else "ghost"
         
         # Save race results to database with corrected stats
-        # Calculate accurate stats based on actual race time
+# Calculate accurate stats based on actual race time - use same method as typing_engine for consistency
         if user_time and user_time > 0:
             user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
             user_completed_chars = self.typing_area.engine.state.correct_keystrokes if self.typing_area.engine else 0
             minutes = round(user_time) / 60.0
             race_wpm = (user_completed_chars / 5.0) / minutes if minutes > 0 else 0.0
         else:
+            # Use the same calculation as typing_engine.get_wpm() for consistency
             race_wpm = stats.get("wpm", 0.0)
             user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
-            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+            user_completed_chars = self.typing_area.engine.state.correct_keystrokes if self.typing_area.engine else 0
         
         # Calculate accuracy from engine state
         if self.typing_area.engine:
@@ -1589,16 +1590,18 @@ class EditorTab(QWidget):
         # Calculate accurate stats based on actual race time
         user_time = self._user_finish_elapsed if self._user_finish_elapsed is not None else user_stats.get("time")
         
-        # Recalculate WPM based on actual race time (not engine's elapsed time)
+# Recalculate WPM based on actual race time (not engine's elapsed time)
+        # Use correct_keystrokes to match the live stats calculation in typing_engine
         if user_time and user_time > 0:
             user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
-            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
-            minutes = user_time / 60.0
+            user_completed_chars = self.typing_area.engine.state.correct_keystrokes if self.typing_area.engine else 0
+            minutes = round(user_time) / 60.0  # Use rounded time to match typing_engine
             user_wpm = (user_completed_chars / 5.0) / minutes if minutes > 0 else 0.0
         else:
+            # Use the same calculation as typing_engine.get_wpm() for consistency
             user_wpm = user_stats.get("wpm", 0.0)
             user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
-            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
+            user_completed_chars = self.typing_area.engine.state.correct_keystrokes if self.typing_area.engine else 0
         
         # Calculate accuracy from engine state
         if self.typing_area.engine:
