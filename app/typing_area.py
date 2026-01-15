@@ -847,6 +847,8 @@ class TypingAreaWidget(QTextEdit):
             sound_mgr.play_keypress()  # Sound for backspace
             if modifiers & Qt.ControlModifier:
                 # Ctrl+Backspace
+                if self.logging_enabled:
+                    print(f"[BACKSPACE] CTRL+Backspace pressed at pos {self.engine.state.cursor_position}")
                 self._record_keystroke("<CTRL-BACKSPACE>", True)
                 old_engine_pos = self.engine.state.cursor_position
                 self.engine.process_ctrl_backspace()
@@ -859,6 +861,10 @@ class TypingAreaWidget(QTextEdit):
                 self._update_cursor_position()
             else:
                 # Regular backspace
+                if self.logging_enabled:
+                    removed_char = self.engine.state.content[self.engine.state.cursor_position - 1] if self.engine.state.cursor_position > 0 else "None"
+                    print(f"[PRE-BACKSPACE] Pos: {self.engine.state.cursor_position} | Removing: '{self._display_char_for(removed_char)}'")
+                
                 self._record_keystroke("\b", True)
                 if self.engine.state.cursor_position > 0 or self.engine.mistake_at is not None:
                     old_pos = self.engine.state.cursor_position
@@ -876,6 +882,11 @@ class TypingAreaWidget(QTextEdit):
                     self.current_typing_position = self._engine_to_display_position(new_pos)
                     self._maybe_slide_window()
                     self._update_cursor_position()
+
+                    if self.logging_enabled:
+                        now_expected = self.engine.state.content[new_pos]
+                        print(f"[POST-BACKSPACE] Pos: {new_pos} | Now Expecting: '{self._display_char_for(now_expected)}' (Untyped)")
+
             self.stats_updated.emit()
             return
         
@@ -910,13 +921,13 @@ class TypingAreaWidget(QTextEdit):
                     all_correct = False
                     # Log failure
                     if self.logging_enabled:
-                        print(f"Tab Processing - Expected: '{expected_from_engine}', Typed: ' ' (FAILED)")
+                        print(f"[TAB-STEP] Expected: '{self._display_char_for(expected_from_engine)}' | Typed: ' ' | Result: WRONG (Red)")
                     # Stop to prevent drawing multiple red indicators at one spot
                     break
                 
                 # Log success
                 if self.logging_enabled:
-                     print(f"Tab Processing - Expected: '{expected_from_engine}', Typed: ' '")
+                     print(f"[TAB-STEP] Expected: '{self._display_char_for(expected_from_engine)}' | Typed: ' ' | Result: CORRECT (Green)")
                 
                 if expected_from_engine == "" and not is_correct:
                     # strict mode block
@@ -969,12 +980,19 @@ class TypingAreaWidget(QTextEdit):
             elif key == Qt.Key_Return or key == Qt.Key_Enter:
                 char = '\n'
             
+            # Log PRE-INPUT state
+            if self.logging_enabled:
+                if self.engine.state.cursor_position < len(self.engine.state.content):
+                    pre_expected = self.engine.state.content[self.engine.state.cursor_position]
+                    print(f"[PRE-INPUT] Pos: {self.engine.state.cursor_position} | Expecting: '{self._display_char_for(pre_expected)}' (Untyped)")
+
             # Process keystroke
             is_correct, expected, skipped_count = self.engine.process_keystroke(char, space_per_tab=self.space_per_tab)
             
             # Log expected vs actual if enabled
             if self.logging_enabled:
-                print(f"Expected: '{expected}', Typed: '{char}'")
+                status = "CORRECT (Green)" if is_correct else "WRONG (Red)"
+                print(f"[INPUT] Key: '{self._display_char_for(char)}' | Expected: '{self._display_char_for(expected)}' | Result: {status} | Pos: {self.engine.state.cursor_position}")
             
             # If engine was paused and is now running, emit typing_resumed signal
             if was_paused and not self.engine.state.is_paused:

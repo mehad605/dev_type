@@ -614,23 +614,31 @@ class EditorTab(QWidget):
             self.on_stats_updated()
     
     def on_record_clicked(self):
-        """Enable recording/logging mode for indent testing."""
+        """Toggle recording/logging mode for indent testing."""
         if not self._loaded or not hasattr(self, 'typing_area') or not self.typing_area.engine:
             print("[EditorTab] Cannot record: engine not loaded")
             return
             
-        print("\n" + "="*40)
-        print("BEGIN RECORDING SESSION")
-        print("="*40)
-        print("FILE CONTENT:")
-        print(self.typing_area.engine.state.content)
-        print("\n--- END FILE CONTENT ---\n")
-        print("Ready for input...")
-        
-        self.typing_area.set_logging_enabled(True)
-        # Disable button to indicate it's active
-        self.record_btn.setEnabled(False)
-        self.record_btn.setText("Recording...")
+        if self.typing_area.logging_enabled:
+            # STOP Recording
+            self.typing_area.set_logging_enabled(False)
+            self.record_btn.setText("Record")
+            print("\n" + "="*40)
+            print("STOPPED RECORDING SESSION")
+            print("="*40 + "\n")
+        else:
+            # START Recording
+            print("\n" + "="*40)
+            print("BEGIN RECORDING SESSION")
+            print("="*40)
+            print("FILE CONTENT:")
+            print(self.typing_area.engine.state.content)
+            print("\n--- END FILE CONTENT ---\n")
+            print("Ready for input...")
+            print("Showing extended debug info...")
+            
+            self.typing_area.set_logging_enabled(True)
+            self.record_btn.setText("Stop Record")
     
     
     def on_reset_clicked(self):
