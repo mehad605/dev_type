@@ -1444,8 +1444,8 @@ class EditorTab(QWidget):
         # Calculate accurate stats based on actual race time
         if user_time and user_time > 0:
             user_total_chars = len(self.typing_area.original_content) if self.typing_area.original_content else 0
-            user_completed_chars = self.typing_area.engine.state.cursor_position if self.typing_area.engine else 0
-            minutes = user_time / 60.0
+            user_completed_chars = self.typing_area.engine.state.correct_keystrokes if self.typing_area.engine else 0
+            minutes = round(user_time) / 60.0
             race_wpm = (user_completed_chars / 5.0) / minutes if minutes > 0 else 0.0
         else:
             race_wpm = stats.get("wpm", 0.0)
@@ -1508,27 +1508,27 @@ class EditorTab(QWidget):
                 )
 
             # Check and save new ghost if this beat the old one
-            race_stats = {
-                "wpm": race_wpm,
-                "accuracy": race_accuracy,
-                "time": user_time,
-                "correct": race_correct,
-                "incorrect": race_incorrect,
-                "total": race_correct + race_incorrect,
-            }
-            is_new_best = self._check_and_save_ghost(race_stats)
+        race_stats = {
+            "wpm": race_wpm,
+            "accuracy": race_accuracy,
+            "time": round(user_time) if user_time else 0,
+            "correct": race_correct,
+            "incorrect": race_incorrect,
+            "total": race_correct + race_incorrect,
+        }
+        is_new_best = self._check_and_save_ghost(race_stats)
 
-            # Clear session progress and refresh tree highlights/stats
-            stats_db.clear_session_progress(self.current_file, auto_indent=self.typing_area.engine.auto_indent)
-            self.file_tree.refresh_file_stats(self.current_file)
+        # Clear session progress and refresh tree highlights/stats
+        stats_db.clear_session_progress(self.current_file, auto_indent=self.typing_area.engine.auto_indent)
+        self.file_tree.refresh_file_stats(self.current_file)
 
-            parent_window = self.window()
-            if hasattr(parent_window, "refresh_languages_tab"):
-                parent_window.refresh_languages_tab()
-            if hasattr(parent_window, "refresh_history_tab"):
-                parent_window.refresh_history_tab()
-            if hasattr(parent_window, "refresh_stats_tab"):
-                parent_window.refresh_stats_tab()
+        parent_window = self.window()
+        if hasattr(parent_window, "refresh_languages_tab"):
+            parent_window.refresh_languages_tab()
+        if hasattr(parent_window, "refresh_history_tab"):
+            parent_window.refresh_history_tab()
+        if hasattr(parent_window, "refresh_stats_tab"):
+            parent_window.refresh_stats_tab()
         else:
             is_new_best = False
         
@@ -1631,7 +1631,7 @@ class EditorTab(QWidget):
         race_stats = {
             'wpm': user_wpm,
             'accuracy': user_accuracy_decimal,
-            'time': user_time,
+            'time': round(user_time) if user_time else 0,
             'correct': user_correct,
             'incorrect': user_incorrect,
             'total': user_total,

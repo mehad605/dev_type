@@ -1001,6 +1001,18 @@ class SessionResultDialog(QDialog):
         
         user_wpm = self.stats.get('wpm', 0)
         ghost_wpm = self.race_info.get('ghost_wpm', 0)
+
+        # Recalculate WPM for user using consistent formula: correct / 5 / (round(time) / 60)
+        if self.is_race:
+            user_correct = self.race_info.get('user_correct', 0)
+            user_time = self.race_info.get('user_time', 0)
+            if user_time > 0:
+                user_wpm = (user_correct / 5.0) / (round(user_time) / 60.0)
+
+            # For ghost, use stored final_stats if available, otherwise keep existing ghost_wpm
+            ghost_final_stats = self.race_info.get('ghost_final_stats')
+            if ghost_final_stats:
+                ghost_wpm = ghost_final_stats.get('wpm', ghost_wpm)
         
         if self.is_race:
             if user_wpm >= ghost_wpm:
@@ -1040,11 +1052,13 @@ class SessionResultDialog(QDialog):
         # Screenshot shows Ghost.
         if self.is_race:
             g_acc = self.race_info.get('ghost_acc', 100)
-            g_time = self.race_info.get('ghost_time', 0)
-            
+            g_time = round(self.race_info.get('ghost_time', 0))
+
             # Use actual final_stats if available, otherwise estimate
             ghost_final_stats = self.race_info.get('ghost_final_stats')
             if ghost_final_stats:
+                g_acc = ghost_final_stats.get('accuracy', g_acc) * 100  # Convert from 0-1 to percentage
+                g_time = ghost_final_stats.get('time', g_time)
                 g_correct = ghost_final_stats.get('correct', 0)
                 g_incorrect = ghost_final_stats.get('incorrect', 0)
             else:
