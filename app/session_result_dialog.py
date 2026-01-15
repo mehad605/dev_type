@@ -66,6 +66,8 @@ class InteractiveWPMGraph(QWidget):
         # Mouse tracking
         self.setMouseTracking(True)
         self.hover_info = None  # (second, type) where type is 'user_wpm', 'user_error', 'ghost_wpm', 'ghost_error'
+        self.hover_legend = None  # 'user', 'user_wpm', 'user_error', 'ghost', 'ghost_wpm', 'ghost_error'
+        self.previous_hover_legend = None
         
         # Calculate axis ranges - start from 1 second, end at max time
         self.x_min = 1
@@ -277,11 +279,47 @@ class InteractiveWPMGraph(QWidget):
         x = event.position().x()
         y = event.position().y()
         self.hover_info = self._find_hovered_marker(x, y)
+
+        # Check legend hover
+        self.hover_legend = None
+        if self.user_label_rect.contains(x, y):
+            self.hover_legend = 'user'
+        elif self.user_wpm_rect.contains(x, y):
+            self.hover_legend = 'user_wpm'
+        elif self.user_error_rect.contains(x, y):
+            self.hover_legend = 'user_error'
+        elif self.is_race:
+            if self.ghost_label_rect.contains(x, y):
+                self.hover_legend = 'ghost'
+            elif self.ghost_wpm_rect.contains(x, y):
+                self.hover_legend = 'ghost_wpm'
+            elif self.ghost_error_rect.contains(x, y):
+                self.hover_legend = 'ghost_error'
+
+        # Update cursor
+        if self.hover_legend:
+            self.setCursor(Qt.PointingHandCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
+        # Show tooltip if hover_legend changed
+        if self.hover_legend != self.previous_hover_legend:
+            if self.hover_legend:
+                tooltip_text = "Double-click to toggle visibility"
+                QToolTip.showText(event.globalPosition().toPoint(), tooltip_text, self)
+            else:
+                QToolTip.hideText()
+            self.previous_hover_legend = self.hover_legend
+
         self.update()
     
     def leaveEvent(self, event):
         """Clear hover when mouse leaves."""
         self.hover_info = (None, None)
+        self.hover_legend = None
+        self.setCursor(Qt.ArrowCursor)
+        QToolTip.hideText()
+        self.previous_hover_legend = None
         self.update()
     
     def paintEvent(self, event):
@@ -599,24 +637,26 @@ class InteractiveWPMGraph(QWidget):
         font.setBold(False)
         painter.setFont(font)
         fm = QFontMetrics(font)
-        
+
         line_height = 14
         indent = 15  # Indent for sub-items
-        
+
         # --- User Legend (left side) ---
         user_legend_x = rect.x() + 5
         legend_y = 3
-        
+
         # "You" label
         you_text = "You"
         you_visible = self.user_visible
         you_color = text_color if you_visible else QColor(text_color.red(), text_color.green(), text_color.blue(), 80)
         painter.setPen(you_color)
         font.setBold(True)
+        font.setUnderline(self.hover_legend == 'user')
         painter.setFont(font)
         painter.drawText(QPointF(user_legend_x, legend_y + 10), you_text)
         self.user_label_rect = QRectF(user_legend_x - 3, legend_y, fm.horizontalAdvance(you_text) + 6, line_height)
         font.setBold(False)
+        font.setUnderline(False)
         painter.setFont(font)
         
         # User WPM
@@ -624,7 +664,7 @@ class InteractiveWPMGraph(QWidget):
         user_wpm_effective = you_visible and self.user_wpm_visible
         wpm_color = self.line_color if user_wpm_effective else QColor(self.line_color.red(), self.line_color.green(), self.line_color.blue(), 80)
         wpm_text_col = text_color if user_wpm_effective else QColor(text_color.red(), text_color.green(), text_color.blue(), 80)
-        
+
         # Draw line + dot
         painter.setPen(QPen(wpm_color, 2))
         painter.drawLine(QPointF(user_legend_x + indent, wpm_y + 5), QPointF(user_legend_x + indent + 15, wpm_y + 5))
@@ -632,7 +672,11 @@ class InteractiveWPMGraph(QWidget):
         painter.drawEllipse(QPointF(user_legend_x + indent + 7.5, wpm_y + 5), 2, 2)
         painter.setBrush(Qt.NoBrush)
         painter.setPen(wpm_text_col)
+        font.setUnderline(self.hover_legend == 'user_wpm')
+        painter.setFont(font)
         painter.drawText(QPointF(user_legend_x + indent + 20, wpm_y + 9), "WPM")
+        font.setUnderline(False)
+        painter.setFont(font)
         self.user_wpm_rect = QRectF(user_legend_x + indent - 3, wpm_y - 2, 55, line_height)
         
         # User Errors (only if has error data)
@@ -649,7 +693,11 @@ class InteractiveWPMGraph(QWidget):
             painter.drawLine(QPointF(x_center - 3, y_center - 3), QPointF(x_center + 3, y_center + 3))
             painter.drawLine(QPointF(x_center - 3, y_center + 3), QPointF(x_center + 3, y_center - 3))
             painter.setPen(err_text_col)
+            font.setUnderline(self.hover_legend == 'user_error')
+            painter.setFont(font)
             painter.drawText(QPointF(user_legend_x + indent + 20, err_y + 9), "Errors")
+            font.setUnderline(False)
+            painter.setFont(font)
             self.user_error_rect = QRectF(user_legend_x + indent - 3, err_y - 2, 60, line_height)
         else:
             self.user_error_rect = QRectF()
@@ -664,10 +712,12 @@ class InteractiveWPMGraph(QWidget):
             ghost_label_color = text_color if ghost_vis else QColor(text_color.red(), text_color.green(), text_color.blue(), 80)
             painter.setPen(ghost_label_color)
             font.setBold(True)
+            font.setUnderline(self.hover_legend == 'ghost')
             painter.setFont(font)
             painter.drawText(QPointF(ghost_legend_x, legend_y + 10), ghost_text)
             self.ghost_label_rect = QRectF(ghost_legend_x - 3, legend_y, fm.horizontalAdvance(ghost_text) + 6, line_height)
             font.setBold(False)
+            font.setUnderline(False)
             painter.setFont(font)
             
             # Ghost WPM
@@ -684,7 +734,11 @@ class InteractiveWPMGraph(QWidget):
             painter.drawRect(QRectF(ghost_legend_x + indent + 5, g_wpm_y + 3, 5, 5))
             painter.setBrush(Qt.NoBrush)
             painter.setPen(g_wpm_text_col)
+            font.setUnderline(self.hover_legend == 'ghost_wpm')
+            painter.setFont(font)
             painter.drawText(QPointF(ghost_legend_x + indent + 20, g_wpm_y + 9), "WPM")
+            font.setUnderline(False)
+            painter.setFont(font)
             self.ghost_wpm_rect = QRectF(ghost_legend_x + indent - 3, g_wpm_y - 2, 55, line_height)
             
             # Ghost Errors (only if has ghost error data)
@@ -701,7 +755,11 @@ class InteractiveWPMGraph(QWidget):
                 painter.drawLine(QPointF(x_center - 3, y_center - 3), QPointF(x_center + 3, y_center + 3))
                 painter.drawLine(QPointF(x_center - 3, y_center + 3), QPointF(x_center + 3, y_center - 3))
                 painter.setPen(g_err_text_col)
+                font.setUnderline(self.hover_legend == 'ghost_error')
+                painter.setFont(font)
                 painter.drawText(QPointF(ghost_legend_x + indent + 20, g_err_y + 9), "Errors")
+                font.setUnderline(False)
+                painter.setFont(font)
                 self.ghost_error_rect = QRectF(ghost_legend_x + indent - 3, g_err_y - 2, 60, line_height)
             else:
                 self.ghost_error_rect = QRectF()

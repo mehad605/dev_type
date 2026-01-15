@@ -312,7 +312,7 @@ class EditorTab(QWidget):
         ghost_progress_layout = QHBoxLayout(ghost_progress_widget)
         ghost_progress_layout.setContentsMargins(15, 1, 15, 1)
         ghost_progress_layout.setSpacing(10)
-        self.ghost_label = QLabel("CPU:")
+        self.ghost_label = QLabel("Ghost:")
         ghost_color = settings.get_setting("ghost_text_color", settings.get_default("ghost_text_color"))
         self.ghost_label.setStyleSheet(f"color: {ghost_color}; font-weight: bold; font-size: 11px;")
         self.ghost_label.setFixedWidth(60)
