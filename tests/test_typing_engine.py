@@ -344,9 +344,9 @@ def test_auto_indent():
     assert engine.state.cursor_position == 17
     assert engine.state.content[engine.state.cursor_position] == "p" # Next char
     
-    # 3. Wpm calculation now includes auto-skipped characters
-    # Typed 12 + 1 + 4 = 17 characters total.
-    assert engine.state._get_calculable_chars() == 17
+    # 3. Wpm calculation is based on manually typed correct characters
+    # Typed 12 + 1 = 13 characters manually.
+    assert engine.state._get_calculable_chars() == 13
     
     # 4. Backspacing over skipped chars
     engine.process_backspace()

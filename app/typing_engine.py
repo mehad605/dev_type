@@ -58,11 +58,10 @@ class TypingState:
     def _get_calculable_chars(self) -> int:
         """Get characters that count towards WPM (only correctly typed characters).
         
-        Using max_correct_position ensures that characters satisfied by Tab or 
-        Auto-Indent still contribute to typing speed, while correct_keystrokes 
-        can be used for physical key press statistics.
+        Using correct_keystrokes ensures WPM is based on manually typed correct characters,
+        preventing inflated WPM from auto-indent or lenient mode advancement on mistakes.
         """
-        return max(0, self.max_correct_position + 1)
+        return self.correct_keystrokes
     
     def is_complete(self) -> bool:
         return self.cursor_position >= len(self.content)
