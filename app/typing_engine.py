@@ -47,10 +47,11 @@ class TypingState:
         return self.correct_keystrokes / total
     
     def wpm(self) -> float:
-        if self.elapsed_time <= 0:
+        rounded_seconds = round(self.elapsed_time)
+        if rounded_seconds <= 0:
             return 0.0
         # WPM = (characters / 5) / (time in minutes)
-        minutes = self.elapsed_time / 60.0
+        minutes = rounded_seconds / 60.0
         if minutes == 0:
             return 0.0
         return (self._get_calculable_chars() / 5.0) / minutes
@@ -101,10 +102,12 @@ class TypingEngine:
         pass  # Time is now calculated on-demand via get_elapsed_time()
     
     def get_elapsed_time(self) -> float:
-        """Get the current elapsed time for display."""
+        """Get the current elapsed time for display, rounded to nearest second."""
         if not self.state.is_paused and self.state._session_start > 0:
-            return self.state.elapsed_time + (time.time() - self.state._session_start)
-        return self.state.elapsed_time
+            elapsed = self.state.elapsed_time + (time.time() - self.state._session_start)
+        else:
+            elapsed = self.state.elapsed_time
+        return round(elapsed)
     
     def get_wpm(self) -> float:
         """Get the current WPM using live elapsed time."""
