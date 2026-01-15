@@ -205,6 +205,26 @@ def test_window_initialization(self, app, mock_icon_manager, mock_sound_manager)
     assert window.windowTitle() == "Dev Typing App"
 ```
 
+### Key Test Additions
+
+#### Ghost Race Statistics Tests (`test_editor_tab.py::TestGhostRaceStats`)
+**Purpose**: Ensures that typing statistics are correctly updated after ghost races, whether the user wins or loses.
+
+**Test Methods**:
+- `test_ghost_race_stats_update_on_loss()`: Verifies that when a user loses a ghost race (takes longer than the ghost), their "last typed" WPM and accuracy are still updated in the database, but the file is not marked as completed.
+- `test_ghost_race_stats_update_on_win()`: Verifies that when a user wins a ghost race (completes before the ghost), their stats are updated and the file is marked as completed.
+
+**Why Important**: This prevents data loss for partial typing sessions during competitive gameplay, ensuring users can track their progress even in incomplete races.
+
+#### Ghost Race Data Consistency Tests (`test_editor_tab.py::TestGhostRaceDataConsistency`)
+**Purpose**: Ensures that all ghost race data (WPM, accuracy, time, keystroke counts) is properly stored and consistently displayed in the results dialog without recalculation.
+
+**Test Methods**:
+- `test_ghost_race_data_storage_and_display_consistency()`: Verifies that race statistics are calculated once during the race, stored correctly in the database, and passed unchanged to the results dialog for display.
+- `test_ghost_race_no_recalculation_in_dialog()`: Ensures that the SessionResultDialog displays the exact stats provided to it, without performing any recalculations or modifications.
+
+**Why Important**: Prevents data inconsistencies between what gets stored and what users see, ensuring accurate performance tracking and reliable ghost data for future races.
+
 ## Coverage Gaps & Missing Tests
 
 Based on the coverage report, here are the most critical missing test areas:
@@ -212,6 +232,9 @@ Based on the coverage report, here are the most critical missing test areas:
 ### High Priority (Low Coverage, High Risk)
 
 #### 1. Editor Tab (`editor_tab.py` - 46% coverage)
+**Existing Tests**:
+- Ghost race statistics updates (win/loss scenarios) - `TestGhostRaceStats`
+
 **Missing Tests**:
 - File loading edge cases (binary files, encoding errors)
 - Save functionality and overwrite confirmation dialogs

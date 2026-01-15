@@ -1490,16 +1490,17 @@ class EditorTab(QWidget):
             race_correct = stats.get("correct", 0)
             race_incorrect = stats.get("incorrect", 0)
         
-        # Only save if user completed the file
+        # Update file stats (last typed) regardless of completion
+        stats_db.update_file_stats(
+            self.current_file,
+            wpm=race_wpm,
+            accuracy=race_accuracy,
+            completed=user_completed_chars >= user_total_chars,
+            auto_indent=self.typing_area.engine.auto_indent
+        )
+
+        # Only record session history and update bests if user completed the file
         if user_completed_chars >= user_total_chars:
-            # Save to database with race stats
-            stats_db.update_file_stats(
-                self.current_file,
-                wpm=race_wpm,
-                accuracy=race_accuracy,
-                completed=True,
-                auto_indent=self.typing_area.engine.auto_indent
-            )
 
             stats_db.record_session_history(
                 file_path=self.current_file,
