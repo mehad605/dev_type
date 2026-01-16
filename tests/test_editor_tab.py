@@ -237,8 +237,9 @@ class TestGhostRaceStats:
         editor_tab.typing_area.engine = mock_engine
 
         # Set up race state
+        import time
         editor_tab.is_racing = True
-        editor_tab._race_start_perf = 0  # Started at time 0
+        editor_tab._race_start_perf = time.perf_counter() - 10.0  # Started 10 seconds ago
         editor_tab._ghost_finish_elapsed = 5.0  # Ghost finished in 5 seconds (user loses)
         editor_tab._user_finish_elapsed = 10.0  # User took 10 seconds
 
@@ -252,7 +253,8 @@ class TestGhostRaceStats:
              patch('app.editor_tab.stats_db.record_session_history'), \
              patch('app.editor_tab.stats_db.update_key_stats'), \
              patch('app.editor_tab.stats_db.update_key_confusions'), \
-             patch('app.editor_tab.stats_db.update_error_type_stats'):
+             patch('app.editor_tab.stats_db.update_error_type_stats'), \
+             patch('app.editor_tab.SessionResultDialog'):
             # Call the method under test
             stats = {"wpm": 30.0, "accuracy": 0.8, "correct": 5, "incorrect": 1, "time": 10.0}
             editor_tab._handle_user_finished_race(stats)
@@ -296,8 +298,9 @@ class TestGhostRaceStats:
         editor_tab.typing_area.engine = mock_engine
 
         # Set up race state
+        import time
         editor_tab.is_racing = True
-        editor_tab._race_start_perf = 0
+        editor_tab._race_start_perf = time.perf_counter() - 3.0
         editor_tab._ghost_finish_elapsed = 5.0  # Ghost took 5 seconds
         editor_tab._user_finish_elapsed = 3.0  # User took 3 seconds (wins)
 
@@ -311,7 +314,8 @@ class TestGhostRaceStats:
              patch('app.editor_tab.stats_db.record_session_history'), \
              patch('app.editor_tab.stats_db.update_key_stats'), \
              patch('app.editor_tab.stats_db.update_key_confusions'), \
-             patch('app.editor_tab.stats_db.update_error_type_stats'):
+             patch('app.editor_tab.stats_db.update_error_type_stats'), \
+             patch('app.editor_tab.SessionResultDialog'):
             # Call the method under test
             stats = {"wpm": 70.0, "accuracy": 0.9, "correct": 11, "incorrect": 1, "time": 3.0}
             editor_tab._handle_user_finished_race(stats)
