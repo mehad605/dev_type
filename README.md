@@ -1,16 +1,20 @@
-<div align="center">
-  <img src="assets/icon.png" alt="Dev Type Logo" width="50" height="50" style="vertical-align: middle; margin-right: 10px;" />
-  <span style="font-size: 40px; font-weight: bold; vertical-align: middle;">Dev Type</span>
-  <p>
-    <strong>The uncompromising typing app for developers.</strong>
-  </p>
-</div>
+<p align="center">
+  <img src="assets/icon_64.png" width="64" height="64" />
+</p>
+
+# <p align="center">Dev Type</p>
+
+<p align="center"><strong>The uncompromising typing app for developers.</strong></p>
 
 ---
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/ef18ab02-c152-4711-a8ab-fa79f8841734" width="70%" controls muted autoplay loop style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></video>
+  <video src="https://github.com/user-attachments/assets/4a53b93f-bd36-42b7-b7a8-477466876515" width="70%" controls muted autoplay loop style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></video>
 </div>
+
+
+
+
 
 <br />
 
