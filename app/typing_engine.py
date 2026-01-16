@@ -1,7 +1,7 @@
 """Typing logic engine - handles character validation, stats calculation, and state management."""
 import time
 from typing import Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -17,7 +17,8 @@ class TypingState:
     is_finished: bool = False  # Track if session is completed
     max_correct_position: int = -1 # Furthest position correctly typed
     auto_skipped_characters: int = 0  # Characters skipped by auto-indent
-    skipped_positions: set = None # Positions skipped by auto-indent
+    skipped_positions: set = field(default_factory=set) # Positions skipped by auto-indent
+    correctly_typed_positions: set = field(default_factory=set) # Positions that have been correctly typed
     _session_start: float = 0  # When current typing session started (for pause/resume)
     
     # Keep start_time for backward compatibility but it's not used for timing anymore
@@ -25,17 +26,18 @@ class TypingState:
     
     # Per-key stats for this session
     # Maps character to count of correct/incorrect attempts
-    key_hits: dict = None  # Lazy init in __post_init__ or process_keystroke
-    key_misses: dict = None
-    key_confusions: dict = None  # Maps expected char -> {actual_char: count}
-    error_types: dict = None  # Maps 'omission', 'insertion', 'transposition', 'substitution' -> count
+    key_hits: dict = field(default_factory=dict)  # Lazy init in __post_init__ or process_keystroke
+    key_misses: dict = field(default_factory=dict)
+    key_confusions: dict = field(default_factory=dict)  # Maps expected char -> {actual_char: count}
+    error_types: dict = field(default_factory=dict)  # Maps 'omission', 'insertion', 'transposition', 'substitution' -> count
     
     def __post_init__(self):
-        if self.key_hits is None: self.key_hits = {}
-        if self.key_misses is None: self.key_misses = {}
-        if self.key_confusions is None: self.key_confusions = {}
-        if self.error_types is None: self.error_types = {'omission': 0, 'insertion': 0, 'transposition': 0, 'substitution': 0}
-        if self.skipped_positions is None: self.skipped_positions = set()
+        if not self.key_hits: self.key_hits = {}
+        if not self.key_misses: self.key_misses = {}
+        if not self.key_confusions: self.key_confusions = {}
+        if not self.error_types: self.error_types = {'omission': 0, 'insertion': 0, 'transposition': 0, 'substitution': 0}
+        if not self.skipped_positions: self.skipped_positions = set()
+        if not self.correctly_typed_positions: self.correctly_typed_positions = set()
     
     def total_keystrokes(self) -> int:
         return self.correct_keystrokes + self.incorrect_keystrokes
@@ -177,11 +179,15 @@ class TypingEngine:
             
         if is_correct:
             # Only increment correct_keystrokes if this position hasn't been correctly typed before
-            if self.state.cursor_position > self.state.max_correct_position:
+            if self.state.cursor_position not in self.state.correctly_typed_positions:
+                self.state.correctly_typed_positions.add(self.state.cursor_position)
                 if increment_stats:
                     self.state.correct_keystrokes += 1
+
+            # Update max_correct_position
+            if self.state.cursor_position > self.state.max_correct_position:
                 self.state.max_correct_position = self.state.cursor_position
-                
+
             if increment_stats:
                 self.state.key_hits[expected_char] = self.state.key_hits.get(expected_char, 0) + 1
             self.state.cursor_position += 1
@@ -275,18 +281,22 @@ class TypingEngine:
     
     def process_backspace(self, space_per_tab: int = 4):
         """Process a backspace keystroke."""
+        # Reset finished state if backspacing from completed text
+        if self.state.is_finished and self.state.cursor_position > 0:
+            self.state.is_finished = False
+
         # If there's a mistake at current position and we're in strict mode,
         # just clear the mistake marker without moving the cursor
         if self.mistake_at is not None and self.state.cursor_position == self.mistake_at and not self.allow_continue_mistakes:
             self.mistake_at = None
             self.state.last_keystroke_time = time.time()
             return
-            
+
         # In lenient mode or when mistake is behind us, clear mistake marker
         # and move cursor back
         if self.mistake_at is not None:
             self.mistake_at = None
-        
+
         # Move cursor back if possible
         if self.state.cursor_position > 0:
             content = self.state.content
@@ -380,6 +390,7 @@ class TypingEngine:
         self.state.is_finished = False
         self.state.max_correct_position = -1
         self.state.skipped_positions.clear()
+        self.state.correctly_typed_positions.clear()
         self.mistake_at = None
     
     def reset_cursor_only(self):
@@ -402,7 +413,7 @@ class TypingEngine:
         }
     
     def load_progress(self, cursor_pos: int, correct: int, incorrect: int, elapsed: float,
-                      mistake_at: int = -1, max_correct_pos: int = -1, skipped_positions: set = None):
+                       mistake_at: int = -1, max_correct_pos: int = -1, skipped_positions: set | None = None):
         """Load saved progress into the engine."""
         self.state.cursor_position = cursor_pos
         self.state.correct_keystrokes = correct

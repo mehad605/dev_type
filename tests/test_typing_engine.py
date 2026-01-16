@@ -369,32 +369,58 @@ def test_auto_indent():
 def test_no_point_farming():
     """Test that correctly retyping already-typed chars doesn't give points."""
     engine = TypingEngine("abc")
-    
+
     # 1. Type "a" correctly
     engine.process_keystroke("a")
     assert engine.state.correct_keystrokes == 1
     assert engine.state.max_correct_position == 0
-    
+
     # 2. Backspace
     engine.process_backspace()
     assert engine.state.cursor_position == 0
-    
+
     # 3. Type "a" correctly again - should NOT increment correct_keystrokes
     engine.process_keystroke("a")
     assert engine.state.correct_keystrokes == 1
     assert engine.state.max_correct_position == 0
-    
+
     # 4. Successively type "b" - should increment
     engine.process_keystroke("b")
     assert engine.state.correct_keystrokes == 2
     assert engine.state.max_correct_position == 1
-    
+
     # 5. Type incorrectly at a previously correct position
     engine.process_backspace() # back to "b" position
     engine.process_backspace() # back to "a" position
     assert engine.state.cursor_position == 0
-    
+
     # Type "x" instead of "a" - should count as incorrect
     engine.process_keystroke("x")
     assert engine.state.correct_keystrokes == 2 # still 2 from before
     assert engine.state.incorrect_keystrokes == 1
+
+
+def test_correct_count_after_backspace_and_retype():
+    """Test that correct count updates properly when backspacing mistakes and retyping correctly."""
+    engine = TypingEngine("power", allow_continue_mistakes=True)
+
+    # Type "pokkr" - p,o correct; k,k,r wrong but advances in lenient mode
+    engine.process_keystroke("p")  # correct, cursor=1, correct=1
+    engine.process_keystroke("o")  # correct, cursor=2, correct=2
+    engine.process_keystroke("k")  # wrong, cursor=3, correct=2
+    engine.process_keystroke("k")  # wrong, cursor=4, correct=2
+    engine.process_keystroke("r")  # correct, cursor=5, correct=3
+
+    assert engine.state.correct_keystrokes == 3
+
+    # Backspace 3 times
+    engine.process_backspace()  # cursor=4
+    engine.process_backspace()  # cursor=3
+    engine.process_backspace()  # cursor=2
+
+    # Now type "wer"
+    engine.process_keystroke("w")  # correct, cursor=3, correct=4
+    engine.process_keystroke("e")  # correct, cursor=4, correct=5
+    engine.process_keystroke("r")  # correct, cursor=5, correct=5 (already counted)
+
+    assert engine.state.correct_keystrokes == 5

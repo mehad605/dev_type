@@ -58,6 +58,7 @@ def mock_sound_manager():
 - `test_accuracy_calculation()` - WPM and accuracy metrics
 - `test_auto_indent()` - Automatic indentation feature
 - `test_pause_and_resume()` - Session state management
+- `test_correct_count_after_backspace_and_retype()` - Correct count updates when backspacing mistakes and retyping
 
 **How It Works**:
 - Creates `TypingEngine` instances with test content
