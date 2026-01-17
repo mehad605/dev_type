@@ -293,6 +293,34 @@ def test_create_profile_image_different_extensions(temp_data_dir):
     assert jpg_pic.read_text() == "jpeg data"
 
 
+def test_rename_default_doesnt_create_new_default(temp_data_dir):
+    """Test that renaming the Default profile doesn't create a new Default on restart."""
+    manager, data_dir = temp_data_dir
+
+    # Rename the Default profile to something else
+    success = manager.rename_profile("Default", "MyProfile")
+    assert success is True
+
+    # Verify Default is gone and MyProfile exists
+    assert not (data_dir / "profiles" / "Default").exists()
+    assert (data_dir / "profiles" / "MyProfile").exists()
+
+    # Simulate app restart by creating a new ProfileManager instance
+    # (this should trigger migration logic check)
+    import app.profile_manager
+    app.profile_manager._profile_manager = None
+    app.profile_manager.ProfileManager._instance = None
+
+    new_manager = app.profile_manager.ProfileManager()
+
+    # Check that no new Default profile was created
+    profiles = new_manager.get_all_profiles()
+    profile_names = [p["name"] for p in profiles]
+
+    assert "Default" not in profile_names, "Should not create new Default profile after renaming"
+    assert "MyProfile" in profile_names, "Renamed profile should still exist"
+
+
 def test_migration_logic(tmp_path):
     """Test legacy data migration on first run."""
     data_dir = tmp_path / "MigrationData"

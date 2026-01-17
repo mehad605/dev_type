@@ -72,6 +72,26 @@
 - Use `pytest.skip` for platform-specific tests
 - Test error paths and edge cases, not just happy paths
 
+### Testing Workflow (Bug Fixes & New Features)
+When fixing bugs or adding new features, follow this comprehensive testing and documentation procedure:
+
+1. **Run Tests First**: Always run the full test suite (`uv run pytest`) before making changes to identify any existing issues
+2. **Fix Implementation**: Implement the bug fix or new feature
+3. **Run Tests Again**: Run tests to identify any broken functionality caused by changes
+4. **Fix Broken Tests**: Update existing tests that fail due to legitimate changes in behavior
+5. **Add New Tests**: Write comprehensive tests for new features, covering:
+   - Happy path functionality
+   - Edge cases and error conditions
+   - Integration with existing code
+   - User interface interactions (for UI features)
+6. **Update Documentation**: Update `docs/TESTS.md` with:
+   - New test descriptions and purposes
+   - Updated test counts
+   - Documentation of new testing approaches
+7. **Final Verification**: Run complete test suite and verify all tests pass
+
+**VERY IMPORTANT**: When you have completed a task, you MUST run the lint and typecheck commands (e.g. npm run lint, npm run typecheck, ruff, etc.) with Bash if they were provided to you to ensure your code is correct. If you are unable to find the correct command, ask the user for the command to run and if they supply it, proactively suggest writing it to AGENTS.md so that you will know to run it next time.
+
 ### Architecture Patterns
 - **Singletons**: Use `__new__()` pattern for managers (ProfileManager, SoundManager)
 - **Data persistence**: SQLite for settings/stats (app.settings)

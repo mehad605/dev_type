@@ -3,9 +3,9 @@ import os
 import tempfile
 from PySide6.QtWidgets import (QDialog, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
                                QGridLayout, QScrollArea, QPushButton, QLineEdit,
-                               QFileDialog, QMessageBox, QFrame, QSlider)
-from PySide6.QtCore import Qt, Signal, QSize, QPoint, QRect, QRectF, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QPainterPath, QPen, QColor, QBrush, QFont, QLinearGradient, QDragEnterEvent, QDropEvent
+                               QFileDialog, QMessageBox, QFrame)
+from PySide6.QtCore import Qt, Signal, QSize, QPoint, QRect, QRectF
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPainterPath, QPen, QColor, QBrush
 
 from app.profile_manager import get_profile_manager
 from app.ui_profile_widgets import ProfileCard, AvatarGenerator, ProfileAvatar
@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class ImageCropWidget(QWidget):
-    """Modern widget for panning and zooming image with circular crop overlay."""
-    
+    """Custom widget for panning and zooming image with circular crop overlay."""
+
     def __init__(self, pixmap: QPixmap, parent=None):
         super().__init__(parent)
         self.original_pixmap = pixmap
@@ -26,34 +26,32 @@ class ImageCropWidget(QWidget):
         self.pan_offset = QPoint(0, 0)
         self.dragging = False
         self.drag_start_pos = QPoint()
-        self.is_hovered = False
-        self._size_initialized = False
+
+        # Calculate initial zoom to fit entire image in circle
+        display_size = min(self.width(), self.height())
+        circle_radius = display_size // 2 - 10
+        circle_diameter = circle_radius * 2
+
+        img_width = self.original_pixmap.width()
+        img_height = self.original_pixmap.height()
+
+        if img_width > 0 and img_height > 0:
+            scale_x = circle_diameter / img_width
+            scale_y = circle_diameter / img_height
+            self.zoom_factor = min(scale_x, scale_y, 1.0)  # Don't zoom in by default
 
         self.setMouseTracking(True)
-    
-    def showEvent(self, event):
-        """Initialize zoom when widget is first shown and has proper size."""
-        super().showEvent(event)
-        if not self._size_initialized:
-            self._size_initialized = True
-            self.reset_view()  # Set proper initial zoom
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
-        # Modern gradient background
-        gradient = QLinearGradient(0, 0, 0, self.height())
-        gradient.setColorAt(0, QColor(30, 30, 35))
-        gradient.setColorAt(1, QColor(20, 20, 25))
-        painter.fillRect(self.rect(), gradient)
+        # Fill background with black
+        painter.fillRect(self.rect(), QColor(0, 0, 0))
 
         if self.original_pixmap.isNull():
             # Draw placeholder text if no image
-            painter.setPen(QColor(150, 150, 150))
-            font = QFont("Segoe UI", 12)
-            painter.setFont(font)
+            painter.setPen(QColor(100, 100, 100))
             painter.drawText(self.rect(), Qt.AlignCenter, "No image loaded")
             return
 
@@ -67,81 +65,17 @@ class ImageCropWidget(QWidget):
         image_y = center.y() - scaled_height // 2 + self.pan_offset.y()
 
         # Draw the scaled image
-        scaled_pixmap = self.original_pixmap.scaled(
-            scaled_width, scaled_height, 
-            Qt.KeepAspectRatio, 
-            Qt.SmoothTransformation
-        )
+        scaled_pixmap = self.original_pixmap.scaled(scaled_width, scaled_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         painter.drawPixmap(image_x, image_y, scaled_pixmap)
 
-        # Draw darkened overlay outside circle
+        # Draw simple circle overlay
         center = QPoint(self.width() // 2, self.height() // 2)
         circle_radius = min(self.width(), self.height()) // 2 - 10
 
-        # Create path for the overlay (everything except the circle)
-        full_path = QPainterPath()
-        full_path.addRect(self.rect())
-        
-        circle_path = QPainterPath()
-        circle_path.addEllipse(center, circle_radius, circle_radius)
-        
-        overlay_path = full_path.subtracted(circle_path)
-        painter.fillPath(overlay_path, QColor(0, 0, 0, 160))
-
-        # Draw circle border with modern styling
-        pen = QPen(QColor(255, 255, 255, 200), 3)
+        pen = QPen(QColor(0, 0, 0, 200), 2)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(center, circle_radius, circle_radius)
-
-        # Draw subtle inner glow
-        pen = QPen(QColor(255, 255, 255, 80), 1)
-        painter.setPen(pen)
-        painter.drawEllipse(center, circle_radius - 2, circle_radius - 2)
-
-        # Draw zoom level indicator
-        zoom_percentage = int(self.zoom_factor / self.max_zoom * 100)
-        zoom_text = f"{zoom_percentage}%"
-        
-        painter.setPen(QColor(255, 255, 255, 180))
-        font = QFont("Segoe UI", 11, QFont.Medium)
-        painter.setFont(font)
-        
-        # Draw zoom text in bottom right
-        text_rect = painter.fontMetrics().boundingRect(zoom_text)
-        text_x = self.width() - text_rect.width() - 15
-        text_y = self.height() - 15
-        
-        # Background for zoom text
-        bg_rect = text_rect.adjusted(-8, -4, 8, 4)
-        bg_rect.moveTopLeft(QPoint(text_x - 8, text_y - text_rect.height() - 4))
-        painter.setBrush(QColor(0, 0, 0, 120))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(bg_rect, 4, 4)
-        
-        painter.setPen(QColor(255, 255, 255, 200))
-        painter.drawText(text_x, text_y, zoom_text)
-
-        # Draw hint text when hovered
-        if self.is_hovered:
-            hint_text = "Drag to reposition • Scroll to zoom"
-            painter.setPen(QColor(255, 255, 255, 150))
-            font = QFont("Segoe UI", 10)
-            painter.setFont(font)
-            
-            hint_rect = painter.fontMetrics().boundingRect(hint_text)
-            hint_x = (self.width() - hint_rect.width()) // 2
-            hint_y = 25
-            
-            # Background for hint
-            bg_rect = hint_rect.adjusted(-10, -5, 10, 5)
-            bg_rect.moveTopLeft(QPoint(hint_x - 10, hint_y - hint_rect.height() - 5))
-            painter.setBrush(QColor(0, 0, 0, 140))
-            painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(bg_rect, 6, 6)
-            
-            painter.setPen(QColor(255, 255, 255, 200))
-            painter.drawText(hint_x, hint_y, hint_text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -159,12 +93,12 @@ class ImageCropWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = False
-            self.setCursor(Qt.OpenHandCursor if self.is_hovered else Qt.ArrowCursor)
+            self.setCursor(Qt.OpenHandCursor)
 
     def wheelEvent(self, event):
         # Zoom in/out with mouse wheel
         zoom_delta = event.angleDelta().y() / 120.0  # Standard mouse wheel delta
-        zoom_factor = 1.0 + (zoom_delta * 0.15)  # 15% zoom per wheel step for smoother control
+        zoom_factor = 1.0 + (zoom_delta * 0.1)  # 10% zoom per wheel step
 
         new_zoom = self.zoom_factor * zoom_factor
         new_zoom = max(self.min_zoom, min(self.max_zoom, new_zoom))
@@ -185,68 +119,27 @@ class ImageCropWidget(QWidget):
             self.update()
 
     def enterEvent(self, event):
-        self.is_hovered = True
         self.setCursor(Qt.OpenHandCursor)
-        self.update()
 
     def leaveEvent(self, event):
-        self.is_hovered = False
         self.unsetCursor()
-        self.update()
-
-    def reset_view(self):
-        """Reset zoom and pan to initial state (fill circle)."""
-        display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
-
-        img_width = self.original_pixmap.width()
-        img_height = self.original_pixmap.height()
-
-        if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            self.zoom_factor = max(scale_x, scale_y)
-        
-        self.pan_offset = QPoint(0, 0)
-        self.update()
-
-    def fit_to_circle(self):
-        """Fit entire image within the circle."""
-        display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
-
-        img_width = self.original_pixmap.width()
-        img_height = self.original_pixmap.height()
-
-        if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            self.zoom_factor = min(scale_x, scale_y)
-        
-        self.pan_offset = QPoint(0, 0)
-        self.update()
 
     @property
     def min_zoom(self):
         """Minimum zoom factor to fit entire image in circle."""
         display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
+        circle_diameter = display_size - 20  # Leave some margin
 
         img_width = self.original_pixmap.width()
         img_height = self.original_pixmap.height()
 
         if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            return min(scale_x, scale_y) * 0.5  # Allow zooming out a bit more
+            return min(circle_diameter / img_width, circle_diameter / img_height, 0.1)
         return 0.1
 
     @property
     def max_zoom(self):
-        return 3.0  # Maximum 3x zoom (more reasonable than 5x)
+        return 5.0
 
     @property
     def current_zoom_factor(self):
@@ -258,12 +151,12 @@ class ImageCropWidget(QWidget):
 
 
 class ImageCropperDialog(QDialog):
-    """Modern dialog for cropping profile images with circular overlay."""
+    """Dialog for cropping profile images with circular overlay."""
 
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Crop Profile Picture")
-        self.setFixedSize(560, 640)  # Reduced height since we removed zoom slider
+        self.setFixedSize(500, 600)
 
         self.original_image_path = image_path
         self.cropped_image_path = None
@@ -275,76 +168,85 @@ class ImageCropperDialog(QDialog):
             self.reject()
             return
 
-        # Validate image size
-        max_size = 10 * 1024 * 1024  # 10MB
-        file_size = os.path.getsize(image_path)
-        if file_size > max_size:
-            QMessageBox.warning(self, "Error", "Image file is too large. Please select an image under 10MB.")
-            self.reject()
-            return
-
         self.setup_ui()
 
     def setup_ui(self):
-        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme("dark", scheme_name)
-
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(20)
-
-        # Title
-        title = QLabel("Adjust Your Photo")
-        title.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {scheme.text_primary};")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
 
         # Image display area - custom widget for pan/zoom
         self.image_widget = ImageCropWidget(self.original_pixmap, self)
-        self.image_widget.setFixedSize(500, 500)
+        self.image_widget.setFixedSize(400, 400)
         layout.addWidget(self.image_widget, alignment=Qt.AlignCenter)
 
-        # Quick action buttons (below the image, not overlapping)
-        actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(12)
+        # Instructions
+        instructions = QLabel("Drag to pan the image, scroll to zoom in/out. The circular overlay shows the final result.")
+        instructions.setWordWrap(True)
+        instructions.setAlignment(Qt.AlignCenter)
+        instructions.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(instructions)
 
-        self.reset_btn = QPushButton("Reset")
-        self.reset_btn.setIcon(get_icon("REFRESH"))
-        self.reset_btn.setFixedHeight(40)
-        self.reset_btn.setFixedWidth(100)
-        self.reset_btn.clicked.connect(self.on_reset_clicked)
-        self.reset_btn.setCursor(Qt.PointingHandCursor)
-
-        self.fit_btn = QPushButton("Fit")
-        self.fit_btn.setIcon(get_icon("MINIMIZE"))
-        self.fit_btn.setFixedHeight(40)
-        self.fit_btn.setFixedWidth(100)
-        self.fit_btn.clicked.connect(self.on_fit_clicked)
-        self.fit_btn.setCursor(Qt.PointingHandCursor)
-
-        actions_layout.addStretch()
-        actions_layout.addWidget(self.reset_btn)
-        actions_layout.addWidget(self.fit_btn)
-        actions_layout.addStretch()
-
-        layout.addLayout(actions_layout)
-
-        # Main action buttons
+        # Buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(12)
 
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setFixedHeight(48)
-        self.cancel_btn.setFixedWidth(120)
         self.cancel_btn.clicked.connect(self.reject)
-        self.cancel_btn.setCursor(Qt.PointingHandCursor)
 
-        self.crop_btn = QPushButton("Apply")
-        self.crop_btn.setFixedHeight(48)
-        self.crop_btn.setFixedWidth(120)
+        self.crop_btn = QPushButton("Crop & Save")
         self.crop_btn.clicked.connect(self.accept)
         self.crop_btn.setDefault(True)
-        self.crop_btn.setCursor(Qt.PointingHandCursor)
+
+        button_layout.addStretch()
+        button_layout.addWidget(self.cancel_btn)
+        button_layout.addWidget(self.crop_btn)
+        button_layout.addStretch()
+
+        layout.addLayout(button_layout)
+        self.drag_start_pos = QPoint()
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+
+        # Image display area - custom widget for pan/zoom
+        self.image_widget = ImageCropWidget(self.original_pixmap, self)
+        self.image_widget.setFixedSize(400, 400)
+        # Set initial zoom to fit image in circle
+        display_size = 400
+        circle_radius = display_size // 2 - 10
+        circle_diameter = circle_radius * 2
+
+        img_width = self.original_pixmap.width()
+        img_height = self.original_pixmap.height()
+
+        if img_width > 0 and img_height > 0:
+            scale_x = circle_diameter / img_width
+            scale_y = circle_diameter / img_height
+            self.image_widget.zoom_factor = min(scale_x, scale_y, 1.0)
+
+        layout.addWidget(self.image_widget, alignment=Qt.AlignCenter)
+
+        # Instructions
+        instructions = QLabel("Drag to pan the image, scroll to zoom in/out. The circular overlay shows the final result.")
+        instructions.setWordWrap(True)
+        instructions.setAlignment(Qt.AlignCenter)
+        instructions.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(instructions)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+
+        self.crop_btn = QPushButton("Crop & Save")
+        self.crop_btn.clicked.connect(self.accept)
+        self.crop_btn.setDefault(True)
 
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_btn)
@@ -353,44 +255,102 @@ class ImageCropperDialog(QDialog):
 
         layout.addLayout(button_layout)
 
-        # Apply modern styling
-        self.setStyleSheet(f"""
-            QDialog {{
-                background-color: {scheme.bg_primary};
-                color: {scheme.text_primary};
-            }}
-            QPushButton {{
-                background: {scheme.button_bg};
-                color: {scheme.text_primary};
-                border: 1px solid {scheme.card_border};
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 13px;
-                padding: 8px 16px;
-            }}
-            QPushButton:hover {{
-                background: {scheme.button_hover};
-                border-color: {scheme.accent_color};
-            }}
-            QPushButton:default {{
-                background: {scheme.accent_color};
-                border-color: {scheme.accent_color};
-                color: {scheme.bg_primary};
-            }}
-            QPushButton:default:hover {{
-                background: {scheme.button_hover};
-            }}
-        """)
+    def update_display(self):
+        """Update the image display with current crop rectangle."""
+        if self.original_pixmap.isNull():
+            return
 
+        # Scale image to fit display area while maintaining aspect ratio
+        display_size = QSize(400, 400)
+        scaled_pixmap = self.original_pixmap.scaled(display_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
+        # Calculate scale factor
+        scale_x = scaled_pixmap.width() / self.original_pixmap.width()
+        scale_y = scaled_pixmap.height() / self.original_pixmap.height()
 
-    def on_reset_clicked(self):
-        """Reset to default view (fill circle)."""
-        self.image_widget.reset_view()
+        # Create display pixmap with circular overlay
+        display_pixmap = QPixmap(display_size)
+        display_pixmap.fill(Qt.transparent)
 
-    def on_fit_clicked(self):
-        """Fit entire image in circle."""
-        self.image_widget.fit_to_circle()
+        painter = QPainter(display_pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Draw the scaled image
+        painter.drawPixmap(0, 0, scaled_pixmap)
+
+        # Draw circular crop overlay
+        center = QPoint(display_size.width() // 2, display_size.height() // 2)
+        radius = min(display_size.width(), display_size.height()) // 2 - 10
+
+        # Draw dark overlay outside circle
+        painter.setBrush(QBrush(QColor(0, 0, 0, 128)))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(center, radius, radius)
+
+        # Draw circular mask (clear area)
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.drawEllipse(center, radius, radius)
+
+        # Draw crop rectangle indicator (scaled)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        scaled_crop_rect = QRect(
+            int(self.crop_rect.x() * scale_x),
+            int(self.crop_rect.y() * scale_y),
+            int(self.crop_rect.width() * scale_x),
+            int(self.crop_rect.height() * scale_y)
+        )
+
+        # Draw rectangle outline
+        pen = QPen(QColor(255, 255, 255, 200), 2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(scaled_crop_rect.adjusted(-2, -2, 2, 2))
+
+        pen.setColor(QColor(0, 0, 0, 200))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawRect(scaled_crop_rect.adjusted(-1, -1, 1, 1))
+
+        painter.end()
+
+        self.image_label.setPixmap(display_pixmap)
+
+    def on_mouse_press(self, event):
+        """Handle mouse press for dragging."""
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.drag_start_pos = event.pos()
+
+    def on_mouse_move(self, event):
+        """Handle mouse move for dragging crop area."""
+        if self.dragging:
+            delta = event.pos() - self.drag_start_pos
+            self.drag_start_pos = event.pos()
+
+            # Calculate scale factor
+            display_size = QSize(400, 400)
+            scale_x = display_size.width() / self.original_pixmap.width()
+            scale_y = display_size.height() / self.original_pixmap.height()
+
+            # Move crop rectangle
+            move_x = int(delta.x() / scale_x)
+            move_y = int(delta.y() / scale_y)
+
+            new_rect = self.crop_rect.translated(move_x, move_y)
+
+            # Keep rectangle within image bounds
+            new_rect.setLeft(max(0, min(new_rect.left(), self.original_pixmap.width() - new_rect.width())))
+            new_rect.setTop(max(0, min(new_rect.top(), self.original_pixmap.height() - new_rect.height())))
+            new_rect.setRight(min(self.original_pixmap.width(), new_rect.right()))
+            new_rect.setBottom(min(self.original_pixmap.height(), new_rect.bottom()))
+
+            self.crop_rect = new_rect
+            self.update_display()
+
+    def on_mouse_release(self, event):
+        """Handle mouse release."""
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
 
     def accept(self):
         """Crop the image and save it."""
@@ -486,6 +446,8 @@ class ImageCropperDialog(QDialog):
     def get_cropped_image_path(self) -> str:
         """Get the path to the cropped image."""
         return self.cropped_image_path
+
+
 class ProfileEditDialog(QDialog):
     """Dialog to create or edit a profile."""
     

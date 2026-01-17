@@ -4,7 +4,7 @@ This document provides a comprehensive overview of the test suite for Dev Type, 
 
 ## Overview
 
-The test suite uses **pytest** with **512 test functions** across **39 test files**. The suite achieves **63% overall code coverage**, with significant variation across modules. Recent enhancements include comprehensive profile image management testing:
+The test suite uses **pytest** with **517 test functions** across **39 test files**. The suite achieves **63% overall code coverage**, with significant variation across modules. Recent enhancements include comprehensive profile image management testing:
 
 - **High Coverage (>90%)**: `ui_icons.py`, `stats_display.py`, `shortcuts_tab.py`
 - **Medium Coverage (60-80%)**: Core business logic modules
@@ -92,6 +92,7 @@ def mock_sound_manager():
 - `TestEditorTab` - File editing and saving functionality
 - `TestFoldersTab` - Project folder management UI
 - `TestLanguagesTab` - Language detection and statistics UI
+- `test_profile_edit_dialog_image_update` - Profile image upload and cropping workflow
 
 **How It Works**:
 - Creates Qt application instances
@@ -168,6 +169,7 @@ def mock_sound_manager():
 - `test_update_profile_image_nonexistent_file()` - Error handling for invalid image paths
 - `test_rename_profile_preserves_image()` - Image preservation during profile renaming
 - `test_create_profile_image_different_extensions()` - Support for various image formats
+- `test_rename_default_doesnt_create_new_default()` - Prevents duplicate Default profiles after renaming
 - `test_switch_profile()` - Profile switching logic
 - `test_delete_profile()` - Profile removal with constraints
 
@@ -235,8 +237,8 @@ def test_window_initialization(self, app, mock_icon_manager, mock_sound_manager)
 
 **Why Important**: Prevents data inconsistencies between what gets stored and what users see, ensuring accurate performance tracking and reliable ghost data for future races.
 
-#### Profile Image Management Tests (`test_profile_manager.py`)
-**Purpose**: Ensures that profile images are properly copied, managed, and preserved across profile operations.
+#### Profile Image Management Tests (`test_profile_manager.py`, `test_ui_profile_selector.py`)
+**Purpose**: Ensures that profile images are properly uploaded, cropped, copied, managed, and preserved across profile operations.
 
 **Test Methods**:
 - `test_create_profile()`: Verifies image files are copied to profile directories as `profile_pic.jpg`
@@ -246,8 +248,16 @@ def test_window_initialization(self, app, mock_icon_manager, mock_sound_manager)
 - `test_update_profile_image_nonexistent_file()`: Tests error handling for invalid image paths
 - `test_rename_profile_preserves_image()`: Ensures images are preserved and paths updated during profile renaming
 - `test_create_profile_image_different_extensions()`: Validates support for various image formats (PNG, JPEG, GIF)
+- `test_rename_default_doesnt_create_new_default()`: Prevents creation of duplicate Default profiles when existing profiles are renamed
+- `test_profile_edit_dialog_image_update()`: Tests the complete image upload and cropping workflow in the UI
+- `test_image_cropper_file_size_validation()`: Ensures images over 10MB are rejected for performance
+- `test_image_cropper_valid_file()`: Verifies valid images are accepted by the cropper
+- `test_image_crop_widget_reset_view()`: Tests the reset view functionality
+- `test_image_crop_widget_fit_to_circle()`: Tests the fit to circle functionality
 
-**Why Important**: Ensures profile images are properly isolated per profile, persist across operations, and handle edge cases gracefully without data loss.
+**Profile Image Cropping**: The modern image cropper dialog provides a sophisticated interface with pan, zoom, and circular overlay. Features include gradient backgrounds, zoom indicators, hover hints, reset/fit buttons, and file size validation.
+
+**Why Important**: Ensures profile images are properly isolated per profile, persist across operations, and handle edge cases gracefully without data loss. The cropping interface improves user experience by allowing precise control over profile picture appearance.
 
 ## Coverage Gaps & Missing Tests
 
@@ -373,7 +383,7 @@ def test_keyboard_navigation():
 ## Test Quality Metrics
 
 ### Current Status
-- **Total Tests**: 502
+- **Total Tests**: 517
 - **Coverage**: 63%
 - **Test Files**: 39
 - **Average Tests per File**: ~13
@@ -383,6 +393,7 @@ def test_keyboard_navigation():
 - ✅ **Good**: Proper mocking strategy for external dependencies
 - ✅ **Good**: Database isolation prevents test interference
 - ✅ **Good**: Edge case testing for file operations and error conditions
+- ✅ **Good**: Modern UI testing with file validation and interactive controls
 - ⚠️ **Needs Work**: UI component coverage is low
 - ⚠️ **Needs Work**: Integration test coverage minimal
 

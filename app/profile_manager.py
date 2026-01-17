@@ -77,12 +77,15 @@ class ProfileManager(QObject):
         Legacy items: typing_stats.db, ghosts/, custom_sounds/ -> (move to shared or profile?)
         """
         data_dir = self._data_manager.get_data_dir()
-        
-        # Check if we already have a Default profile with data
-        default_profile_dir = self._profiles_dir / "Default"
-        if default_profile_dir.exists() and (default_profile_dir / "typing_stats.db").exists():
-            return  # Migration already likely done
-            
+
+        # Check if we already have ANY profiles (migration already done)
+        if self._profiles_dir.exists():
+            existing_profiles = list(self._profiles_dir.iterdir())
+            if existing_profiles:
+                # Profiles exist, migration already done or user has custom profiles
+                # Don't create a new Default profile
+                return
+
         # Check for legacy DB
         legacy_db = data_dir / "typing_stats.db"
         if not legacy_db.exists():
@@ -91,10 +94,11 @@ class ProfileManager(QObject):
             return
 
         logger.info("Migrating legacy data to Default profile...")
-        
+
         # Create Default profile folder
+        default_profile_dir = self._profiles_dir / "Default"
         default_profile_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Move DB
         try:
             shutil.move(str(legacy_db), str(default_profile_dir / "typing_stats.db"))
@@ -108,7 +112,7 @@ class ProfileManager(QObject):
                 shutil.move(str(legacy_ghosts), str(default_profile_dir / "ghosts"))
             except Exception as e:
                 logger.error(f"Failed to move ghosts: {e}")
-                
+
         # Move Custom Sounds (Shared)
         legacy_sounds = data_dir / "custom_sounds"
         if legacy_sounds.exists():
@@ -122,9 +126,8 @@ class ProfileManager(QObject):
                 logger.error(f"Failed to move custom sounds: {e}")
 
         # Move Language Snapshot (to Default Profile)
-        default_p_dir = self._profiles_dir / "Default"
-        dest_snapshot = default_p_dir / "language_snapshot.json"
-        
+        dest_snapshot = default_profile_dir / "language_snapshot.json"
+
         # Check root and shared for legacy snapshots
         for src_snapshot in [data_dir / "language_snapshot.json", self._shared_dir / "language_snapshot.json"]:
             if src_snapshot.exists():
