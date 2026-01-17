@@ -56,16 +56,25 @@ def test_initial_structure_creation(temp_data_dir):
 def test_create_profile(temp_data_dir):
     """Test creating a new profile."""
     manager, data_dir = temp_data_dir
-    success = manager.create_profile("Zoof", "avatar.png")
-    
+
+    # Create a temporary image file
+    avatar_image = data_dir / "avatar.png"
+    avatar_image.write_text("fake avatar data")
+    success = manager.create_profile("Zoof", str(avatar_image))
+
     assert success is True
     assert (data_dir / "profiles" / "Zoof").exists()
     assert (data_dir / "profiles" / "Zoof" / "profile.json").exists()
-    
+
+    # Verify image was copied
+    profile_pic = data_dir / "profiles" / "Zoof" / "profile_pic.jpg"
+    assert profile_pic.exists()
+    assert profile_pic.read_text() == "fake avatar data"
+
     # Verify metadata
     with open(data_dir / "profiles" / "Zoof" / "profile.json", "r") as f:
         meta = json.load(f)
-        assert meta["image"] == "avatar.png"
+        assert meta["image"] == str(profile_pic)
 
 def test_create_duplicate_profile(temp_data_dir):
     """Test that duplicate profiles cannot be created."""
@@ -146,13 +155,143 @@ def test_rename_profile(temp_data_dir):
 def test_update_profile_image(temp_data_dir):
     """Test updating only the profile image."""
     manager, data_dir = temp_data_dir
-    manager.create_profile("User", "old.png")
-    
-    manager.update_profile_image("User", "new.png")
-    
+
+    # Create a temporary image file
+    old_image = data_dir / "old.png"
+    old_image.write_text("fake image data")
+    manager.create_profile("User", str(old_image))
+
+    # Create new image file
+    new_image = data_dir / "new.png"
+    new_image.write_text("new fake image data")
+    manager.update_profile_image("User", str(new_image))
+
+    # Check that profile_pic.jpg was created and metadata updated
+    profile_pic = data_dir / "profiles" / "User" / "profile_pic.jpg"
+    assert profile_pic.exists()
+    assert profile_pic.read_text() == "new fake image data"
+
     with open(data_dir / "profiles" / "User" / "profile.json", "r") as f:
         meta = json.load(f)
-        assert meta["image"] == "new.png"
+        assert meta["image"] == str(profile_pic)
+
+def test_create_profile_without_image(temp_data_dir):
+    """Test creating a profile without an image."""
+    manager, data_dir = temp_data_dir
+
+    success = manager.create_profile("NoImage", None)
+
+    assert success is True
+    assert (data_dir / "profiles" / "NoImage").exists()
+
+    # Verify metadata has no image
+    with open(data_dir / "profiles" / "NoImage" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] is None
+
+    # No profile_pic.jpg should be created
+    profile_pic = data_dir / "profiles" / "NoImage" / "profile_pic.jpg"
+    assert not profile_pic.exists()
+
+
+def test_update_profile_image_to_none(temp_data_dir):
+    """Test updating a profile image to None removes the image file."""
+    manager, data_dir = temp_data_dir
+
+    # Create profile with image
+    image_file = data_dir / "test.jpg"
+    image_file.write_text("image content")
+    manager.create_profile("TestProfile", str(image_file))
+
+    # Verify image exists
+    profile_pic = data_dir / "profiles" / "TestProfile" / "profile_pic.jpg"
+    assert profile_pic.exists()
+
+    # Update to None
+    manager.update_profile_image("TestProfile", None)
+
+    # Verify image file is removed and metadata updated
+    assert not profile_pic.exists()
+
+    with open(data_dir / "profiles" / "TestProfile" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] is None
+
+
+def test_update_profile_image_nonexistent_file(temp_data_dir):
+    """Test updating profile image with non-existent file does nothing."""
+    manager, data_dir = temp_data_dir
+
+    manager.create_profile("TestProfile", None)
+
+    # Try to update with non-existent file
+    manager.update_profile_image("TestProfile", "/nonexistent/path/image.png")
+
+    # Verify no image file created and metadata unchanged
+    profile_pic = data_dir / "profiles" / "TestProfile" / "profile_pic.jpg"
+    assert not profile_pic.exists()
+
+    with open(data_dir / "profiles" / "TestProfile" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] is None
+
+
+def test_rename_profile_preserves_image(temp_data_dir):
+    """Test that renaming a profile preserves the copied image."""
+    manager, data_dir = temp_data_dir
+
+    # Create profile with image
+    image_file = data_dir / "avatar.gif"
+    image_file.write_text("gif content")
+    manager.create_profile("OldName", str(image_file))
+
+    # Verify image was copied
+    old_profile_pic = data_dir / "profiles" / "OldName" / "profile_pic.jpg"
+    assert old_profile_pic.exists()
+    assert old_profile_pic.read_text() == "gif content"
+
+    # Rename profile
+    success = manager.rename_profile("OldName", "NewName")
+    assert success is True
+
+    # Verify image is preserved in new location
+    new_profile_pic = data_dir / "profiles" / "NewName" / "profile_pic.jpg"
+    assert new_profile_pic.exists()
+    assert new_profile_pic.read_text() == "gif content"
+    assert not old_profile_pic.exists()  # Old location should be gone
+
+    # Verify metadata points to new location
+    with open(data_dir / "profiles" / "NewName" / "profile.json", "r") as f:
+        meta = json.load(f)
+        assert meta["image"] == str(new_profile_pic)
+
+
+def test_create_profile_image_different_extensions(temp_data_dir):
+    """Test creating profiles with images of different file types."""
+    manager, data_dir = temp_data_dir
+
+    # Test with PNG
+    png_file = data_dir / "avatar.png"
+    png_file.write_text("png data")
+    success_png = manager.create_profile("PngProfile", str(png_file))
+
+    # Test with JPEG
+    jpg_file = data_dir / "avatar.jpeg"
+    jpg_file.write_text("jpeg data")
+    success_jpg = manager.create_profile("JpgProfile", str(jpg_file))
+
+    assert success_png is True
+    assert success_jpg is True
+
+    # Both should be copied as profile_pic.jpg
+    png_pic = data_dir / "profiles" / "PngProfile" / "profile_pic.jpg"
+    jpg_pic = data_dir / "profiles" / "JpgProfile" / "profile_pic.jpg"
+
+    assert png_pic.exists()
+    assert jpg_pic.exists()
+    assert png_pic.read_text() == "png data"
+    assert jpg_pic.read_text() == "jpeg data"
+
 
 def test_migration_logic(tmp_path):
     """Test legacy data migration on first run."""

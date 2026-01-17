@@ -49,6 +49,10 @@ import json
 import shutil
 from pathlib import Path
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
 import app.settings as settings
 from app.languages_tab import LanguagesTab
 from app.history_tab import HistoryTab

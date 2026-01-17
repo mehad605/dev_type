@@ -236,25 +236,32 @@ class ProfileManager(QObject):
         
         return profiles
 
-    def create_profile(self, name: str, image_path: str = None) -> bool:
+    def create_profile(self, name: str, image_path: Optional[str] = None) -> bool:
         target_dir = self._profiles_dir / name
         if target_dir.exists():
             return False
-            
+
         try:
             target_dir.mkdir(parents=True)
-            
+
+            # Handle image copying
+            stored_image_path = None
+            if image_path and Path(image_path).exists():
+                profile_pic_path = target_dir / "profile_pic.jpg"
+                shutil.copy2(image_path, profile_pic_path)
+                stored_image_path = str(profile_pic_path)
+
             # Save metadata with creation timestamp
             import time
             meta = {
-                "image": image_path,
+                "image": stored_image_path,
                 "creation_order": time.time()  # Store creation time for consistent ordering
             }
             with open(target_dir / "profile.json", "w") as f:
                 json.dump(meta, f)
-                
+
             # Create empty DB (will be handled by settings.init_db when switched)
-            
+
             self.profile_created.emit(name)
             return True
         except Exception as e:
@@ -313,26 +320,59 @@ class ProfileManager(QObject):
             return False
             
         try:
+            # Check if profile has an image and update the path
+            meta_path = old_dir / "profile.json"
+            if meta_path.exists():
+                try:
+                    with open(meta_path, "r") as f:
+                        data = json.load(f)
+
+                    # Update image path if it exists
+                    if data.get("image"):
+                        old_image_path = Path(data["image"])
+                        # Calculate new path relative to new directory
+                        if old_image_path.is_absolute() and old_image_path.parent.name == old_name:
+                            new_image_path = new_dir / old_image_path.name
+                            data["image"] = str(new_image_path)
+
+                    # Save updated metadata
+                    with open(meta_path, "w") as f:
+                        json.dump(data, f)
+                except Exception as e:
+                    logger.warning(f"Failed to update image path in metadata during rename: {e}")
+
             # Rename folder
             old_dir.rename(new_dir)
-            
+
             # If active, update internal state
             if self.active_profile == old_name:
                 self.active_profile = new_name
                 self._data_manager.set_active_profile(new_name)
                 self._save_global_config()
-            
+
             self.profile_updated.emit(new_name)
             return True
         except Exception as e:
             logger.error(f"Failed to rename profile {old_name} to {new_name}: {e}")
             return False
 
-    def update_profile_image(self, name: str, image_path: str):
+    def update_profile_image(self, name: str, image_path: Optional[str]):
         target_dir = self._profiles_dir / name
         if not target_dir.exists():
             return
-            
+
+        # Handle image copying
+        stored_image_path = None
+        if image_path and Path(image_path).exists():
+            profile_pic_path = target_dir / "profile_pic.jpg"
+            shutil.copy2(image_path, profile_pic_path)
+            stored_image_path = str(profile_pic_path)
+        elif image_path is None:
+            # If setting to None, remove the existing image file
+            profile_pic_path = target_dir / "profile_pic.jpg"
+            if profile_pic_path.exists():
+                profile_pic_path.unlink()
+
         meta_path = target_dir / "profile.json"
         data = {}
         if meta_path.exists():
@@ -341,12 +381,12 @@ class ProfileManager(QObject):
                     data = json.load(f)
             except:
                 pass
-        
-        data["image"] = image_path
-        
+
+        data["image"] = stored_image_path
+
         with open(meta_path, "w") as f:
             json.dump(data, f)
-            
+
         self.profile_updated.emit(name)
             
 # Global Accessor

@@ -4,7 +4,7 @@ This document provides a comprehensive overview of the test suite for Dev Type, 
 
 ## Overview
 
-The test suite uses **pytest** with approximately **500+ test functions** across **39 test files**. The suite achieves **63% overall code coverage**, with significant variation across modules:
+The test suite uses **pytest** with **512 test functions** across **39 test files**. The suite achieves **63% overall code coverage**, with significant variation across modules. Recent enhancements include comprehensive profile image management testing:
 
 - **High Coverage (>90%)**: `ui_icons.py`, `stats_display.py`, `shortcuts_tab.py`
 - **Medium Coverage (60-80%)**: Core business logic modules
@@ -158,12 +158,21 @@ def mock_sound_manager():
 
 ### 8. Profile Management Tests (`test_profile_manager.py`)
 
-**Purpose**: Ensure user profile isolation and switching works.
+**Purpose**: Ensure user profile isolation, switching, and profile image management works correctly.
 
 **Key Tests**:
-- `test_create_profile()` - New profile creation
+- `test_create_profile()` - New profile creation with image copying
+- `test_create_profile_without_image()` - Profile creation without image
+- `test_update_profile_image()` - Profile image updating with file copying
+- `test_update_profile_image_to_none()` - Removing profile image
+- `test_update_profile_image_nonexistent_file()` - Error handling for invalid image paths
+- `test_rename_profile_preserves_image()` - Image preservation during profile renaming
+- `test_create_profile_image_different_extensions()` - Support for various image formats
 - `test_switch_profile()` - Profile switching logic
 - `test_delete_profile()` - Profile removal with constraints
+
+**Profile Image Management**:
+The profile manager now automatically copies uploaded profile images to the profile directory as `profile_pic.jpg`, ensuring images are properly isolated per profile and persist correctly. When profiles are renamed, image paths are updated in metadata to maintain consistency.
 
 **How It Works**:
 - Creates isolated profile directories
@@ -225,6 +234,20 @@ def test_window_initialization(self, app, mock_icon_manager, mock_sound_manager)
 - `test_ghost_race_no_recalculation_in_dialog()`: Ensures that the SessionResultDialog displays the exact stats provided to it, without performing any recalculations or modifications.
 
 **Why Important**: Prevents data inconsistencies between what gets stored and what users see, ensuring accurate performance tracking and reliable ghost data for future races.
+
+#### Profile Image Management Tests (`test_profile_manager.py`)
+**Purpose**: Ensures that profile images are properly copied, managed, and preserved across profile operations.
+
+**Test Methods**:
+- `test_create_profile()`: Verifies image files are copied to profile directories as `profile_pic.jpg`
+- `test_create_profile_without_image()`: Tests profile creation without image handling
+- `test_update_profile_image()`: Ensures image updates properly overwrite existing images
+- `test_update_profile_image_to_none()`: Verifies image removal functionality
+- `test_update_profile_image_nonexistent_file()`: Tests error handling for invalid image paths
+- `test_rename_profile_preserves_image()`: Ensures images are preserved and paths updated during profile renaming
+- `test_create_profile_image_different_extensions()`: Validates support for various image formats (PNG, JPEG, GIF)
+
+**Why Important**: Ensures profile images are properly isolated per profile, persist across operations, and handle edge cases gracefully without data loss.
 
 ## Coverage Gaps & Missing Tests
 
@@ -356,9 +379,10 @@ def test_keyboard_navigation():
 - **Average Tests per File**: ~13
 
 ### Quality Indicators
-- ✅ **Good**: Comprehensive unit test coverage for core logic
+- ✅ **Good**: Comprehensive unit test coverage for core logic including profile image management
 - ✅ **Good**: Proper mocking strategy for external dependencies
 - ✅ **Good**: Database isolation prevents test interference
+- ✅ **Good**: Edge case testing for file operations and error conditions
 - ⚠️ **Needs Work**: UI component coverage is low
 - ⚠️ **Needs Work**: Integration test coverage minimal
 
