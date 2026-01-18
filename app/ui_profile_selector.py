@@ -149,104 +149,82 @@ class ImageCropWidget(QWidget):
             self.drag_start_pos = event.pos()
             self.setCursor(Qt.ClosedHandCursor)
 
+    @property
+    def min_zoom(self):
+        """Minimum zoom factor to ensure image fully covers the circle."""
+        display_size = min(self.width(), self.height())
+        circle_radius = display_size // 2 - 10
+        circle_diameter = circle_radius * 2
+
+        img_width = self.original_pixmap.width()
+        img_height = self.original_pixmap.height()
+
+        if img_width > 0 and img_height > 0:
+            scale_x = circle_diameter / img_width
+            scale_y = circle_diameter / img_height
+            # Image must fully cover the circle (diameter x diameter square)
+            return max(scale_x, scale_y)
+        return 0.1
+
+    def _constrain_offset(self, offset: QPoint) -> QPoint:
+        """Constrain pan offset so image always covers the circle."""
+        display_size = min(self.width(), self.height())
+        radius = display_size // 2 - 10
+        
+        img_w = self.original_pixmap.width() * self.zoom_factor
+        img_h = self.original_pixmap.height() * self.zoom_factor
+        
+        # We need the distance from center to image edge to be at least 'radius'
+        # center_to_right_edge = img_w / 2 - offset_x
+        # We need center_to_right_edge >= radius
+        # => offset_x <= img_w / 2 - radius
+        
+        max_x = max(0, img_w / 2 - radius)
+        max_y = max(0, img_h / 2 - radius)
+        
+        new_x = max(-max_x, min(max_x, offset.x()))
+        new_y = max(-max_y, min(max_y, offset.y()))
+        
+        return QPoint(int(new_x), int(new_y))
+
     def mouseMoveEvent(self, event):
         if self.dragging:
             delta = event.pos() - self.drag_start_pos
-            self.pan_offset += delta
+            intended_offset = self.pan_offset + delta
+            
+            # Constrain the offset
+            self.pan_offset = self._constrain_offset(intended_offset)
+            
             self.drag_start_pos = event.pos()
             self.update()
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.dragging = False
-            self.setCursor(Qt.OpenHandCursor if self.is_hovered else Qt.ArrowCursor)
-
     def wheelEvent(self, event):
         # Zoom in/out with mouse wheel
-        zoom_delta = event.angleDelta().y() / 120.0  # Standard mouse wheel delta
-        zoom_factor = 1.0 + (zoom_delta * 0.15)  # 15% zoom per wheel step for smoother control
+        zoom_delta = event.angleDelta().y() / 120.0
+        zoom_factor = 1.0 + (zoom_delta * 0.15)
 
         new_zoom = self.zoom_factor * zoom_factor
         new_zoom = max(self.min_zoom, min(self.max_zoom, new_zoom))
 
         if new_zoom != self.zoom_factor:
-            # Zoom towards mouse position for better UX
             mouse_pos = event.position().toPoint()
             center = QPoint(self.width() // 2, self.height() // 2)
-
-            # Calculate zoom center offset
+            
+            # Zoom towards mouse, but re-constrain
             zoom_center = mouse_pos - center
-
-            # Adjust pan offset to zoom towards mouse position
             zoom_ratio = new_zoom / self.zoom_factor
-            self.pan_offset = (self.pan_offset + zoom_center) * zoom_ratio - zoom_center
-
+            
+            new_pan = (self.pan_offset + zoom_center) * zoom_ratio - zoom_center
+            
+            # Apply new zoom first to calculate constraints correctly
             self.zoom_factor = new_zoom
+            self.pan_offset = self._constrain_offset(new_pan)
+            
             self.update()
-
-    def enterEvent(self, event):
-        self.is_hovered = True
-        self.setCursor(Qt.OpenHandCursor)
-        self.update()
-
-    def leaveEvent(self, event):
-        self.is_hovered = False
-        self.unsetCursor()
-        self.update()
-
-    def reset_view(self):
-        """Reset zoom and pan to initial state (fill circle)."""
-        display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
-
-        img_width = self.original_pixmap.width()
-        img_height = self.original_pixmap.height()
-
-        if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            self.zoom_factor = max(scale_x, scale_y)
-        
-        self.pan_offset = QPoint(0, 0)
-        self.update()
-
-    def fit_to_circle(self):
-        """Fit entire image within the circle."""
-        display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
-
-        img_width = self.original_pixmap.width()
-        img_height = self.original_pixmap.height()
-
-        if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            self.zoom_factor = min(scale_x, scale_y)
-        
-        self.pan_offset = QPoint(0, 0)
-        self.update()
-
-    @property
-    def min_zoom(self):
-        """Minimum zoom factor to fit entire image in circle."""
-        display_size = min(self.width(), self.height())
-        circle_radius = display_size // 2 - 10
-        circle_diameter = circle_radius * 2
-
-        img_width = self.original_pixmap.width()
-        img_height = self.original_pixmap.height()
-
-        if img_width > 0 and img_height > 0:
-            scale_x = circle_diameter / img_width
-            scale_y = circle_diameter / img_height
-            return min(scale_x, scale_y) * 0.5  # Allow zooming out a bit more
-        return 0.1
 
     @property
     def max_zoom(self):
-        return 3.0  # Maximum 3x zoom (more reasonable than 5x)
+        return 5.0  # Increased max zoom to allow fine tuning
 
     @property
     def current_zoom_factor(self):
@@ -263,7 +241,7 @@ class ImageCropperDialog(QDialog):
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Crop Profile Picture")
-        self.setFixedSize(560, 640)  # Reduced height since we removed zoom slider
+        self.setFixedSize(460, 620)  # Adjusted for 400x400 image widget
 
         self.original_image_path = image_path
         self.cropped_image_path = None
@@ -301,7 +279,7 @@ class ImageCropperDialog(QDialog):
 
         # Image display area - custom widget for pan/zoom
         self.image_widget = ImageCropWidget(self.original_pixmap, self)
-        self.image_widget.setFixedSize(500, 500)
+        self.image_widget.setFixedSize(400, 400) # Reduced size to prevent layout collisions
         layout.addWidget(self.image_widget, alignment=Qt.AlignCenter)
 
         # Quick action buttons (below the image, not overlapping)
