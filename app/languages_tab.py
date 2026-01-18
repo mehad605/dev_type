@@ -474,11 +474,14 @@ class LanguagesTab(QWidget):
             if not files:
                 continue
             
-            # Recalculate stats
-            stats_map = stats_db.get_file_stats_for_files(files)
-            recent = stats_db.get_recent_wpm_average(files, limit=10)
+            # Recalculate stats using efficient language-based queries
+            recent = stats_db.get_recent_wpm_average_by_language(lang, limit=10)
             avg_wpm = recent.get("average") if recent else None
             sample_size = recent.get("count", 0) if recent else 0
+            
+            # For the completion count, we still need file-level stats
+            # Use chunked retrieval for safety with large datasets
+            stats_map = stats_db.get_file_stats_for_files(files)
             completed_count = sum(
                 1 for path in files if stats_map.get(path, {}).get("completed")
             )

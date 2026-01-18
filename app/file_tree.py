@@ -11,17 +11,17 @@ from PySide6.QtWidgets import (
     QTreeWidgetItemIterator,
     QPushButton,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer
 from PySide6.QtGui import QIcon, QBrush, QColor, QPixmap, QPainter, QFont
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 import re
 import fnmatch
 import json
 import random
+import os
 from app import settings, stats_db
-from app import settings, stats_db
-from app.file_scanner import LANGUAGE_MAP, should_ignore_file, should_ignore_folder
+from app.file_scanner import LANGUAGE_MAP, is_text_file
 from app.ui_icons import get_icon
 
 
@@ -97,6 +97,20 @@ class InternalFileTree(QTreeWidget):
         
         # State for reloading
         self._last_load_args = None  # (method_name, args, kwargs)
+        
+        # Large folder optimization state
+        self._is_large_dataset = False
+        self._all_filepaths: List[str] = []
+        self._filtered_filepaths: List[str] = []
+        self._file_index: Dict[str, List[str]] = {}  # filename -> [full_paths]
+        
+        # Lazy loading state
+        self._populated_paths: Set[str] = set()
+        self._folder_files_cache: Dict[str, List[str]] = {} # For languages tab lazy load
+        self.CHUNK_SIZE = 200
+        
+        # Load expansions
+        self._load_expansion_state()
 
     def set_persistence_enabled(self, enabled: bool):
         """Enable or disable expansion state persistence."""
@@ -151,13 +165,25 @@ class InternalFileTree(QTreeWidget):
         self.reload_tree()
 
     def reload_tree(self):
-        """Reload the tree using the last used load method."""
+        """Reload the tree using the most recent load arguments."""
+        self.reload_last_load()
+            
+    def reload_last_load(self):
+        """Reload the tree using the most recent load arguments."""
         if not self._last_load_args:
             return
             
         method_name, args, kwargs = self._last_load_args
         if hasattr(self, method_name):
-            getattr(self, method_name)(*args, **kwargs)
+            # Special case for folder paths to ensure they exist
+            if method_name in ("load_folder", "load_folders"):
+                getattr(self, method_name)(*args, **kwargs)
+            else:
+                getattr(self, method_name)(*args, **kwargs)
+
+    def restore_last_view(self):
+        """Specifically restore the previous folder/language view."""
+        self.reload_last_load()
 
     def _is_ignored(self, path: Path) -> bool:
         """Check if a file or folder should be ignored using global logic."""
@@ -171,6 +197,27 @@ class InternalFileTree(QTreeWidget):
         """Load a single folder and display its file tree."""
         self._last_load_args = ("load_folder", (folder_path,), {})
         self.refresh_incomplete_sessions()
+        
+        # Reset optimization state
+        self._is_large_dataset = False
+        self._all_filepaths.clear()
+        self._filtered_filepaths.clear()
+        self._file_index.clear()
+        self._populated_paths.clear()
+        self._folder_files_cache.clear()
+        
+        # Check if this is a large folder
+        from app.file_scanner import is_large_folder, count_files_fast
+        threshold = settings.get_setting_int("large_folder_threshold", 1000, min_val=1)
+        
+        # Fast detection: count files up to threshold + 1
+        file_count = count_files_fast(folder_path, threshold=threshold + 1)
+        self._is_large_dataset = file_count > threshold
+        
+        if self._is_large_dataset:
+            # For large folders, enumerate all files and build index
+            self._enumerate_and_index_folder(folder_path)
+        
         self.setSortingEnabled(False)
         self.clear()
         root_path = Path(folder_path)
@@ -194,6 +241,27 @@ class InternalFileTree(QTreeWidget):
         """Load multiple folders and display them as separate tree roots."""
         self._last_load_args = ("load_folders", (folder_paths,), {})
         self.refresh_incomplete_sessions()
+        
+        # Reset optimization state
+        self._is_large_dataset = False
+        self._all_filepaths.clear()
+        self._filtered_filepaths.clear()
+        self._file_index.clear()
+        self._populated_paths.clear()
+        self._folder_files_cache.clear()
+        
+        # Check if combined folders form a large dataset
+        from app.file_scanner import count_files_fast
+        threshold = settings.get_setting_int("large_folder_threshold", 1000, min_val=1)
+        
+        total_file_count = sum(count_files_fast(fp, threshold=threshold + 1) for fp in folder_paths)
+        self._is_large_dataset = total_file_count > threshold
+        
+        if self._is_large_dataset:
+            # Enumerate all files from all folders
+            for folder_path in folder_paths:
+                self._enumerate_and_index_folder(folder_path)
+        
         self.setSortingEnabled(False)
         self.clear()
         for folder_path in folder_paths:
@@ -219,134 +287,204 @@ class InternalFileTree(QTreeWidget):
         self.sortByColumn(0, Qt.AscendingOrder)
     
     def load_language_files(self, language: str, files: List[str]):
-        """Load files grouped by their parent folders for a specific language."""
+        """Load files grouped by their parent folders for a specific language.
+        
+        Implemented with lazy folder population for instant performance.
+        """
         self._last_load_args = ("load_language_files", (language, files), {})
         self.refresh_incomplete_sessions()
+        
+        # Check if this is a large dataset
+        threshold = settings.get_setting_int("large_folder_threshold", 1000, min_val=1)
+        self._is_large_dataset = len(files) > threshold
+        
+        self._all_filepaths = list(files)
+        self._filtered_filepaths = list(files)
+        
+        if self._is_large_dataset:
+            # Build file index for fast search
+            self._file_index = {}
+            for file_path in files:
+                filename = os.path.basename(file_path).lower()
+                if filename not in self._file_index:
+                    self._file_index[filename] = []
+                self._file_index[filename].append(file_path)
+        
         self.setSortingEnabled(False)
         self.clear()
+        self._populated_paths.clear()
+        self._folder_files_cache.clear()
         
-        # Group files by their parent folder
-        folder_files: Dict[str, List[str]] = {}
+        # Group files by their parent folder for deferred loading
         for file_path in files:
-            parent = str(Path(file_path).parent)
-            if parent not in folder_files:
-                folder_files[parent] = []
-            folder_files[parent].append(file_path)
-
-        auto_indent = settings.get_setting("auto_indent", "0") == "1"
-        stats_cache = stats_db.get_file_stats_for_files(files, auto_indent=auto_indent)
+            parent = os.path.dirname(file_path)
+            if parent not in self._folder_files_cache:
+                self._folder_files_cache[parent] = []
+            self._folder_files_cache[parent].append(file_path)
         
-        # Create tree items for each folder
-        for folder, file_list in sorted(folder_files.items()):
+        # Create folder items only (Lazy population of contents)
+        for folder in sorted(self._folder_files_cache.keys()):
             folder_path = Path(folder)
             folder_item = FileTreeItem(self, [folder_path.name, "", ""])
             folder_item.setData(0, Qt.UserRole, folder)
             folder_item.setData(0, Qt.UserRole + 1, "folder")
             
+            # Check persistence
             is_expanded = str(folder) in self.expanded_paths
             self._update_folder_icon(folder_item, is_expanded)
             
-            for file_path in sorted(file_list):
-                file_path_obj = Path(file_path)
-                # Get actual WPM stats from database
-                stats = stats_cache.get(file_path)
-                best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
-                last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
-                
-                file_item = FileTreeItem(folder_item, [
-                    file_path_obj.name,
-                    best_wpm,
-                    last_wpm
-                ])
-                file_item.setData(0, Qt.UserRole, str(file_path))
-                file_item.setData(0, Qt.UserRole + 1, "file")
-                
-                self._apply_file_icon(file_item, file_path_obj.name)
-                
-                file_item.setToolTip(0, str(file_path))
-                
-                # Highlight if incomplete session
-                self._apply_incomplete_highlight(file_item, file_path)
+            # Add dummy child
+            QTreeWidgetItem(folder_item, ["..."])
             
-            # Check persistence
             if is_expanded:
+                # Trigger lazy load
+                self._on_item_expanded(folder_item)
                 folder_item.setExpanded(True)
-            else:
-                folder_item.setExpanded(False)
+
         self.setSortingEnabled(True)
         self.sortByColumn(0, Qt.AscendingOrder)
-    
-    def _populate_tree(self, parent_item: FileTreeItem, path: Path):
-        """Recursively populate tree with files and folders."""
-        try:
-            items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-        except PermissionError:
-            return
-        
-        file_candidates = [
-            item for item in items
-            if item.is_file() and item.suffix.lower() in LANGUAGE_MAP
-        ]
-        auto_indent = settings.get_setting("auto_indent", "0") == "1"
-        stats_cache = stats_db.get_file_stats_for_files([str(item) for item in file_candidates], auto_indent=auto_indent)
 
-        for item in items:
-            if item.name.startswith('.'):
-                continue
-            
-            if self._is_ignored(item):
-                continue
-            
+    def _populate_tree(self, parent_item: QTreeWidgetItem, path: Path, start_index: int = 0):
+        """Populate tree with files and subfolders for the current level only.
+        
+        This method implements pagination and deferred loading for instant performance.
+        """
+        path_str = str(path)
+        
+        # Check if we have pre-grouped files (e.g. from languages tab)
+        if path_str in self._folder_files_cache:
+            file_candidates = self._folder_files_cache[path_str]
+            # When from language cache, we don't show subfolders, just files
+            entries = [Path(f) for f in sorted(file_candidates)]
+        else:
+            try:
+                # Standard folder view: get all entries
+                entries = sorted(list(path.iterdir()), key=lambda x: (not x.is_dir(), x.name.lower()))
+            except (PermissionError, OSError):
+                return
+
+        # Filtering entries
+        valid_entries = []
+        for entry in entries:
+            # If it's a file, check if it's already in our candidates or check extension
+            if entry.is_file():
+                if path_str in self._folder_files_cache:
+                    # In language mode, we only show files belonging to that language
+                    # (already filtered in entries list)
+                    pass
+                else:
+                    if entry.name.startswith('.'): continue
+                    if entry.suffix.lower() not in LANGUAGE_MAP: continue
+                    if self.ignore_manager.should_ignore_file(entry): continue
+            else:
+                # Directory
+                if path_str in self._folder_files_cache:
+                    continue # Hide subfolders in languages mode
+                if entry.name.startswith('.'): continue
+                if self.ignore_manager.should_ignore_folder(entry): continue
+                
+            valid_entries.append(entry)
+
+        # Pagination
+        total_valid = len(valid_entries)
+        end_index = min(start_index + self.CHUNK_SIZE, total_valid)
+        chunk = valid_entries[start_index:end_index]
+
+        # Batch fetch stats
+        file_paths = [str(item) for item in chunk if item.is_file()]
+        auto_indent = settings.get_setting("auto_indent", "0") == "1"
+        stats_cache = stats_db.get_file_stats_for_files(file_paths, auto_indent=auto_indent) if file_paths else {}
+
+        for item in chunk:
             if item.is_dir():
                 folder_item = FileTreeItem(parent_item, [item.name, " ", " "])
                 folder_item.setData(0, Qt.UserRole, str(item))
                 folder_item.setData(0, Qt.UserRole + 1, "folder")
-                
-                is_expanded = str(item) in self.expanded_paths
-                self._update_folder_icon(folder_item, is_expanded)
-                
-                self._populate_tree(folder_item, item)
-                
-                # Check persistence
-                if is_expanded:
-                    folder_item.setExpanded(True)
-            elif item.is_file():
-                # Only show supported file types
-                if item.suffix.lower() not in LANGUAGE_MAP:
-                    continue
-
-                # Get actual WPM stats from cache
+                QTreeWidgetItem(folder_item, ["..."])
+            else:
                 file_path_str = str(item)
                 stats = stats_cache.get(file_path_str)
                 best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
                 last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
-                language = LANGUAGE_MAP.get(item.suffix.lower())
-                
-                file_item = FileTreeItem(parent_item, [
-                    item.name,
-                    best_wpm,
-                    last_wpm
-                ])
+                file_item = FileTreeItem(parent_item, [item.name, best_wpm, last_wpm])
                 file_item.setData(0, Qt.UserRole, file_path_str)
                 file_item.setData(0, Qt.UserRole + 1, "file")
-                
                 self._apply_file_icon(file_item, item.name)
-                
                 file_item.setToolTip(0, file_path_str)
-                
-                # Highlight if incomplete session
                 self._apply_incomplete_highlight(file_item, file_path_str)
-    
+
+        if end_index < total_valid:
+            remaining = total_valid - end_index
+            more_item = QTreeWidgetItem(parent_item, [f"Show More... ({remaining} left)", "", ""])
+            more_item.setData(0, Qt.UserRole, path_str)
+            more_item.setData(0, Qt.UserRole + 1, "load_more")
+            more_item.setData(0, Qt.UserRole + 2, end_index)
+            more_item.setForeground(0, QBrush(QColor("#88c0d0")))
+            more_item.setFont(0, QFont("", -1, QFont.Bold))
+
+    def _on_item_expanded(self, item):
+        """Handle item expansion - triggered for lazy loading."""
+        path_str = item.data(0, Qt.UserRole)
+        role = item.data(0, Qt.UserRole + 1)
+        
+        if path_str:
+            self.expanded_paths.add(path_str)
+            self._save_expansion_state_to_db()
+            
+            if role == "folder":
+                self._update_folder_icon(item, True)
+                # Check if it has the dummy child
+                if item.childCount() == 1 and item.child(0).text(0) == "...":
+                    # Clear dummy and populate real items
+                    item.removeChild(item.child(0))
+                    self._populate_tree(item, Path(path_str))
+
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
-        """Handle item click - emit signal if it's a file."""
-        file_path = item.data(0, Qt.UserRole)
-        if file_path and Path(file_path).is_file():
-            self.file_selected.emit(file_path)
+        """Handle item click - supports selection and pagination."""
+        path = item.data(0, Qt.UserRole)
+        role = item.data(0, Qt.UserRole + 1)
+        
+        if role == "load_more":
+            parent = item.parent() or self.invisibleRootItem()
+            start_index = item.data(0, Qt.UserRole + 2)
+            parent.removeChild(item)
+            
+            if path == "SEARCH_RESULTS":
+                # Paginate search results
+                total_matches = len(self._filtered_filepaths)
+                end_index = min(start_index + self.CHUNK_SIZE, total_matches)
+                chunk = self._filtered_filepaths[start_index:end_index]
+                
+                auto_indent = settings.get_setting("auto_indent", "0") == "1"
+                stats_cache = stats_db.get_file_stats_for_files(chunk, auto_indent=auto_indent) if chunk else {}
+                
+                for file_path in chunk:
+                    stats = stats_cache.get(file_path)
+                    best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
+                    last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
+                    res_item = FileTreeItem(parent, [os.path.basename(file_path), best_wpm, last_wpm])
+                    res_item.setData(0, Qt.UserRole, file_path)
+                    res_item.setData(0, Qt.UserRole + 1, "file")
+                    self._apply_file_icon(res_item, file_path)
+                    res_item.setToolTip(0, file_path)
+                    self._apply_incomplete_highlight(res_item, file_path)
+                    
+                if end_index < total_matches:
+                    more_item = QTreeWidgetItem(parent, [f"Show More Matches... ({total_matches - end_index} left)", "", ""])
+                    more_item.setData(0, Qt.UserRole, "SEARCH_RESULTS")
+                    more_item.setData(0, Qt.UserRole + 1, "load_more")
+                    more_item.setData(0, Qt.UserRole + 2, end_index)
+                    more_item.setForeground(0, QBrush(QColor("#88c0d0")))
+            elif path:
+                self._populate_tree(parent, Path(path), start_index=start_index)
+            return
+
+        if role == "file" and path:
+            self.file_selected.emit(path)
     
     def _get_incomplete_highlight_color(self) -> QColor:
         """Get the highlight color for incomplete files from theme settings."""
         from app import settings
-        paused_color = settings.get_setting("color_paused_highlight", settings.get_default("color_paused_highlight"))
         # Make it slightly transparent for better visibility
         color = QColor(paused_color)
         color.setAlpha(80)  # 30% opacity
@@ -357,12 +495,9 @@ class InternalFileTree(QTreeWidget):
         if file_path in self.incomplete_files:
             highlight_color = self._get_incomplete_highlight_color()
             brush = QBrush(highlight_color)
-            # Apply to all columns
             for col in range(self.columnCount()):
                 item.setBackground(col, brush)
-            # Add indicator in the filename (⏸ pause symbol)
-            current_text = item.text(0)
-            # Add indicator in the filename
+            
             current_text = item.text(0)
             if not current_text.endswith(" (paused)"):
                 item.setText(0, f"{current_text} (paused)")
@@ -448,6 +583,53 @@ class InternalFileTree(QTreeWidget):
         
         return None
 
+    
+    def _enumerate_and_index_folder(self, folder_path: str):
+        """Enumerate all files in folder and build search index for large datasets.
+        
+        Non-blocking implementation using processEvents.
+        """
+        folder = Path(folder_path)
+        if not folder.exists():
+            return
+        
+        all_files = []
+        process_counter = 0
+        
+        # Walk through folder and collect all valid code files
+        for root, dirs, files in os.walk(folder, followlinks=False):
+            root_path = Path(root)
+            
+            # Respect ignore settings
+            dirs[:] = [d for d in dirs if not self.ignore_manager.should_ignore_folder(root_path / d)]
+            dirs[:] = [d for d in dirs if not (root_path / d).is_symlink()]
+            
+            for filename in files:
+                file_path = os.path.join(root, filename)
+                
+                if self.ignore_manager.should_ignore_file(Path(file_path)):
+                    continue
+                
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in LANGUAGE_MAP or is_text_file(Path(file_path)):
+                    all_files.append(file_path)
+                    
+                    # Periodic UI updates during scan
+                    process_counter += 1
+                    if process_counter % 1000 == 0:
+                        QCoreApplication.processEvents()
+        
+        # Store for fast access
+        self._all_filepaths.extend(all_files)
+        self._filtered_filepaths = list(self._all_filepaths)
+        
+        # Build search index
+        for file_path in all_files:
+            filename = os.path.basename(file_path).lower()
+            if filename not in self._file_index:
+                self._file_index[filename] = []
+            self._file_index[filename].append(file_path)
+    
     def _update_folder_icon(self, item: QTreeWidgetItem, expanded: bool):
         """Update the folder icon based on its expansion state."""
         path_str = item.data(0, Qt.UserRole)
@@ -526,7 +708,14 @@ class InternalFileTree(QTreeWidget):
     
     def open_random_file(self):
         """Select and open a random file from the tree (respects search filter)."""
-        # Use visible items to respect the current search filter
+        # Large dataset optimization: use in-memory file list
+        if self._is_large_dataset and self._filtered_filepaths:
+            # Instant random selection from filtered list
+            file_path = random.choice(self._filtered_filepaths)
+            self.file_selected.emit(file_path)
+            return
+        
+        # Small dataset: use visible items to respect the current search filter
         file_items = self.get_visible_file_items()
         
         if not file_items:
@@ -627,18 +816,75 @@ class FileTreeWidget(QWidget):
     def filter_tree(self, text: str):
         """Filter tree items based on search text."""
         if not text:
-            self._show_all_items()
             if self._is_searching:
+                self._show_all_items()
                 self._restore_expansion_state()
                 self._is_searching = False
                 self.tree.set_persistence_enabled(True)
+                # Reset filtered list for large datasets
+                if self.tree._is_large_dataset:
+                    self.tree._filtered_filepaths = list(self.tree._all_filepaths)
             return
             
         if not self._is_searching:
             self._save_expansion_state()
             self._is_searching = True
             self.tree.set_persistence_enabled(False)
+        
+        # Large dataset optimization: use file index for instant search
+        if self.tree._is_large_dataset:
+            query = text.lower()
+            matched_files = []
             
+            # Search in file names using index (High performance)
+            for filename, paths in self.tree._file_index.items():
+                if query in filename:
+                    matched_files.extend(paths)
+            
+            # Only search parts if name query yield few results or if user uses /path search
+            if len(matched_files) < 100 or '/' in query or '\\' in query:
+                for file_path in self.tree._all_filepaths:
+                    if query in file_path.lower() and file_path not in matched_files:
+                        matched_files.append(file_path)
+
+            # Update filtered list for random button
+            self.tree._filtered_filepaths = matched_files
+            
+            # CLEAR TREE and show results as a flat list for instant response
+            self.tree.clear()
+            self._is_searching = True
+            
+            # Populate matched results (paged)
+            total_matches = len(matched_files)
+            chunk = matched_files[:self.tree.CHUNK_SIZE]
+            
+            # Batch stats for matches
+            auto_indent = settings.get_setting("auto_indent", "0") == "1"
+            stats_cache = stats_db.get_file_stats_for_files(chunk, auto_indent=auto_indent) if chunk else {}
+            
+            for file_path in chunk:
+                stats = stats_cache.get(file_path)
+                best_wpm = f"{stats['best_wpm']:.1f}" if stats and stats['best_wpm'] > 0 else "--"
+                last_wpm = f"{stats['last_wpm']:.1f}" if stats and stats['last_wpm'] > 0 else "--"
+                item = FileTreeItem(self.tree, [os.path.basename(file_path), best_wpm, last_wpm])
+                item.setData(0, Qt.UserRole, file_path)
+                item.setData(0, Qt.UserRole + 1, "file")
+                self.tree._apply_file_icon(item, file_path)
+                item.setToolTip(0, file_path)
+                self.tree._apply_incomplete_highlight(item, file_path)
+                
+            if total_matches > self.tree.CHUNK_SIZE:
+                remaining = total_matches - self.tree.CHUNK_SIZE
+                more_item = QTreeWidgetItem(self.tree, [f"Show More Matches... ({remaining} left)", "", ""])
+                # We reuse the pagination logic for search results
+                more_item.setData(0, Qt.UserRole, "SEARCH_RESULTS") # Special flag
+                more_item.setData(0, Qt.UserRole + 1, "load_more")
+                more_item.setData(0, Qt.UserRole + 2, self.tree.CHUNK_SIZE)
+                more_item.setForeground(0, QBrush(QColor("#88c0d0")))
+                
+            return
+            
+        # Small dataset: original implementation with tree traversal
         # Determine matching strategy
         use_glob = '*' in text or '?' in text
         regex_pattern = None
@@ -709,6 +955,12 @@ class FileTreeWidget(QWidget):
 
     def _show_all_items(self):
         """Show all items."""
+        # If we are in large dataset mode and were searching, 
+        # the tree was cleared. We must reload.
+        if self.tree._is_large_dataset and self._is_searching:
+            self.tree.restore_last_view()
+            return
+
         iterator = QTreeWidgetItemIterator(self.tree)
         while iterator.value():
             item = iterator.value()

@@ -623,22 +623,47 @@ def get_key_confusions(languages: Optional[List[str]] = None) -> Dict[str, Dict[
 
 
 def get_recent_wpm_average(file_paths: List[str], limit: int = 10) -> Optional[Dict[str, float]]:
-    """Return average WPM and sample size for the most recent sessions across given files."""
+    """Return average WPM and sample size for the most recent sessions across given files.
+    
+    Optimized for large file sets by using Python-side filtering or chunking.
+    """
     if not file_paths:
         return None
 
     conn = _connect_for_stats()
     cur = conn.cursor()
-    placeholders = ",".join(["?"] * len(file_paths))
-    query = f"""
-        SELECT wpm FROM session_history
-        WHERE completed = 1
-          AND file_path IN ({placeholders})
-        ORDER BY recorded_at DESC
-        LIMIT ?
-    """
-    cur.execute(query, (*file_paths, limit))
-    rows = cur.fetchall()
+    
+    # If the file list is small, use the standard IN query
+    if len(file_paths) < 900:
+        placeholders = ",".join(["?"] * len(file_paths))
+        query = f"""
+            SELECT wpm FROM session_history
+            WHERE completed = 1
+              AND file_path IN ({placeholders})
+            ORDER BY recorded_at DESC
+            LIMIT ?
+        """
+        cur.execute(query, (*file_paths, limit))
+        rows = cur.fetchall()
+    else:
+        # For massive file lists, it's safer and faster to fetch the last N history entries
+        # globally and filter them in memory, since history is usually small relative
+        # to the total project file count.
+        path_set = set(file_paths)
+        cur.execute("""
+            SELECT wpm, file_path FROM session_history
+            WHERE completed = 1
+            ORDER BY recorded_at DESC
+            LIMIT 1000
+        """)
+        all_recent = cur.fetchall()
+        rows = []
+        for wpm, path in all_recent:
+            if path in path_set:
+                rows.append((wpm,))
+                if len(rows) >= limit:
+                    break
+    
     conn.close()
 
     if not rows:

@@ -290,6 +290,106 @@ def should_ignore_folder(path: Path, ignored_folders: List[str]) -> bool:
     return manager.should_ignore_folder(path)
 
 
+def count_files_fast(folder_path: str, threshold: int = 1000) -> int:
+    """
+    Fast file counting with early termination at threshold.
+    Only counts files that match LANGUAGE_MAP extensions and respect ignore settings.
+    
+    Args:
+        folder_path: Path to folder to count files in
+        threshold: Stop counting when this number is reached (optimization)
+        
+    Returns:
+        Number of valid code files found (capped at threshold)
+    """
+    folder = Path(folder_path)
+    if not folder.exists() or not folder.is_dir():
+        return 0
+    
+    ignored_dirs_set = get_ignored_dirs()
+    ignored_file_patterns, ignored_folder_patterns = get_global_ignore_settings()
+    ignore_manager = IgnoreManager(ignored_file_patterns, ignored_folder_patterns)
+    
+    count = 0
+    seen_inodes: Set[tuple] = set()
+    
+    try:
+        for root, dirs, files in os.walk(folder, followlinks=False):
+            root_path = Path(root)
+            
+            # Check depth limit
+            try:
+                depth = len(root_path.relative_to(folder).parts)
+                if depth > MAX_SCAN_DEPTH:
+                    dirs[:] = []
+                    continue
+            except ValueError:
+                continue
+            
+            # Check for symlink loops
+            try:
+                stat_info = root_path.stat()
+                inode_key = (stat_info.st_dev, stat_info.st_ino)
+                if inode_key in seen_inodes:
+                    dirs[:] = []
+                    continue
+                seen_inodes.add(inode_key)
+            except (OSError, PermissionError):
+                pass
+            
+            # Filter ignored directories
+            dirs[:] = [d for d in dirs if d not in ignored_dirs_set]
+            dirs[:] = [d for d in dirs if not (root_path / d).is_symlink()]
+            dirs[:] = [d for d in dirs if not ignore_manager.should_ignore_folder(root_path / d)]
+            
+            # Count valid files
+            for filename in files:
+                file_path = root_path / filename
+                
+                # Skip symlinks
+                if file_path.is_symlink():
+                    continue
+                
+                # Skip ignored files
+                if ignore_manager.should_ignore_file(file_path):
+                    continue
+                
+                # Check if has valid extension
+                ext = file_path.suffix.lower()
+                if ext in LANGUAGE_MAP:
+                    count += 1
+                    # Early termination at threshold
+                    if count >= threshold:
+                        return count
+                elif is_text_file(file_path):
+                    count += 1
+                    if count >= threshold:
+                        return count
+    except Exception as e:
+        logger.warning(f"Error counting files in {folder_path}: {e}")
+    
+    return count
+
+
+def is_large_folder(folder_path: str, threshold: Optional[int] = None) -> bool:
+    """
+    Determine if a folder should be considered "large" based on file count.
+    
+    Args:
+        folder_path: Path to folder to check
+        threshold: Override default threshold from settings
+        
+    Returns:
+        True if folder has more files than threshold
+    """
+    if threshold is None:
+        threshold = settings.get_setting_int("large_folder_threshold", 1000, min_val=1)
+    
+    # Count up to threshold + 1 (to determine if it exceeds)
+    count = count_files_fast(folder_path, threshold=threshold + 1)
+    return count > threshold
+
+
 def scan_folders(folder_paths: List[str]) -> Dict[str, List[str]]:
     """
     Scan multiple folders and group files by language.

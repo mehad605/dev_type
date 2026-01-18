@@ -112,6 +112,11 @@ SETTING_DEFAULTS: Dict[str, str] = {
     # State persistence (not user-configurable)
     "expanded_folders": "[]",
     
+    # Large Folder Optimization settings
+    "large_folder_threshold": "1000",
+    "large_folder_max_tree_depth": "2",
+    "large_folder_cache_enabled": "1",
+    
     # Global Exclusions (user-configurable)
     "ignored_files": (
         "*.exe\n.gitignore\n.python-version\nLICENSE\n*.env\n*.spec\n"
