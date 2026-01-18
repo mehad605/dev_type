@@ -148,6 +148,11 @@ class ImageCropWidget(QWidget):
             self.dragging = True
             self.drag_start_pos = event.pos()
             self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+
+    def fit_to_circle(self):
+        """Reset to optimal fill (Cover mode). same as reset_view."""
+        self.reset_view()
 
     @property
     def min_zoom(self):
@@ -188,6 +193,13 @@ class ImageCropWidget(QWidget):
         return QPoint(int(new_x), int(new_y))
 
     def mouseMoveEvent(self, event):
+        # Strictly check that left button is actually held
+        if not (event.buttons() & Qt.LeftButton):
+            if self.dragging:
+                self.dragging = False # Failsafe
+                self.setCursor(Qt.OpenHandCursor if self.is_hovered else Qt.ArrowCursor)
+            return
+
         if self.dragging:
             delta = event.pos() - self.drag_start_pos
             intended_offset = self.pan_offset + delta
@@ -197,6 +209,7 @@ class ImageCropWidget(QWidget):
             
             self.drag_start_pos = event.pos()
             self.update()
+            event.accept()
 
     def wheelEvent(self, event):
         # Zoom in/out with mouse wheel
@@ -221,6 +234,7 @@ class ImageCropWidget(QWidget):
             self.pan_offset = self._constrain_offset(new_pan)
             
             self.update()
+        event.accept()
 
     @property
     def max_zoom(self):
