@@ -607,8 +607,15 @@ class EditorTab(QWidget):
         # Update ghost progress bar if racing
         if self._display_ghost_progress and hasattr(self, 'ghost_progress_bar'):
             ghost_pos = self._ghost_cursor_position
-            self.ghost_progress_bar.set_progress(ghost_pos, total_chars)
-            ghost_pct = (ghost_pos / total_chars * 100) if total_chars > 0 else 0
+            
+            # Use ghost's own content length for accuracy (ghost content might differ if tab settings changed)
+            if self._ghost_engine:
+                ghost_total = len(self._ghost_engine.state.content)
+            else:
+                ghost_total = total_chars
+            
+            self.ghost_progress_bar.set_progress(ghost_pos, ghost_total)
+            ghost_pct = (ghost_pos / ghost_total * 100) if ghost_total > 0 else 0
             self.ghost_progress_label.setText(f"{ghost_pct:.0f}%")
     
     def update_display(self):
