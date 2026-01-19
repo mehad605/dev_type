@@ -493,8 +493,13 @@ class InternalFileTree(QTreeWidget):
     def _get_incomplete_highlight_color(self) -> QColor:
         """Get the highlight color for incomplete files from theme settings."""
         from app import settings
+        from app.themes import get_color_scheme
+        
+        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        scheme = get_color_scheme("dark", scheme_name)
+        
         # Make it slightly transparent for better visibility
-        color = QColor(paused_color)
+        color = QColor(scheme.text_paused)
         color.setAlpha(80)  # 30% opacity
         return color
     

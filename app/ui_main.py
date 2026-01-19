@@ -1048,17 +1048,63 @@ class FoldersTab(QWidget):
         widget = self.list.itemWidget(self.list.item(0))
         return widget.sizeHint() if widget else None
 
-    def apply_theme(self):
+    def apply_theme(self, scheme=None):
         """Apply current theme to FoldersTab and all its children."""
-        from app.themes import get_color_scheme
-        scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        scheme = get_color_scheme("dark", scheme_name)
+        if scheme is None:
+            from app.themes import get_color_scheme
+            scheme_name = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+            scheme = get_color_scheme("dark", scheme_name)
         
         # Update header labels
         if hasattr(self, 'title_label'):
             self.title_label.setStyleSheet(f"font-size: 18pt; font-weight: bold; color: {scheme.text_primary};")
         if hasattr(self, 'desc_label'):
             self.desc_label.setStyleSheet(f"color: {scheme.text_secondary}; font-size: 10pt;")
+
+        # Update Search Bar (Crucial)
+        if hasattr(self, 'folder_search_bar'):
+            self.folder_search_bar.setStyleSheet(f"""
+                QLineEdit {{
+                    background-color: {scheme.bg_secondary};
+                    color: {scheme.text_primary};
+                    border: 1px solid {scheme.card_border};
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    margin-bottom: 8px;
+                    selection-background-color: {scheme.accent_color};
+                    selection-color: {scheme.text_primary};
+                }}
+                QLineEdit:focus {{
+                    border: 1px solid {scheme.accent_color};
+                }}
+                QLineEdit::placeholder {{
+                    color: {scheme.text_disabled};
+                }}
+            """)
+
+        # Update Tab Buttons
+        tab_style = f"""
+            QPushButton {{
+                background: transparent;
+                color: {scheme.text_secondary};
+                border: 1px solid transparent;
+                border-radius: 6px;
+                font-weight: 600;
+                padding: 4px 12px;
+            }}
+            QPushButton:checked {{
+                background-color: {scheme.bg_tertiary};
+                color: {scheme.text_primary};
+                border: 1px solid {scheme.card_border};
+            }}
+            QPushButton:hover:!checked {{
+                background-color: rgba(255, 255, 255, 0.05);
+                color: {scheme.text_primary};
+            }}
+        """
+        if hasattr(self, 'btn_all'): self.btn_all.setStyleSheet(tab_style)
+        if hasattr(self, 'btn_fav'): self.btn_fav.setStyleSheet(tab_style)
+        if hasattr(self, 'btn_rec'): self.btn_rec.setStyleSheet(tab_style)
         
         # Update list widget styling to maintain clean look
         self.list.setStyleSheet("""
@@ -1577,11 +1623,11 @@ class MainWindow(QMainWindow):
 
     def _cycle_themes(self):
         """Cycle through all available themes."""
-        from app.themes import THEMES, _get_custom_themes
+        from app import themes
         
         # Get all available schemes
-        scheme_names = list(THEMES.get("dark", {}).keys())
-        customs = _get_custom_themes()
+        scheme_names = themes.get_available_schemes("dark")
+        customs = themes._get_custom_themes()
         if "dark" in customs:
             scheme_names.extend(list(customs["dark"].keys()))
         
@@ -3103,13 +3149,13 @@ class MainWindow(QMainWindow):
         self.scheme_combo.blockSignals(True)
         self.scheme_combo.clear()
         
-        from app.themes import THEMES, _get_custom_themes
+        from app import themes
         
         # Built-in themes
-        items = list(THEMES.get(theme_type, {}).keys())
+        items = themes.get_available_schemes(theme_type)
         
         # Custom themes
-        customs = _get_custom_themes()
+        customs = themes._get_custom_themes()
         if theme_type in customs:
             items.extend(list(customs[theme_type].keys()))
             
@@ -4443,6 +4489,10 @@ class MainWindow(QMainWindow):
             
             # Update editor colors specifically
             self.update_typing_colors(self.working_scheme)
+            
+            # Update FoldersTab manual styles to avoid restart requirement
+            if hasattr(self, 'folders_tab'):
+                self.folders_tab.apply_theme(self.working_scheme)
             
             # Mark dirty
             self._colors_dirty = True

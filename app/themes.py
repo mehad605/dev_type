@@ -103,284 +103,70 @@ class ColorScheme:
         return cls(**filtered_data)
 
 
-# Nord Theme (Arctic, north-bluish color palette)
-NORD_DARK = ColorScheme(
-    # Backgrounds - Nord polar night colors
-    bg_primary="#2e3440",  # nord0 - darkest
-    bg_secondary="#3b4252",  # nord1 - dark
-    bg_tertiary="#434c5e",  # nord2 - medium dark
-    
-    # Text - Nord snow storm colors
-    text_primary="#eceff4",  # nord6 - bright white
-    text_secondary="#d8dee9",  # nord4 - medium white
-    text_disabled="#4c566a",  # nord3 - gray
-    
-    # Typing colors
-    text_untyped="#616e88",  # Muted nord3
-    text_correct="#a3be8c",  # nord14 - green
-    text_incorrect="#bf616a",  # nord11 - red
-    text_paused="#ebcb8b",  # nord13 - yellow
-    cursor_color="#88c0d0",  # nord8 - bright cyan
-    
-    # UI colors
-    border_color="#4c566a",  # nord3
-    accent_color="#5e81ac",  # nord10 - blue
-    button_bg="#434c5e",  # nord2
-    button_hover="#4c566a",  # nord3
-    
-    # Status colors
-    success_color="#a3be8c",  # nord14 - green
-    warning_color="#ebcb8b",  # nord13 - yellow
-    error_color="#bf616a",  # nord11 - red
-    info_color="#81a1c1",  # nord9 - light blue
-    
-    # Card/List specific
-    card_bg="#3b4252",
-    card_border="#4c566a",
-)
+# ... existing imports ...
+from app.theme_data import RawPalette, adjust_color
+from app.palettes import THEME_MAP, NORD
 
-
-# Catppuccin Mocha (Soothing pastel theme)
-CATPPUCCIN_DARK = ColorScheme(
-    # Backgrounds - Catppuccin base colors
-    bg_primary="#1e1e2e",  # base
-    bg_secondary="#181825",  # mantle
-    bg_tertiary="#313244",  # surface0
-    
-    # Text - Catppuccin text colors
-    text_primary="#cdd6f4",  # text
-    text_secondary="#bac2de",  # subtext1
-    text_disabled="#585b70",  # surface2
-    
-    # Typing colors
-    text_untyped="#6c7086",  # overlay0
-    text_correct="#a6e3a1",  # green
-    text_incorrect="#f38ba8",  # red
-    text_paused="#f9e2af",  # yellow
-    cursor_color="#89dceb",  # sky
-    
-    # UI colors
-    border_color="#45475a",  # surface1
-    accent_color="#89b4fa",  # blue
-    button_bg="#313244",  # surface0
-    button_hover="#45475a",  # surface1
-    
-    # Status colors
-    success_color="#a6e3a1",  # green
-    warning_color="#f9e2af",  # yellow
-    error_color="#f38ba8",  # red
-    info_color="#74c7ec",  # sapphire
-    
-    # Card/List specific
-    card_bg="#181825",
-    card_border="#45475a",
-)
-
-
-# Dracula Theme (Dark theme inspired by vampires)
-DRACULA_DARK = ColorScheme(
-    # Backgrounds - Dracula base colors
-    bg_primary="#282a36",  # background
-    bg_secondary="#21222c",  # darker bg
-    bg_tertiary="#44475a",  # current line
-    
-    # Text - Dracula text colors
-    text_primary="#f8f8f2",  # foreground
-    text_secondary="#e6e6e6",  # lighter
-    text_disabled="#6272a4",  # comment
-    
-    # Typing colors
-    text_untyped="#6272a4",  # comment
-    text_correct="#50fa7b",  # green
-    text_incorrect="#ff5555",  # red
-    text_paused="#f1fa8c",  # yellow
-    cursor_color="#8be9fd",  # cyan
-    
-    # UI colors
-    border_color="#44475a",  # current line
-    accent_color="#bd93f9",  # purple
-    button_bg="#44475a",  # current line
-    button_hover="#6272a4",  # comment
-    
-    # Status colors
-    success_color="#50fa7b",  # green
-    warning_color="#f1fa8c",  # yellow
-    error_color="#ff5555",  # red
-    info_color="#8be9fd",  # cyan
-    
-    # Card/List specific
-    card_bg="#21222c",
-    card_border="#44475a",
-)
-
-
-
-
-
-# Cyberpunk (High contrast neon)
-CYBERPUNK_DARK = ColorScheme(
-    # Backgrounds
-    bg_primary="#0b0c15",  # Deep dark blue/black
-    bg_secondary="#161822",  # Slightly lighter
-    bg_tertiary="#2a2d3e",  # Selection bg
-    
-    # Text
-    text_primary="#00ff9f",  # Neon Green
-    text_secondary="#00b8ff",  # Neon Blue
-    text_disabled="#565869",
-    
-    # Typing colors
-    text_untyped="#565869",
-    text_correct="#fcee0a",  # Neon Yellow
-    text_incorrect="#ff003c",  # Neon Red
-    text_paused="#00b8ff",  # Neon Blue
-    cursor_color="#ff003c",  # Neon Red
-    
-    # UI colors
-    border_color="#2a2d3e",
-    accent_color="#ff003c",  # Neon Red
-    button_bg="#161822",
-    button_hover="#2a2d3e",
-    
-    # Status colors
-    success_color="#00ff9f",
-    warning_color="#fcee0a",
-    error_color="#ff003c",
-    info_color="#00b8ff",
-    
-    # Card/List specific
-    card_bg="#161822",
-    card_border="#2a2d3e",
-)
-
-
-# Monokai Pro (Professional dark theme)
-MONOKAI_PRO = ColorScheme(
-    # Backgrounds
-    bg_primary="#2D2A2E",
-    bg_secondary="#403E41",
-    bg_tertiary="#5B595C",
-    
-    # Text
-    text_primary="#FCFCFA",
-    text_secondary="#939293",
-    text_disabled="#727072",
-    
-    # Typing colors
-    text_untyped="#727072",
-    text_correct="#A9DC76",  # Green
-    text_incorrect="#FF6188",  # Red
-    text_paused="#FFD866",  # Yellow
-    cursor_color="#78DCE8",  # Blue
-    
-    # UI colors
-    border_color="#5B595C",
-    accent_color="#FFD866",  # Yellow accent
-    button_bg="#403E41",
-    button_hover="#5B595C",
-    
-    # Status colors
-    success_color="#A9DC76",
-    warning_color="#FFD866",
-    error_color="#FF6188",
-    info_color="#78DCE8",
-    
-    # Card/List specific
-    card_bg="#403E41",
-    card_border="#5B595C",
-)
-
-
-# Gruvbox Dark (Retro warm theme)
-GRUVBOX_DARK = ColorScheme(
-    # Backgrounds
-    bg_primary="#282828",
-    bg_secondary="#3c3836",
-    bg_tertiary="#504945",
-    
-    # Text
-    text_primary="#ebdbb2",
-    text_secondary="#a89984",
-    text_disabled="#928374",
-    
-    # Typing colors
-    text_untyped="#928374",
-    text_correct="#b8bb26",  # Green
-    text_incorrect="#fb4934",  # Red
-    text_paused="#fabd2f",  # Yellow
-    cursor_color="#fe8019",  # Orange
-    
-    # UI colors
-    border_color="#504945",
-    accent_color="#d3869b",  # Purple
-    button_bg="#3c3836",
-    button_hover="#504945",
-    
-    # Status colors
-    success_color="#b8bb26",
-    warning_color="#fabd2f",
-    error_color="#fb4934",
-    info_color="#83a598",
-    
-    # Card/List specific
-    card_bg="#3c3836",
-    card_border="#504945",
-)
-
-
-# Solarized Dark (Precision colors)
-SOLARIZED_DARK = ColorScheme(
-    # Backgrounds
-    bg_primary="#002b36",
-    bg_secondary="#073642",
-    bg_tertiary="#586e75",
-    
-    # Text
-    text_primary="#839496",
-    text_secondary="#586e75",
-    text_disabled="#657b83",
-    
-    # Typing colors
-    text_untyped="#657b83",
-    text_correct="#859900",  # Green
-    text_incorrect="#dc322f",  # Red
-    text_paused="#b58900",  # Yellow
-    cursor_color="#268bd2",  # Blue
-    
-    # UI colors
-    border_color="#586e75",
-    accent_color="#268bd2",  # Blue
-    button_bg="#073642",
-    button_hover="#586e75",
-    
-    # Status colors
-    success_color="#859900",
-    warning_color="#b58900",
-    error_color="#dc322f",
-    info_color="#268bd2",
-    
-    # Card/List specific
-    card_bg="#073642",
-    card_border="#586e75",
-)
-
-
-
-
-
-# Theme registry
-THEMES: Dict[str, Dict[str, ColorScheme]] = {
-    "dark": {
-        "nord": NORD_DARK,
-        "catppuccin": CATPPUCCIN_DARK,
-        "dracula": DRACULA_DARK,
-        "cyberpunk": CYBERPUNK_DARK,
-        "monokai_pro": MONOKAI_PRO,
-        "gruvbox": GRUVBOX_DARK,
-        "solarized_dark": SOLARIZED_DARK,
-    }
+# Compatibility shim
+THEMES = {
+    "dark": {k: None for k in THEME_MAP.keys()} # Keys only, values are proxies
 }
 
+def get_available_schemes(theme_type: str = "dark") -> list[str]:
+    """Get list of available built-in scheme names."""
+    if theme_type == "dark":
+        return list(THEME_MAP.keys())
+    return []
+
+# ... existing utilities ...
+
+def create_from_palette(p: RawPalette) -> ColorScheme:
+    """Derive a full ColorScheme from a minimalist RawPalette."""
+    
+    # Derived shades
+    bg_tertiary = adjust_color(p.bg_surface, 1.1)     # Slightly lighter than surface
+    border_col = adjust_color(p.bg_surface, 1.2)      # Visible border
+    text_sec = p.fg_muted                             # Use muted for secondary text
+    text_dis = adjust_color(p.fg_muted, 0.7)          # Darker muted for disabled
+    
+    # Button states
+    btn_bg = p.bg_surface
+    btn_hover = adjust_color(p.bg_surface, 1.15)
+    
+    return ColorScheme(
+        # Backgrounds
+        bg_primary=p.bg_base,
+        bg_secondary=p.bg_surface,
+        bg_tertiary=bg_tertiary,
+        
+        # Text
+        text_primary=p.fg_main,
+        text_secondary=text_sec,
+        text_disabled=text_dis,
+        
+        # Typing colors
+        text_untyped=p.fg_muted,
+        text_correct=p.success,
+        text_incorrect=p.error,
+        text_paused=p.warning,
+        cursor_color=p.accent,
+        
+        # UI colors
+        border_color=border_col,
+        accent_color=p.accent,
+        button_bg=btn_bg,
+        button_hover=btn_hover,
+        
+        # Status colors
+        success_color=p.success,
+        warning_color=p.warning,
+        error_color=p.error,
+        info_color=p.accent,  # Often same as accent
+        
+        # Card/List specific
+        card_bg=p.bg_surface,
+        card_border=border_col,
+    )
 
 def _get_custom_themes() -> Dict[str, Dict]:
     """Load custom themes from settings."""
@@ -399,9 +185,6 @@ def save_custom_theme(name: str, scheme: ColorScheme, type: str = "dark"):
     
     customs[type][name] = scheme.to_dict()
     settings.set_setting("custom_themes", json.dumps(customs))
-    
-    # Reload logic (optional, but good for consistency)
-    pass
 
 def delete_custom_theme(name: str, type: str = "dark"):
     """Delete a custom theme."""
@@ -414,30 +197,27 @@ def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
     """Get a color scheme by scheme name.
     
     Always returns a dark theme as light mode is removed.
-    Checks custom themes first, then built-in.
+    Checks custom themes first, then built-in palettes.
     """
     # Force dark theme base
     theme = "dark"
     
-    # Check custom themes first
+    # 1. Check custom themes (full ColorScheme dicts)
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
         return ColorScheme.from_dict(customs[theme][scheme])
     
-    # Check built-in
-    scheme_obj = THEMES["dark"].get(scheme, NORD_DARK)
-        
-    # Return a copy to prevent accidental mutation of global defaults
-    return ColorScheme.from_dict(scheme_obj.to_dict())
+    # 2. Check built-in palettes (RawPalette -> generator)
+    raw_palette = THEME_MAP.get(scheme, NORD) # Default to Nord
+    return create_from_palette(raw_palette)
 
 def is_builtin_theme(theme: str, scheme: str) -> bool:
     """Check if a theme is built-in (and unmodified)."""
-    # Simply check if it exists in the hardcoded list
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
-        return False # It is overridden by a custom theme
+        return False # Overridden by custom
     
-    return scheme in THEMES.get("dark", {})
+    return scheme in THEME_MAP
 
 
 def generate_app_stylesheet(scheme: ColorScheme) -> str:
