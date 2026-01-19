@@ -17,6 +17,8 @@ from app.file_scanner import get_language_for_file
 from app.typing_engine import TypingEngine
 from app.ui_icons import get_icon
 import time
+import logging
+import logging
 
 # Debug timing flag - should match ui_main.DEBUG_STARTUP_TIMING
 DEBUG_STARTUP_TIMING = True
@@ -69,7 +71,7 @@ class EditorTab(QWidget):
         main_layout.addWidget(placeholder)
         
         if DEBUG_STARTUP_TIMING:
-            print(f"    [EditorTab] TOTAL (lazy): {time.time() - t_start:.3f}s")
+            logging.info(f"[EditorTab] TOTAL (lazy): {time.time() - t_start:.3f}s")
     
     def ensure_loaded(self):
         """Lazy initialization of the editor tab UI."""
@@ -125,7 +127,7 @@ class EditorTab(QWidget):
         # Instance of FileTreeWidget (header hidden manually)
         if DEBUG_STARTUP_TIMING: t = time.time()
         self.file_tree = FileTreeWidget(show_header=False)
-        if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] FileTreeWidget: {time.time() - t:.3f}s")
+        if DEBUG_STARTUP_TIMING: logging.info(f"[EditorTab-LAZY] FileTreeWidget: {time.time() - t:.3f}s")
         self.file_tree.file_selected.connect(self.on_file_selected)
 
         # Left Local Header
@@ -252,7 +254,7 @@ class EditorTab(QWidget):
         # 1. Typing area setup
         if DEBUG_STARTUP_TIMING: t = time.time()
         self.typing_area = TypingAreaWidget()
-        if DEBUG_STARTUP_TIMING: print(f"    [EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
+        if DEBUG_STARTUP_TIMING: logging.info(f"[EditorTab-LAZY] TypingAreaWidget: {time.time() - t:.3f}s")
         self.typing_area.stats_updated.connect(self.on_stats_updated)
         self.typing_area.session_completed.connect(self.on_session_completed)
         self.typing_area.mistake_occurred.connect(self.on_mistake_occurred)
@@ -536,6 +538,8 @@ class EditorTab(QWidget):
         
         if self.is_racing or self._race_pending_start:
             self._finalize_ghost_race(cancelled=True)
+
+        logging.info(f"Editor loaded file: {file_path}")
         
         # Save progress of current file if any
         if self.current_file and self.typing_area.engine:

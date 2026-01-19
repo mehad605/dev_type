@@ -490,6 +490,10 @@ class PortableDataManager:
         """Get path to the shared logs directory."""
         return self.get_shared_dir() / "logs"
 
+    def get_log_file_path(self) -> Path:
+        """Get path to the shared log file."""
+        return self.get_logs_dir() / "app.log"
+
     def get_fonts_dir(self) -> Path:
         """Get path to the shared fonts directory."""
         return self.get_shared_dir() / "fonts"

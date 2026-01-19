@@ -7,6 +7,13 @@ import argparse
 
 
 def main():
+    # --- Setup Logging ---
+    try:
+        from app.logging_config import setup_logging
+        setup_logging()
+    except Exception as e:
+        print(f"Failed to setup logging: {e}")
+
     # --- Argument Parsers ---
     parser = argparse.ArgumentParser(description="Dev Type - Typing Practice App")
     

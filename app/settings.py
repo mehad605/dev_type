@@ -15,6 +15,7 @@ import sqlite3
 import os
 from pathlib import Path
 from typing import Optional, List, Dict
+import logging
 
 # Import portable data manager for exe/AppImage builds
 try:
@@ -410,6 +411,7 @@ def set_setting(key: str, value: str):
     conn.close()
 
     _settings_cache[key] = value
+    logging.info(f"Setting updated: {key} = {value}")
 
 
 def remove_setting(key: str):

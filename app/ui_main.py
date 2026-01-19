@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
 )
+import logging
 from PySide6.QtGui import QIcon, QColor, QFontDatabase
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
 import sys
@@ -175,6 +176,7 @@ class FolderCardWidget(QFrame):
         
     def _on_fav_clicked(self):
         self.is_favorite = not self.is_favorite
+        logging.info(f"Folder '{self.folder_path}' favorite toggled to: {self.is_favorite}")
         self._update_fav_icon()
         self.favorite_toggled.emit(self.folder_path, self.is_favorite)
         
@@ -438,7 +440,7 @@ class FoldersTab(QWidget):
         
         self.layout.addWidget(header)
         if DEBUG_STARTUP_TIMING:
-            print(f"    [FoldersTab] Header setup: {time.time() - t:.3f}s")
+            logging.info(f"[FoldersTab] Header setup: {time.time() - t:.3f}s")
 
         # Modern toolbar with styled buttons
         toolbar = QHBoxLayout()
@@ -624,8 +626,8 @@ class FoldersTab(QWidget):
             t = time.time()
         self.load_folders()
         if DEBUG_STARTUP_TIMING:
-            print(f"    [FoldersTab] load_folders(): {time.time() - t:.3f}s")
-            print(f"    [FoldersTab] TOTAL: {time.time() - t_start:.3f}s")
+            logging.info(f"[FoldersTab] load_folders(): {time.time() - t:.3f}s")
+            logging.info(f"[FoldersTab] TOTAL: {time.time() - t_start:.3f}s")
 
     def _on_selection_changed(self, current, previous):
         """Update selected state of folder cards."""
@@ -637,6 +639,7 @@ class FoldersTab(QWidget):
             widget = self.list.itemWidget(current)
             if isinstance(widget, FolderCardWidget):
                 widget.set_selected(True)
+                logging.debug(f"Folder selected: {widget.folder_path}")
 
     def on_folder_double_clicked(self, item: QListWidgetItem):
         """Navigate to typing tab when folder is double-clicked."""
@@ -657,6 +660,7 @@ class FoldersTab(QWidget):
         # Signal parent window to switch to typing tab with this folder
         parent_window = self.window()
         if hasattr(parent_window, 'open_typing_tab'):
+            logging.info(f"Opening folder in typing tab: {folder_path}")
             parent_window.open_typing_tab(folder_path)
 
     def load_folders(self):
@@ -1260,7 +1264,7 @@ class MainWindow(QMainWindow):
     
     # Tabs
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
+            logging.info(f"[INIT] Window setup + QTabWidget: {time.time() - t:.3f}s")
         
         # --- Folders Tab (Immediate) ---
         if DEBUG_STARTUP_TIMING:
@@ -1268,7 +1272,7 @@ class MainWindow(QMainWindow):
         self.folders_tab = FoldersTab()
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
-            print(f"  [INIT] FoldersTab: {t_add - t:.3f}s")
+            logging.info(f"[INIT] FoldersTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.folders_tab, get_icon("FOLDER"), "Folders")
         
         # --- Languages Tab (Immediate) ---
@@ -1277,7 +1281,7 @@ class MainWindow(QMainWindow):
         self.languages_tab = LanguagesTab()
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
-            print(f"  [INIT] LanguagesTab: {t_add - t:.3f}s")
+            logging.info(f"[INIT] LanguagesTab: {t_add - t:.3f}s")
         self.tabs.addTab(self.languages_tab, get_icon("CODE"), "Languages")
 
         # --- History Tab (Lazy) ---
@@ -1299,7 +1303,7 @@ class MainWindow(QMainWindow):
         self.editor_tab = EditorTab()
         if DEBUG_STARTUP_TIMING:
             t_add = time.time()
-            print(f"  [INIT] EditorTab (init only): {t_add - t:.3f}s")
+            logging.info(f"[INIT] EditorTab (init only): {t_add - t:.3f}s")
         self.tabs.addTab(self.editor_tab, get_icon("TYPING"), "Typing")
 
         # --- Shortcuts Tab (Immediate) ---
@@ -1318,7 +1322,7 @@ class MainWindow(QMainWindow):
         self._last_tab_index = self.tabs.currentIndex()
         self.tabs.currentChanged.connect(self._on_tab_changed)
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] setCentralWidget + signals: {time.time() - t:.3f}s")
+            logging.info(f"[INIT] setCentralWidget + signals: {time.time() - t:.3f}s")
         
         # Connect settings signals to editor tab for dynamic updates
         # (We can connect these now because editor_tab instance exists, even if not fully loaded)
@@ -1326,7 +1330,7 @@ class MainWindow(QMainWindow):
             t = time.time()
         self._connect_settings_signals()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] Connect signals: {time.time() - t:.3f}s")
+            logging.info(f"[INIT] Connect signals: {time.time() - t:.3f}s")
         
         # Connect profile manager signals
         self.pm.profile_updated.connect(self._on_profile_updated)
@@ -1340,7 +1344,7 @@ class MainWindow(QMainWindow):
             t = time.time()
         self._emit_initial_settings()
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] Emit settings: {time.time() - t:.3f}s")
+            logging.info(f"[INIT] Emit settings: {time.time() - t:.3f}s")
 
         # Trigger background loading sequence
         if DEBUG_STARTUP_TIMING:
@@ -1349,8 +1353,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(100, self._start_background_loading)
         
         if DEBUG_STARTUP_TIMING:
-            print(f"  [INIT] QTimer.singleShot (background load): {time.time() - t:.3f}s")
-            print(f"  [INIT] === TOTAL MainWindow.__init__: {time.time() - t_init_start:.3f}s ===")
+            logging.info(f"[INIT] QTimer.singleShot (background load): {time.time() - t:.3f}s")
+            logging.info(f"[INIT] === TOTAL MainWindow.__init__: {time.time() - t_init_start:.3f}s ===")
 
     def _start_background_loading(self):
         """Start the chain of background tab loading."""
@@ -1460,6 +1464,9 @@ class MainWindow(QMainWindow):
             self.languages_tab.ensure_loaded()
             
         self._last_tab_index = index
+        
+        tab_name = self.tabs.tabText(index)
+        logging.info(f"Main tab changed to: {tab_name}")
 
     def keyPressEvent(self, event):
         """Handle global keyboard shortcuts."""
