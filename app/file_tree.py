@@ -109,6 +109,10 @@ class InternalFileTree(QTreeWidget):
         self._folder_files_cache: Dict[str, List[str]] = {} # For languages tab lazy load
         self.CHUNK_SIZE = 200
         
+        # Track currently active random file for deferred highlighting
+        self._current_active_file: Optional[str] = None
+        self._matched_file_items: List[QTreeWidgetItem] = [] # Cache for filtered items (Small dataset)
+        
         # Load expansions
         self._load_expansion_state()
 
@@ -412,6 +416,10 @@ class InternalFileTree(QTreeWidget):
                 self._apply_file_icon(file_item, item.name)
                 file_item.setToolTip(0, file_path_str)
                 self._apply_incomplete_highlight(file_item, file_path_str)
+                
+                # Auto-select if this is the active random file (deferred selection)
+                if self._current_active_file and file_path_str == self._current_active_file:
+                    self.setCurrentItem(file_item)
 
         if end_index < total_valid:
             remaining = total_valid - end_index
@@ -712,17 +720,32 @@ class InternalFileTree(QTreeWidget):
         if self._is_large_dataset and self._filtered_filepaths:
             # Instant random selection from filtered list
             file_path = random.choice(self._filtered_filepaths)
+            
+            # Store as active file so it gets selected when populated/visible
+            self._current_active_file = file_path
+            
+            # Try to select if already visible/populated, but DO NOT SCROLL
+            item = self._find_file_item(file_path)
+            if item:
+                self.setCurrentItem(item)
+            
             self.file_selected.emit(file_path)
             return
         
-        # Small dataset: use visible items to respect the current search filter
-        file_items = self.get_visible_file_items()
-        
+        # Small dataset optimized search: use pre-filtered list
+        if self._matched_file_items:
+             file_items = self._matched_file_items
+        else:
+             # Standard fallback: crawl tree
+             file_items = self.get_visible_file_items()
+             
         if not file_items:
             return  # No files available
         
         # Choose a random file
         random_item = random.choice(file_items)
+        file_path = random_item.data(0, Qt.UserRole)
+        self._current_active_file = file_path
         
         # Ensure the item is visible (expand parents if needed)
         self._ensure_item_visible(random_item)
@@ -732,7 +755,6 @@ class InternalFileTree(QTreeWidget):
         self.scrollToItem(random_item)
         
         # Emit the file_selected signal (simulating double-click)
-        file_path = random_item.data(0, Qt.UserRole)
         if file_path:
             self.file_selected.emit(file_path)
     
@@ -820,7 +842,9 @@ class FileTreeWidget(QWidget):
                 self._show_all_items()
                 self._restore_expansion_state()
                 self._is_searching = False
+                self._is_searching = False
                 self.tree.set_persistence_enabled(True)
+                self.tree._matched_file_items.clear()
                 # Reset filtered list for large datasets
                 if self.tree._is_large_dataset:
                     self.tree._filtered_filepaths = list(self.tree._all_filepaths)
@@ -905,6 +929,8 @@ class FileTreeWidget(QWidget):
             else:
                 return text.lower() in item_text.lower()
         
+        self.tree._matched_file_items.clear()
+
         # Recursive filter function
         def filter_item(item):
             has_visible_children = False
@@ -919,6 +945,9 @@ class FileTreeWidget(QWidget):
             item_matches = matches(item.text(0))
             
             should_show = has_visible_children or (is_file and item_matches)
+            
+            if is_file and item_matches:
+                self.tree._matched_file_items.append(item)
             
             item.setHidden(not should_show)
             if should_show:
