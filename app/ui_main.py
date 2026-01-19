@@ -41,6 +41,8 @@ from PySide6.QtWidgets import (
     QLayout,
     QGridLayout,
     QInputDialog,
+    QButtonGroup,
+    QComboBox,
 )
 from PySide6.QtGui import QIcon, QColor, QFontDatabase
 from PySide6.QtCore import Qt, Signal, QObject, QSize, QTimer
@@ -74,16 +76,20 @@ class FolderCardWidget(QFrame):
     """Stylized folder row used within the folders list."""
 
     remove_requested = Signal(str)  # Signal to request removal of this folder path
+    favorite_toggled = Signal(str, bool)
 
-    def __init__(self, folder_path: str, parent=None):
+    def __init__(self, folder_data: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("folderCard")
-        self.folder_path = folder_path
+        self.folder_path = folder_data['path']
+        self.is_favorite = folder_data.get('is_favorite', False)
+        self.added_at = folder_data.get('added_at', '')
+        
         self._list_widget = None
         self._list_item = None
         self._selected = False
         self._remove_mode = False
-        self._folder_exists = Path(folder_path).exists()
+        self._folder_exists = Path(self.folder_path).exists()
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMinimumHeight(80) # Two rows is shorter
@@ -105,7 +111,7 @@ class FolderCardWidget(QFrame):
         details_layout.setContentsMargins(0, 0, 0, 0)
         details_layout.setSpacing(4)
         
-        self.name_label = QLabel(Path(folder_path).name or folder_path)
+        self.name_label = QLabel(Path(self.folder_path).name or self.folder_path)
         self.name_label.setObjectName("folderName")
         details_layout.addWidget(self.name_label)
 
@@ -120,7 +126,7 @@ class FolderCardWidget(QFrame):
         path_pill_layout = QHBoxLayout(self.path_pill)
         path_pill_layout.setContentsMargins(10, 0, 10, 0)
         
-        self.path_label = QLabel(folder_path if self._folder_exists else "Folder not found")
+        self.path_label = QLabel(self.folder_path if self._folder_exists else "Folder not found")
         self.path_label.setObjectName("folderPath")
         path_pill_layout.addWidget(self.path_label)
         
@@ -141,6 +147,14 @@ class FolderCardWidget(QFrame):
         layout.addLayout(details_layout)
         layout.addStretch()
 
+        # Favorite button
+        self.fav_btn = QPushButton()
+        self.fav_btn.setFixedSize(32, 32)
+        self.fav_btn.setCursor(Qt.PointingHandCursor)
+        self.fav_btn.setObjectName("favBtn")
+        self.fav_btn.clicked.connect(self._on_fav_clicked)
+        layout.addWidget(self.fav_btn)
+        
         # Remove button
         self.remove_btn = QPushButton()
         self.remove_btn.setIcon(get_icon("TRASH"))
@@ -154,7 +168,24 @@ class FolderCardWidget(QFrame):
 
         self.setCursor(Qt.PointingHandCursor)
         self._apply_style()
+        self.setCursor(Qt.PointingHandCursor)
+        self._update_fav_icon()
+        self._apply_style()
         self._update_icon()
+        
+    def _on_fav_clicked(self):
+        self.is_favorite = not self.is_favorite
+        self._update_fav_icon()
+        self.favorite_toggled.emit(self.folder_path, self.is_favorite)
+        
+    def _update_fav_icon(self):
+        icon_name = "HEART_FILLED" if self.is_favorite else "HEART"
+        self.fav_btn.setIcon(get_icon(icon_name))
+        # Blue for filled, gray for outline
+        if self.is_favorite:
+            self.fav_btn.setStyleSheet("border: none; background: transparent;") 
+        else:
+             self.fav_btn.setStyleSheet("border: none; background: transparent; opacity: 0.5;")
 
     def sizeHint(self):
         return QSize(super().sizeHint().width(), 80)
@@ -344,6 +375,18 @@ class FolderCardWidget(QFrame):
         return self._folder_exists
 
 
+class SortableListWidgetItem(QListWidgetItem):
+    def __lt__(self, other):
+        # Retrieve sort key from UserRole + 10
+        role = Qt.UserRole + 10
+        d1 = self.data(role)
+        d2 = other.data(role)
+        # Handle None values
+        if d1 is None: d1 = ""
+        if d2 is None: d2 = ""
+        return d1 < d2
+
+
 class FoldersTab(QWidget):
     def __init__(self, parent=None):
         if DEBUG_STARTUP_TIMING:
@@ -457,6 +500,61 @@ class FoldersTab(QWidget):
         toolbar.addStretch()
 
         self.layout.addLayout(toolbar)
+
+        # Controls Row (Tabs + Sort)
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(10)
+
+        # Tabs (All, Favorites, Recents)
+        self.tab_group = QButtonGroup(self)
+        self.tab_group.setExclusive(True)
+        
+        def create_tab_btn(text, id):
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(30)
+            # Modern Tab Style
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {scheme.text_secondary};
+                    border: 1px solid transparent;
+                    border-radius: 6px;
+                    font-weight: 600;
+                    padding: 4px 12px;
+                }}
+                QPushButton:checked {{
+                    background-color: {scheme.bg_tertiary};
+                    color: {scheme.text_primary};
+                    border: 1px solid {scheme.card_border};
+                }}
+                QPushButton:hover:!checked {{
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: {scheme.text_primary};
+                }}
+            """)
+            self.tab_group.addButton(btn, id)
+            controls_layout.addWidget(btn)
+            return btn
+
+        self.btn_all = create_tab_btn("All", 0)
+        self.btn_fav = create_tab_btn("Favorites", 1)
+        self.btn_rec = create_tab_btn("Recents", 2)
+        self.btn_all.setChecked(True)
+        
+        self.tab_group.idClicked.connect(lambda x: self.refresh_list_view())
+
+        controls_layout.addStretch()
+
+        # Sort Combo
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["Date Added (Newest)", "Date Added (Oldest)", "Name (A-Z)", "Name (Z-A)"])
+        self.sort_combo.setFixedWidth(160)
+        self.sort_combo.currentIndexChanged.connect(lambda x: self.refresh_list_view())
+        controls_layout.addWidget(self.sort_combo)
+
+        self.layout.addLayout(controls_layout)
 
         # Folder Search Bar
         self.folder_search_bar = QLineEdit()
@@ -576,15 +674,19 @@ class FoldersTab(QWidget):
         from app.file_scanner import scan_folders as scan_folder_files
         from app import stats_db
         
-        for i, path_str in enumerate(folders):
+        for i, folder_data in enumerate(folders):
             # Create widget
-            card = FolderCardWidget(path_str)
+            card = FolderCardWidget(folder_data)
+            path_str = folder_data['path']
+            
             card.set_remove_mode(is_remove_mode)
             card.remove_requested.connect(self._maybe_remove_item)
+            card.favorite_toggled.connect(lambda p, f: settings.toggle_favorite(p, f))
             
             # Create list item
-            item = QListWidgetItem(self.list)
+            item = SortableListWidgetItem(self.list) # Use custom item for sorting
             item.setData(Qt.UserRole, path_str)
+            item.setData(Qt.UserRole + 10, folder_data['added_at']) # Default sort key
             
             # Attach widget to item
             card.attach(self.list, item)
@@ -624,6 +726,58 @@ class FoldersTab(QWidget):
         if DEBUG_STARTUP_TIMING:
             t3 = time.time()
             print(f"      [FOLDERS] TOTAL load_folders(): {t3-t0:.3f}s")
+
+        self.refresh_list_view()
+
+    def refresh_list_view(self):
+        """Filter and sort the list based on current state (Tab, Sort, Search)."""
+        search_text = self.folder_search_bar.text().lower()
+        tab_id = self.tab_group.checkedId() # 0=All, 1=Fav, 2=Recents
+        sort_mode = self.sort_combo.currentIndex() # 0=Newest, 1=Oldest, 2=A-Z, 3=Z-A
+        
+        # 1. Update visibility (Filtering)
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if not isinstance(widget, FolderCardWidget):
+                continue
+                
+            path_str = widget.folder_path.lower()
+            name_str = Path(widget.folder_path).name.lower()
+            
+            # Search Filter
+            matches_search = (search_text in path_str) or (search_text in name_str)
+            
+            # Tab Filter
+            matches_tab = True
+            if tab_id == 1: # Favorites
+                matches_tab = widget.is_favorite
+            
+            should_show = matches_search and matches_tab
+            item.setHidden(not should_show)
+            
+        # 2. Update Sort Keys and Sort
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                key = ""
+                if sort_mode == 0 or sort_mode == 1: # Date
+                     key = widget.added_at or ""
+                else: # Name
+                     key = Path(widget.folder_path).name.lower()
+                
+                item.setData(Qt.UserRole + 10, key)
+                
+        # Apply Sort
+        if sort_mode == 0: # Newest (Date DESC)
+            self.list.sortItems(Qt.DescendingOrder)
+        elif sort_mode == 1: # Oldest (Date ASC)
+            self.list.sortItems(Qt.AscendingOrder)
+        elif sort_mode == 2: # A-Z (Name ASC)
+            self.list.sortItems(Qt.AscendingOrder)
+        elif sort_mode == 3: # Z-A (Name DESC)
+            self.list.sortItems(Qt.DescendingOrder)
 
     def on_add(self):
         dlg = QFileDialog(self, "Select folder to add")
@@ -866,18 +1020,8 @@ class FoldersTab(QWidget):
                 parent_window.refresh_languages_tab()
 
     def filter_folders(self, text: str):
-        """Filter folder list based on search text."""
-        search_text = text.lower()
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            widget = self.list.itemWidget(item)
-            if isinstance(widget, FolderCardWidget):
-                path_str = widget.folder_path.lower()
-                name_str = Path(widget.folder_path).name.lower()
-                
-                # Check match
-                should_show = (search_text in path_str) or (search_text in name_str)
-                item.setHidden(not should_show)
+        # Deprecated by refresh_list_view but kept for signal compat if needed
+        self.refresh_list_view()
 
     def on_view_toggled(self, checked: bool):
         pass

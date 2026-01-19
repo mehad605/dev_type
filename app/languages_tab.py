@@ -361,10 +361,12 @@ class LanguagesTab(QWidget):
         if self._loading:
             return
 
-        folders = settings.get_folders()
-        snapshot = tuple(sorted(folders))
+        folders_data = settings.get_folders()
+        # Extract paths from folder dictionaries
+        folder_paths = [f['path'] for f in folders_data]
+        snapshot = tuple(sorted(folder_paths))
 
-        if not folders:
+        if not folder_paths:
             self._cached_language_files = {}
             self._loaded = True
             self._last_snapshot = snapshot
@@ -372,7 +374,7 @@ class LanguagesTab(QWidget):
             self._show_message("No folders added. Go to Folders tab to add some.")
             return
 
-        signature = build_signature(folders)
+        signature = build_signature(folder_paths)
 
         if not force and snapshot == self._last_snapshot and signature == self._last_signature:
             if self._cached_language_files:

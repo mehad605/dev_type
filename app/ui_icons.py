@@ -45,6 +45,8 @@ ICON_PATHS = {
     "FILES": {"color": "gray", "path": '<path d="M20 7h-3a2 2 0 0 1-2-2V2"></path><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"></path><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"></path>'},
     "DOWNLOAD": {"color": "blue", "path": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>'},
     "TERMINAL": {"color": "blue", "path": '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'},
+    "HEART": {"color": "gray", "path": '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>'},
+    "HEART_FILLED": {"color": "blue", "filled": True, "path": '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>'},
 }
 
 def get_svg_content(name: str, color_override=None) -> str:
@@ -55,8 +57,9 @@ def get_svg_content(name: str, color_override=None) -> str:
     data = ICON_PATHS[name]
     color = color_override if color_override else COLORS[data["color"]]
     path = data["path"]
+    fill = color if data.get("filled") else "none"
     
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="{fill}"
 stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>"""
 
 def get_pixmap(name: str, size=24, color_override=None) -> QPixmap:

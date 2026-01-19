@@ -241,10 +241,17 @@ def init_db(path: Optional[str] = None):
         """
         CREATE TABLE IF NOT EXISTS folders (
             path TEXT PRIMARY KEY,
-            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_favorite INTEGER DEFAULT 0
         )
         """
     )
+
+    # Migration: Add is_favorite column if it doesn't exist (for existing DBs)
+    try:
+        cur.execute("ALTER TABLE folders ADD COLUMN is_favorite INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # Column already exists
     
     # Insert all defaults from SETTING_DEFAULTS (single source of truth)
     for key, value in SETTING_DEFAULTS.items():
@@ -417,19 +424,41 @@ def remove_setting(key: str):
         del _settings_cache[key]
 
 
-def get_folders() -> List[str]:
+def get_folders() -> List[dict]:
+    """Return list of folders with metadata: {'path': str, 'is_favorite': bool, 'added_at': str}."""
     conn = _connect()
     cur = conn.cursor()
-    cur.execute("SELECT path FROM folders ORDER BY added_at")
-    rows = [r[0] for r in cur.fetchall()]
+    # Ensure is_favorite exists (for safe fallback if migration failed somehow, though init handles it)
+    try:
+        cur.execute("SELECT path, is_favorite, added_at FROM folders ORDER BY added_at")
+    except sqlite3.OperationalError:
+         # Fallback for old schema if migration didn't run yet within this session context
+         cur.execute("SELECT path, 0, added_at FROM folders ORDER BY added_at")
+         
+    rows = []
+    for r in cur.fetchall():
+        rows.append({
+            'path': r[0],
+            'is_favorite': bool(r[1]),
+            'added_at': r[2]
+        })
     conn.close()
     return rows
+
+
+def toggle_favorite(path: str, is_favorite: bool):
+    """Set the favorite status for a folder."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE folders SET is_favorite=? WHERE path=?", (1 if is_favorite else 0, path))
+    conn.commit()
+    conn.close()
 
 
 def add_folder(path: str):
     conn = _connect()
     cur = conn.cursor()
-    cur.execute("INSERT OR IGNORE INTO folders(path) VALUES(?)", (path,))
+    cur.execute("INSERT OR IGNORE INTO folders(path, is_favorite) VALUES(?, 0)", (path,))
     conn.commit()
     conn.close()
 
