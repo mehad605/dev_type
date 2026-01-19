@@ -18,7 +18,7 @@ def test_settings_db_roundtrip(tmp_path: Path):
     # folders
     settings.add_folder("/tmp/foo")
     settings.add_folder("/tmp/bar")
-    folders = settings.get_folders()
+    folders = [f['path'] for f in settings.get_folders()]
     assert "/tmp/foo" in folders
     assert "/tmp/bar" in folders
     # remove
@@ -88,7 +88,7 @@ def test_multiple_folders(tmp_path: Path):
     for folder in folders:
         settings.add_folder(folder)
     
-    retrieved = settings.get_folders()
+    retrieved = [f['path'] for f in settings.get_folders()]
     for folder in folders:
         assert folder in retrieved
 
@@ -102,7 +102,7 @@ def test_duplicate_folder_not_added_twice(tmp_path: Path):
     settings.add_folder(folder)
     settings.add_folder(folder)
     
-    folders = settings.get_folders()
+    folders = [f['path'] for f in settings.get_folders()]
     assert folders.count(folder) == 1
 
 

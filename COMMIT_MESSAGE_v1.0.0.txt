@@ -1,0 +1,42 @@
+Release v1.0.0: UI refinements, Ctrl+F shortcut, and comprehensive improvements
+
+## New Features
+- Add universal Ctrl+F search shortcut across all tabs with search functionality
+- Enhance folder management button styling with color-coded icons and white outlines
+- Add outline_color parameter to icon rendering system
+
+## UI/UX Improvements
+- Completely rewrite README with professional layout and visual assets
+- Remove button borders for cleaner, modern appearance
+- Update "Add Folder" button to use green success color
+- Update "Remove Folder" button to use red danger color
+- Add Ctrl+F to in-app shortcuts reference
+
+## Bug Fixes
+- Fix theme application in FoldersTab
+- Resolve file tree lazy loading issues for small datasets
+- Fix profile selector widget reset_view method
+- Correct folder metadata handling in tests
+- Fix multiple test suite regressions (517 tests passing)
+
+## Testing & Code Quality
+- Update test suite for new folder metadata structure
+- Fix theme-related test failures
+- Add backward compatibility for folder data structures
+- Remove obsolete test files and reorganize project structure
+- Move test_profile_cropper.py to tools/ directory
+
+## Documentation
+- Rewrite README with modern structure and comprehensive features
+- Add all screenshots in organized table layout
+- Include demo videos showcasing key functionality
+- Improve setup instructions with uv installation guidance
+- Document large codebase support capabilities
+
+## Technical
+- Version: 1.0.0
+- Python: 3.13+
+- No breaking changes
+- Fully backward compatible
+
+Co-authored-by: Dev Type Team <mehad605@example.com>

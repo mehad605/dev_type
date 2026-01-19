@@ -49,7 +49,7 @@ ICON_PATHS = {
     "HEART_FILLED": {"color": "blue", "filled": True, "path": '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>'},
 }
 
-def get_svg_content(name: str, color_override=None) -> str:
+def get_svg_content(name: str, color_override=None, outline_color=None) -> str:
     """Get the SVG content string for an icon name."""
     if name not in ICON_PATHS:
         return ""
@@ -59,12 +59,22 @@ def get_svg_content(name: str, color_override=None) -> str:
     path = data["path"]
     fill = color if data.get("filled") else "none"
     
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="{fill}"
-stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>"""
+    # Base SVG attributes
+    svg_start = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="{fill}" stroke-linecap="round" stroke-linejoin="round">'
+    
+    content = ""
+    # Optional white outline (drawn first, thicker)
+    if outline_color:
+        content += f'<g stroke="{outline_color}" stroke-width="5">{path}</g>'
+    
+    # Main icon (drawn on top)
+    content += f'<g stroke="{color}" stroke-width="2">{path}</g>'
+    
+    return f"{svg_start}{content}</svg>"
 
-def get_pixmap(name: str, size=24, color_override=None) -> QPixmap:
+def get_pixmap(name: str, size=24, color_override=None, outline_color=None) -> QPixmap:
     """Get a QPixmap for an icon, rendered sharply at the requested size."""
-    svg_content = get_svg_content(name, color_override)
+    svg_content = get_svg_content(name, color_override, outline_color)
     if not svg_content:
         return QPixmap()
     
@@ -84,8 +94,8 @@ def get_pixmap(name: str, size=24, color_override=None) -> QPixmap:
     
     return pixmap
 
-def get_icon(name: str, color_override=None) -> QIcon:
+def get_icon(name: str, color_override=None, outline_color=None) -> QIcon:
     """Get a QIcon for an icon, using a high-res base for sharpness."""
     # Use 64x64 as base for icons to stay sharp even on High DPI displays
-    pixmap = get_pixmap(name, size=64, color_override=color_override)
+    pixmap = get_pixmap(name, size=64, color_override=color_override, outline_color=outline_color)
     return QIcon(pixmap)

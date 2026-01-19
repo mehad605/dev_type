@@ -236,7 +236,7 @@ class InternalFileTree(QTreeWidget):
         # Initial icon
         self._update_folder_icon(root_item, True)
         
-        self._populate_tree(root_item, root_path)
+        self._populate_tree(root_item, root_path, recursive=not self._is_large_dataset)
         root_item.setExpanded(True)
         self.setSortingEnabled(True)
         self.sortByColumn(0, Qt.AscendingOrder)
@@ -281,7 +281,7 @@ class InternalFileTree(QTreeWidget):
             is_expanded = str(root_path) in self.expanded_paths
             self._update_folder_icon(root_item, is_expanded)
             
-            self._populate_tree(root_item, root_path)
+            self._populate_tree(root_item, root_path, recursive=not self._is_large_dataset)
             
             if is_expanded:
                 root_item.setExpanded(True)
@@ -348,10 +348,11 @@ class InternalFileTree(QTreeWidget):
         self.setSortingEnabled(True)
         self.sortByColumn(0, Qt.AscendingOrder)
 
-    def _populate_tree(self, parent_item: QTreeWidgetItem, path: Path, start_index: int = 0):
-        """Populate tree with files and subfolders for the current level only.
+    def _populate_tree(self, parent_item: QTreeWidgetItem, path: Path, start_index: int = 0, recursive: bool = False):
+        """Populate tree with files and subfolders.
         
         This method implements pagination and deferred loading for instant performance.
+        If recursive=True, it will fully populate all subfolders (used for small datasets).
         """
         path_str = str(path)
         
@@ -389,10 +390,15 @@ class InternalFileTree(QTreeWidget):
                 
             valid_entries.append(entry)
 
-        # Pagination
-        total_valid = len(valid_entries)
-        end_index = min(start_index + self.CHUNK_SIZE, total_valid)
-        chunk = valid_entries[start_index:end_index]
+        # Pagination (Only if NOT recursive)
+        if not recursive:
+            total_valid = len(valid_entries)
+            end_index = min(start_index + self.CHUNK_SIZE, total_valid)
+            chunk = valid_entries[start_index:end_index]
+        else:
+            chunk = valid_entries
+            end_index = len(valid_entries)
+            total_valid = len(valid_entries)
 
         # Batch fetch stats
         file_paths = [str(item) for item in chunk if item.is_file()]
@@ -404,7 +410,11 @@ class InternalFileTree(QTreeWidget):
                 folder_item = FileTreeItem(parent_item, [item.name, " ", " "])
                 folder_item.setData(0, Qt.UserRole, str(item))
                 folder_item.setData(0, Qt.UserRole + 1, "folder")
-                QTreeWidgetItem(folder_item, ["..."])
+                
+                if recursive:
+                    self._populate_tree(folder_item, item, recursive=True)
+                else:
+                    QTreeWidgetItem(folder_item, ["..."])
             else:
                 file_path_str = str(item)
                 stats = stats_cache.get(file_path_str)
@@ -421,7 +431,7 @@ class InternalFileTree(QTreeWidget):
                 if self._current_active_file and file_path_str == self._current_active_file:
                     self.setCurrentItem(file_item)
 
-        if end_index < total_valid:
+        if not recursive and end_index < total_valid:
             remaining = total_valid - end_index
             more_item = QTreeWidgetItem(parent_item, [f"Show More... ({remaining} left)", "", ""])
             more_item.setData(0, Qt.UserRole, path_str)
@@ -721,18 +731,20 @@ class InternalFileTree(QTreeWidget):
     
     def open_random_file(self):
         """Select and open a random file from the tree (respects search filter)."""
-        # Large dataset optimization: use in-memory file list
-        if self._is_large_dataset and self._filtered_filepaths:
+        # Use in-memory file list if available (Language view or Large folders)
+        if self._filtered_filepaths:
             # Instant random selection from filtered list
             file_path = random.choice(self._filtered_filepaths)
             
             # Store as active file so it gets selected when populated/visible
             self._current_active_file = file_path
             
-            # Try to select if already visible/populated, but DO NOT SCROLL
+            # Try to select if already visible/populated
             item = self._find_file_item(file_path)
             if item:
+                self._ensure_item_visible(item)
                 self.setCurrentItem(item)
+                self.scrollToItem(item)
             
             self.file_selected.emit(file_path)
             return

@@ -79,9 +79,14 @@ class FolderCardWidget(QFrame):
     remove_requested = Signal(str)  # Signal to request removal of this folder path
     favorite_toggled = Signal(str, bool)
 
-    def __init__(self, folder_data: dict, parent=None):
+    def __init__(self, folder_data, parent=None):
         super().__init__(parent)
         self.setObjectName("folderCard")
+        
+        # Backward compatibility for tests passing strings
+        if isinstance(folder_data, str):
+            folder_data = {'path': folder_data, 'is_favorite': False, 'added_at': ''}
+            
         self.folder_path = folder_data['path']
         self.is_favorite = folder_data.get('is_favorite', False)
         self.added_at = folder_data.get('added_at', '')
@@ -1020,6 +1025,7 @@ class FoldersTab(QWidget):
             self.load_folders()
             
             # Notify parent to refresh languages tab
+            parent_window = self.window()
             if hasattr(parent_window, 'refresh_languages_tab'):
                 parent_window.refresh_languages_tab()
 
@@ -1146,6 +1152,10 @@ class FoldersTab(QWidget):
                 opacity: 0.8;
             }}
         """)
+        if hasattr(self, 'add_btn'):
+            from app.ui_icons import get_icon
+            # Green icon matching button, with white outline
+            self.add_btn.setIcon(get_icon("PLUS", color_override=scheme.success_color, outline_color="white"))
         
         self.edit_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1162,10 +1172,15 @@ class FoldersTab(QWidget):
                 opacity: 0.8;
             }}
             QPushButton:checked {{
-                background-color: {scheme.error_color};
-                border: 3px solid {scheme.accent_color};
+                background-color: {scheme.bg_primary};
+                color: {scheme.error_color};
+                border: 2px solid {scheme.error_color};
             }}
         """)
+        if hasattr(self, 'edit_btn'):
+            from app.ui_icons import get_icon
+            # Red icon matching button, with white outline
+            self.edit_btn.setIcon(get_icon("TRASH", color_override=scheme.error_color, outline_color="white"))
         
         # Update FolderCardWidgets
         for i in range(self.list.count()):
@@ -1585,6 +1600,42 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(tab_index)
                 event.accept()
                 return
+
+        # 2.5. Global Search Shortcut (Ctrl+F) - Focus search bar if available
+        if (modifiers & Qt.ControlModifier) and key == Qt.Key_F:
+            current_tab = self.tabs.currentWidget()
+            
+            # Folders Tab - has folder_search_bar
+            if current_tab == self.folders_tab:
+                if hasattr(self.folders_tab, 'folder_search_bar'):
+                    self.folders_tab.folder_search_bar.setFocus()
+                    self.folders_tab.folder_search_bar.selectAll()
+                    event.accept()
+                    return
+            
+            # Editor Tab - has file_tree.search_bar
+            elif hasattr(self, 'editor_tab') and current_tab == self.editor_tab:
+                if hasattr(self.editor_tab, 'file_tree') and hasattr(self.editor_tab.file_tree, 'search_bar'):
+                    self.editor_tab.file_tree.search_bar.setFocus()
+                    self.editor_tab.file_tree.search_bar.selectAll()
+                    event.accept()
+                    return
+            
+            # Shortcuts Tab - has search_input
+            elif hasattr(self, 'shortcuts_tab') and current_tab == self.shortcuts_tab:
+                if hasattr(self.shortcuts_tab, 'search_input'):
+                    self.shortcuts_tab.search_input.setFocus()
+                    self.shortcuts_tab.search_input.selectAll()
+                    event.accept()
+                    return
+            
+            # Settings Tab - has settings_search_input
+            elif hasattr(self, 'settings_tab') and current_tab == self.settings_tab:
+                if hasattr(self, 'settings_search_input'):
+                    self.settings_search_input.setFocus()
+                    self.settings_search_input.selectAll()
+                    event.accept()
+                    return
 
         # 3. Session-Specific Shortcuts (Typing Tab ONLY)
         if hasattr(self, 'editor_tab') and self.tabs.currentWidget() == self.editor_tab:

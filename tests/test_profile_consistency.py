@@ -90,12 +90,12 @@ def test_folder_persistence_isolation(multi_profile_env):
     pm.switch_profile("User1")
     settings.init_db(str(pm.get_current_db_path()))
     settings.add_folder("/path/to/project1")
-    assert "/path/to/project1" in settings.get_folders()
+    assert "/path/to/project1" in [f['path'] for f in settings.get_folders()]
     
     # 2. Profile 2: Should be empty
     pm.switch_profile("User2")
     settings.init_db(str(pm.get_current_db_path()))
-    assert "/path/to/project1" not in settings.get_folders()
+    assert "/path/to/project1" not in [f['path'] for f in settings.get_folders()]
     assert len(settings.get_folders()) == 0
     
     # 3. Profile 1: Should still be there

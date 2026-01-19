@@ -154,19 +154,19 @@ def test_folder_management(db_setup):
     import app.settings as settings
     # Clear any existing folders from setup if necessary
     for f in settings.get_folders():
-        settings.remove_folder(f)
+        settings.remove_folder(f['path'])
         
     settings.add_folder("C:/Path1")
     settings.add_folder("C:/Path1") # Dupe insertion OR IGNORE
-    assert "C:/Path1" in settings.get_folders()
+    assert "C:/Path1" in [f['path'] for f in settings.get_folders()]
     assert len(settings.get_folders()) == 1
     
     settings.add_folder("C:/Path2")
-    assert "C:/Path2" in settings.get_folders()
+    assert "C:/Path2" in [f['path'] for f in settings.get_folders()]
     assert len(settings.get_folders()) == 2
     
     settings.remove_folder("C:/Path1")
-    assert "C:/Path1" not in settings.get_folders()
+    assert "C:/Path1" not in [f['path'] for f in settings.get_folders()]
     assert len(settings.get_folders()) == 1
 
 

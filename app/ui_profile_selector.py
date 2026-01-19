@@ -150,6 +150,15 @@ class ImageCropWidget(QWidget):
             self.setCursor(Qt.ClosedHandCursor)
             event.accept()
 
+    def reset_view(self):
+        """Reset zoom and position to center and fit."""
+        if self.original_pixmap.isNull():
+            return
+            
+        self.zoom_factor = self.min_zoom
+        self.pan_offset = QPoint(0, 0)
+        self.update()
+
     def fit_to_circle(self):
         """Reset to optimal fill (Cover mode). same as reset_view."""
         self.reset_view()
