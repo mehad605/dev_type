@@ -25,21 +25,21 @@ Most typing tutors are designed for general text—essays, articles, random word
 <table>
   <tr>
     <td width="50%">
-      <video src="assets/videos/compressed_practice_on_file_file_of_your_choosing.mp4" width="100%" controls muted loop style="border-radius: 8px;"></video>
+      <video src="https://github.com/user-attachments/assets/0edcc026-9ad9-4fe7-80bc-4b696a9f32a0" width="100%" controls muted loop style="border-radius: 8px;"></video>
       <p align="center"><sub><b>Practice on any file from your projects</b></sub></p>
     </td>
     <td width="50%">
-      <video src="assets/videos/compressed_race_against_your_best_time.mp4" width="100%" controls muted loop style="border-radius: 8px;"></video>
+      <video src="https://github.com/user-attachments/assets/0a51f6cf-db88-437f-aa0c-bae1211a6eb3" width="100%" controls muted loop style="border-radius: 8px;"></video>
       <p align="center"><sub><b>Race against your best performance</b></sub></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <video src="assets/videos/compressed_themes.mp4" width="100%" controls muted loop style="border-radius: 8px;"></video>
+      <video src="https://github.com/user-attachments/assets/6cf0dd76-a165-4d35-8945-70bcf8c25003" width="100%" controls muted loop style="border-radius: 8px;"></video>
       <p align="center"><sub><b>Multiple beautiful themes included</b></sub></p>
     </td>
     <td width="50%">
-      <video src="assets/videos/compressed_stats.mp4" width="100%" controls muted loop style="border-radius: 8px;"></video>
+      <video src="https://github.com/user-attachments/assets/8ad7e0a8-d0f8-4dba-a929-de9b940e515b" width="100%" controls muted loop style="border-radius: 8px;"></video>
       <p align="center"><sub><b>Deep analytics and visualizations</b></sub></p>
     </td>
   </tr>
