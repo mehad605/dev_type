@@ -194,21 +194,46 @@ class InstantSplash:
             icon_label = None
             try:
                 import sys
-                from PIL import Image, ImageTk
                 
-                # Find icon path
+                # Find icon path - try multiple locations
+                icon_path = None
+                
                 if getattr(sys, 'frozen', False):
                     # Running from PyInstaller bundle
-                    icon_path = Path(sys._MEIPASS) / "assets" / "icon.png"
+                    base_path = Path(sys._MEIPASS)
+                    # Try different possible locations
+                    possible_paths = [
+                        base_path / "assets" / "icon.png",
+                        base_path / "icon.png",
+                    ]
                 else:
                     # Running from source
-                    icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
+                    base_path = Path(__file__).parent.parent
+                    possible_paths = [
+                        base_path / "assets" / "icon.png",
+                    ]
                 
-                if icon_path.exists():
-                    # Load and resize icon
-                    img = Image.open(icon_path)
-                    img = img.resize((64, 64), Image.Resampling.LANCZOS)
-                    photo = ImageTk.PhotoImage(img)
+                # Find first existing path
+                for path in possible_paths:
+                    if path.exists():
+                        icon_path = path
+                        break
+                
+                if icon_path and icon_path.exists():
+                    # Try PIL first (better quality)
+                    try:
+                        from PIL import Image, ImageTk
+                        img = Image.open(icon_path)
+                        img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
+                    except ImportError:
+                        # Fallback to Tkinter PhotoImage (no PIL needed)
+                        photo = tk.PhotoImage(file=str(icon_path))
+                        # Subsample to resize (Tkinter's way)
+                        photo = photo.subsample(
+                            max(1, photo.width() // 64),
+                            max(1, photo.height() // 64)
+                        )
                     
                     icon_label = tk.Label(
                         header_frame,
@@ -217,7 +242,10 @@ class InstantSplash:
                     )
                     icon_label.image = photo  # Keep a reference
                     icon_label.pack(side="left", padx=(0, 15))
-            except Exception:
+            except Exception as e:
+                # Debug: print error if running from source
+                if not getattr(sys, 'frozen', False):
+                    print(f"[Splash] Could not load icon: {e}")
                 pass  # Fallback to text-only
             
             # Title

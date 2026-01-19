@@ -178,7 +178,11 @@ class Builder:
             "--exclude-module=pandas",
             "--exclude-module=scipy",
             "--exclude-module=IPython",
-            "--exclude-module=PIL", # We use PySide6 for images, unless Pillow is explicitly needed
+            
+            # Include Pillow for splash screen icon
+            "--hidden-import=PIL",
+            "--hidden-import=PIL.Image",
+            "--hidden-import=PIL.ImageTk",
             
             "--hidden-import=_tkinter",
             "--hidden-import=tkinter",
