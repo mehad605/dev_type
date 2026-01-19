@@ -780,7 +780,7 @@ class FileTreeWidget(QWidget):
         
         # Search bar (always create so it can be used externally)
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search files... (glob or regex)")
+        self.search_bar.setPlaceholderText("Search files... (e.g. .txt or file_name)")
         self.search_bar.setClearButtonEnabled(True)
         self.search_bar.textChanged.connect(self.filter_tree)
         self.search_bar.setStyleSheet("""

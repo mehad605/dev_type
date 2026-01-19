@@ -458,6 +458,26 @@ class FoldersTab(QWidget):
 
         self.layout.addLayout(toolbar)
 
+        # Folder Search Bar
+        self.folder_search_bar = QLineEdit()
+        self.folder_search_bar.setPlaceholderText("Search folders...")
+        self.folder_search_bar.setClearButtonEnabled(True)
+        self.folder_search_bar.textChanged.connect(self.filter_folders)
+        self.folder_search_bar.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {scheme.bg_secondary};
+                color: {scheme.text_primary};
+                border: 1px solid {scheme.card_border};
+                border-radius: 6px;
+                padding: 6px 12px;
+                margin-bottom: 8px;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {scheme.accent_color};
+            }}
+        """)
+        self.layout.addWidget(self.folder_search_bar)
+
         # Styled list widget
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.NoFrame)
@@ -842,9 +862,22 @@ class FoldersTab(QWidget):
             self.load_folders()
             
             # Notify parent to refresh languages tab
-            parent_window = self.window()
             if hasattr(parent_window, 'refresh_languages_tab'):
                 parent_window.refresh_languages_tab()
+
+    def filter_folders(self, text: str):
+        """Filter folder list based on search text."""
+        search_text = text.lower()
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            widget = self.list.itemWidget(item)
+            if isinstance(widget, FolderCardWidget):
+                path_str = widget.folder_path.lower()
+                name_str = Path(widget.folder_path).name.lower()
+                
+                # Check match
+                should_show = (search_text in path_str) or (search_text in name_str)
+                item.setHidden(not should_show)
 
     def on_view_toggled(self, checked: bool):
         pass
