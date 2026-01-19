@@ -144,17 +144,6 @@ Most typing tutors are designed for general text—essays, articles, random word
 
 ---
 
-## 📥 Downloads
-
-Ready to improve your typing? Download the latest release:
-
-**👉 [Download Latest Release](https://github.com/mehad605/dev_type/releases/latest)**
-
-- **Windows**: `dev_type_vX.Y.Z.exe` (Portable, no installation required)
-- **Linux**: `dev_type_vX.Y.Z.deb` (Debian/Ubuntu package)
-
----
-
 ## 🚀 Quick Start
 
 ### Option 1: Download Binary (Easiest)
@@ -274,13 +263,6 @@ Dev Type is an hobby project built with passion for the developer community. Con
 5. Commit your changes: `git commit -m 'Add amazing feature'`
 6. Push to the branch: `git push origin feature/amazing-feature`
 7. Open a Pull Request
-
----
-
-## 💬 Community & Support
-
-- **Issues**: [GitHub Issues](https://github.com/mehad605/dev_type/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/mehad605/dev_type/discussions)
 
 ---
 

@@ -186,20 +186,56 @@ class InstantSplash:
             content = tk.Frame(self._root, bg=colors["bg"])
             content.pack(fill="both", expand=True, padx=3, pady=3)
             
+            # Icon and Title Container
+            header_frame = tk.Frame(content, bg=colors["bg"])
+            header_frame.pack(pady=(40, 10))
+            
+            # Try to load the app icon
+            icon_label = None
+            try:
+                import sys
+                from PIL import Image, ImageTk
+                
+                # Find icon path
+                if getattr(sys, 'frozen', False):
+                    # Running from PyInstaller bundle
+                    icon_path = Path(sys._MEIPASS) / "assets" / "icon.png"
+                else:
+                    # Running from source
+                    icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
+                
+                if icon_path.exists():
+                    # Load and resize icon
+                    img = Image.open(icon_path)
+                    img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    
+                    icon_label = tk.Label(
+                        header_frame,
+                        image=photo,
+                        bg=colors["bg"]
+                    )
+                    icon_label.image = photo  # Keep a reference
+                    icon_label.pack(side="left", padx=(0, 15))
+            except Exception:
+                pass  # Fallback to text-only
+            
             # Title
             try:
                 title_font = tkfont.Font(family="Segoe UI", size=26, weight="bold")
             except:
                 title_font = ("TkDefaultFont", 26, "bold")
             
+            # If icon loaded, use just text. Otherwise use emoji
+            title_text = "Dev Type" if icon_label else "⌨️  Dev Type"
             title = tk.Label(
-                content,
-                text="⌨️  Dev Typing App",
+                header_frame,
+                text=title_text,
                 font=title_font,
                 fg=colors["title"],
                 bg=colors["bg"]
             )
-            title.pack(pady=(55, 10))
+            title.pack(side="left")
             
             # Subtitle
             try:
