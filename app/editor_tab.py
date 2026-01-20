@@ -393,6 +393,37 @@ class EditorTab(QWidget):
         if DEBUG_STARTUP_TIMING:
             print(f"    [EditorTab-LAZY] Load complete: {time.time() - t_start:.3f}s")
 
+    def refresh(self):
+        """Refresh or clear the editor tab state (used on profile switch)."""
+        if not self._loaded:
+            return
+            
+        # Finalize any active race
+        if self.is_racing or self._race_pending_start:
+            self._finalize_ghost_race(cancelled=True)
+            
+        # Clear typing area
+        self.typing_area.clear()
+        
+        # Reset internal state
+        self.current_file = None
+        self.stats_display.clear_wpm_history()
+        self.stats_display.update_stats({}) # Clear display boxes
+        
+        # Reset progress bars
+        self.user_progress_bar.reset()
+        self.user_progress_label.setText("0%")
+        self.ghost_progress_bar.reset()
+        self.ghost_progress_label.setText("0%")
+        self.ghost_progress_widget.setVisible(False)
+        
+        # Reset random file state
+        self.file_tree.tree._current_active_file = None
+        
+        # Refresh tree stats for the new profile
+        self.file_tree.refresh_incomplete_sessions()
+        self.file_tree.tree.clear()
+
     def update_layout(self, *args):
         """Dynamic layout update based on user settings."""
         if not hasattr(self, 'typing_area'): # Not loaded yet

@@ -431,7 +431,7 @@ class LanguagesTab(QWidget):
         else:
             self._populate_cards(language_files)
 
-    def refresh_languages(self, force: bool = False):
+    def refresh(self, force: bool = True):
         """Public method to refresh language data, optionally forcing a rescan."""
         self.ensure_loaded(force=force)
 

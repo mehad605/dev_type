@@ -2696,6 +2696,25 @@ class StatsTab(QWidget):
         if heatmap_metric in metric_keys:
             self.heatmap_metric_combo.setCurrentIndex(metric_keys.index(heatmap_metric))
             self.calendar_heatmap.set_metric(heatmap_metric)
+            
+        # Heatmap year
+        heatmap_year = settings.get_setting("stats_heatmap_year", None)
+        if heatmap_year:
+            try:
+                year_val = int(heatmap_year)
+                # We can't select it in the combo yet because it might not be populated
+                # but we can set it in the calendar_heatmap
+                self.calendar_heatmap._year = year_val
+            except (ValueError, TypeError):
+                self.calendar_heatmap._year = datetime.now().year
+        else:
+            self.calendar_heatmap._year = datetime.now().year
+
+        # Keyboard Shift
+        kb_shift = settings.get_setting("stats_kb_shift", "0") == "1"
+        self.kb_shift_btn.setChecked(kb_shift)
+        self.kb_shift_btn.setText("Shift: On" if kb_shift else "Shift: Off")
+        self.keyboard_heatmap.toggle_shift(kb_shift)
     
     def _save_stats_preferences(self):
         """Save current stats page preferences."""
@@ -2703,6 +2722,16 @@ class StatsTab(QWidget):
         heatmap_idx = self.heatmap_metric_combo.currentIndex()
         if 0 <= heatmap_idx < len(CalendarHeatmap.METRIC_OPTIONS):
             settings.set_setting("stats_heatmap_metric", CalendarHeatmap.METRIC_OPTIONS[heatmap_idx][0])
+            
+        # Heatmap year
+        year_idx = self.heatmap_year_combo.currentIndex()
+        if year_idx >= 0:
+            year_val = self.heatmap_year_combo.itemData(year_idx)
+            if year_val:
+                settings.set_setting("stats_heatmap_year", str(year_val))
+
+        # Keyboard Shift
+        settings.set_setting("stats_kb_shift", "1" if self.kb_shift_btn.isChecked() else "0")
 
     def _on_indent_filter_changed(self, value):
         """Handle smart indent filter change."""
@@ -2735,27 +2764,38 @@ class StatsTab(QWidget):
     
     def refresh(self):
         """Refresh all data in the stats tab."""
-        # Load available languages
-        languages = stats_db.list_history_languages()
-        self.filter_bar.set_languages(languages)
+        # reload languages chips
+        available_languages = sorted(stats_db.list_history_languages())
+        self.filter_bar.set_languages(available_languages)
         
-        # Load available years for the heatmap
+        # sync dropdown for year
         years = stats_db.get_available_years()
+        
+        # Load persisted preferences for the new profile
+        self._load_stats_preferences()
+        
+        current_year = self.calendar_heatmap._year
         self.heatmap_year_combo.blockSignals(True)
         self.heatmap_year_combo.clear()
-        for y in years:
-            self.heatmap_year_combo.addItem(str(y))
+        for y in sorted(years, reverse=True):
+            self.heatmap_year_combo.addItem(str(y), y)
         
-        # Default to current year
-        current_year = datetime.now().year
-        idx = self.heatmap_year_combo.findText(str(current_year))
-        if idx != -1:
+        # If the reloaded year is not in the list (no data), add it if it's the current year
+        if current_year not in years:
+             self.heatmap_year_combo.addItem(str(current_year), current_year)
+             
+        # select year if exists
+        idx = self.heatmap_year_combo.findData(current_year)
+        if idx >= 0: 
             self.heatmap_year_combo.setCurrentIndex(idx)
         else:
+            # Fallback to the latest available year if current_year is not found
             self.heatmap_year_combo.setCurrentIndex(0)
+            if self.heatmap_year_combo.currentIndex() >= 0:
+                self.calendar_heatmap._year = self.heatmap_year_combo.currentData()
+                
         self.heatmap_year_combo.blockSignals(False)
-        
-        # Update all stats and charts
+
         self._update_all_stats()
     
     def _update_all_stats(self):

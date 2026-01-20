@@ -365,7 +365,7 @@ class HistoryTab(QWidget):
         if hasattr(parent_window, "refresh_languages_tab"):
             parent_window.refresh_languages_tab()
 
-    def refresh_history(self):
+    def refresh(self):
         """Refresh filters and table content, keeping current selections."""
         self.refresh_filters()
         self._load_history()

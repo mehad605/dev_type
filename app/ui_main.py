@@ -1203,6 +1203,7 @@ class MainWindow(QMainWindow):
     show_typed_changed = Signal(bool)
     show_ghost_text_changed = Signal(bool)
     sound_enabled_changed = Signal(bool)
+    sound_volume_changed = Signal(int)
     instant_death_changed = Signal(bool)
     ignored_patterns_changed = Signal()
     progress_bar_pos_changed = Signal(str)
@@ -3972,63 +3973,118 @@ class MainWindow(QMainWindow):
     
     def refresh_settings_ui(self):
         """Refresh all settings UI controls to match imported settings."""
-        scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-        self.scheme_combo.setCurrentText(scheme)
-        
-        # Cursor settings
+        if not hasattr(self, 'settings_scroll_widget') or isinstance(self.settings_tab, QLabel):
+            return
+
+        # 1. Color Scheme & Theme
+        current_scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
+        if hasattr(self, 'scheme_combo'):
+            index = self.scheme_combo.findText(current_scheme)
+            if index >= 0:
+                self.scheme_combo.blockSignals(True)
+                self.scheme_combo.setCurrentIndex(index)
+                self.scheme_combo.blockSignals(False)
+        self.update_color_buttons_from_theme()
+
+        # 2. Cursor settings
         cursor_type = settings.get_setting("cursor_type", settings.get_default("cursor_type"))
         self._update_cursor_type_buttons(cursor_type)
         
         cursor_style = settings.get_setting("cursor_style", settings.get_default("cursor_style"))
         self._update_cursor_style_buttons(cursor_style)
         
-        # Font settings
-        self._populate_font_families(self.font_family_combo)
-        font_family = settings.get_setting("font_family", settings.get_default("font_family"))
-        self.font_family_combo.setCurrentText(font_family)
+        # 3. Font settings
+        if hasattr(self, 'font_family_combo'):
+            self._populate_font_families(self.font_family_combo)
+            font_family = settings.get_setting("font_family", settings.get_default("font_family"))
+            self.font_family_combo.setCurrentText(font_family)
         
-        font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=48)
-        self.font_size_spin.setValue(font_size)
+        if hasattr(self, 'font_size_spin'):
+            font_size = settings.get_setting_int("font_size", 12, min_val=8, max_val=48)
+            self.font_size_spin.setValue(font_size)
         
-        # UI Font settings
-        self._populate_font_families(self.ui_font_family_combo)
-        ui_font_family = settings.get_setting("ui_font_family", settings.get_default("ui_font_family"))
-        self.ui_font_family_combo.setCurrentText(ui_font_family)
+        # 4. UI Font settings
+        if hasattr(self, 'ui_font_family_combo'):
+            self._populate_font_families(self.ui_font_family_combo)
+            ui_font_family = settings.get_setting("ui_font_family", settings.get_default("ui_font_family"))
+            self.ui_font_family_combo.setCurrentText(ui_font_family)
         
-        ui_font_size = settings.get_setting_int("ui_font_size", 10, min_val=8, max_val=24)
-        self.ui_font_size_spin.setValue(ui_font_size)
+        if hasattr(self, 'ui_font_size_spin'):
+            ui_font_size = settings.get_setting_int("ui_font_size", 10, min_val=8, max_val=24)
+            self.ui_font_size_spin.setValue(ui_font_size)
         
-        # Typing settings
-        space_char = settings.get_setting("space_char", settings.get_default("space_char"))
-        if space_char in ["␣", "·", " "]:
-            self.space_char_combo.setCurrentText(space_char)
-        else:
-            self.space_char_combo.setCurrentText("custom")
-            self.space_char_custom.setText(space_char)
+        # 5. Typing settings
+        if hasattr(self, 'space_char_combo'):
+            space_char = settings.get_setting("space_char", settings.get_default("space_char"))
+            if space_char in ["␣", "·", " "]:
+                self.space_char_combo.setCurrentText(space_char)
+            else:
+                self.space_char_combo.setCurrentText("custom")
+                if hasattr(self, 'space_char_custom'):
+                    self.space_char_custom.setText(space_char)
         
-        pause_delay = int(float(settings.get_setting("pause_delay", settings.get_default("pause_delay"))))
-        self.pause_delay_spin.setValue(pause_delay)
+        if hasattr(self, 'tab_width_spin'):
+            space_per_tab = int(settings.get_setting("space_per_tab", settings.get_default("space_per_tab")))
+            self.tab_width_spin.setValue(space_per_tab)
+            
+        if hasattr(self, 'pause_delay_spin'):
+            pause_delay = int(float(settings.get_setting("pause_delay", settings.get_default("pause_delay"))))
+            self.pause_delay_spin.setValue(pause_delay)
+
+        if hasattr(self, 'best_wpm_accuracy_spin'):
+            try:
+                best_wpm_acc_raw = settings.get_setting("best_wpm_min_accuracy", settings.get_default("best_wpm_min_accuracy"))
+                best_wpm_percent = int(round(float(best_wpm_acc_raw) * 100)) if best_wpm_acc_raw is not None else 90
+            except (TypeError, ValueError):
+                best_wpm_percent = 90
+            self.best_wpm_accuracy_spin.setValue(best_wpm_percent)
         
-        # Typing behavior
-        confirm_del = settings.get_setting("delete_confirm", settings.get_default("delete_confirm"))
-        self._update_confirm_del_buttons(confirm_del == "1")
+        # 6. Typing behavior (Toggles)
+        confirm_del = settings.get_setting("delete_confirm", settings.get_default("delete_confirm")) == "1"
+        self._update_confirm_del_buttons(confirm_del)
         
-        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes"))
-        self._update_allow_continue_buttons(allow_continue == "1")
+        allow_continue = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
+        self._update_allow_continue_buttons(allow_continue)
+
         show_typed_state = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
         self._update_show_typed_buttons(show_typed_state)
+
         show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
         self._update_show_ghost_text_buttons(show_ghost_state)
+
         auto_indent_state = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
         self._update_auto_indent_buttons(auto_indent_state)
+
+        instant_death_state = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
+        self._update_instant_death_buttons(instant_death_state)
+
+        # 7. Sounds
+        sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+        self._update_sound_enabled_buttons(sound_enabled)
+
+        if hasattr(self, 'sound_profile_combo'):
+            sound_profile = settings.get_setting("sound_profile", settings.get_default("sound_profile"))
+            index = self.sound_profile_combo.findData(sound_profile)
+            if index >= 0:
+                self.sound_profile_combo.blockSignals(True)
+                self.sound_profile_combo.setCurrentIndex(index)
+                self.sound_profile_combo.blockSignals(False)
         
-        # Global Exclusion settings
+        # 8. Global Exclusion settings & History
+        if hasattr(self, 'retention_combo'):
+            current_retention = settings.get_setting("history_retention_days", settings.get_default("history_retention_days"))
+            index = self.retention_combo.findData(current_retention)
+            if index >= 0:
+                self.retention_combo.blockSignals(True)
+                self.retention_combo.setCurrentIndex(index)
+                self.retention_combo.blockSignals(False)
+
         if hasattr(self, 'ignored_files_edit'):
             self.ignored_files_edit.setText(settings.get_setting("ignored_files", settings.get_default("ignored_files")))
         if hasattr(self, 'ignored_folders_edit'):
             self.ignored_folders_edit.setText(settings.get_setting("ignored_folders", settings.get_default("ignored_folders")))
 
-        # Interface Layout settings
+        # 9. Interface Layout settings
         if hasattr(self, 'pb_pos_combo'):
             pb_pos = settings.get_setting("progress_bar_pos", settings.get_default("progress_bar_pos"))
             index = self.pb_pos_combo.findData(pb_pos)
@@ -4044,6 +4100,7 @@ class MainWindow(QMainWindow):
                 self.stats_pos_combo.blockSignals(True)
                 self.stats_pos_combo.setCurrentIndex(index)
                 self.stats_pos_combo.blockSignals(False)
+
     
     def _emit_all_settings_signals(self):
         """Emit all settings signals to update connected components."""
@@ -4081,6 +4138,13 @@ class MainWindow(QMainWindow):
         # Ignored patterns
         self.ignored_patterns_changed.emit()
 
+        # Sound settings
+        sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+        self.sound_enabled_changed.emit(sound_enabled)
+        
+        sound_volume = int(settings.get_setting("sound_volume", settings.get_default("sound_volume")))
+        self.sound_volume_changed.emit(sound_volume)
+
     def _connect_settings_signals(self):
         """Connect settings change signals to editor tab for dynamic updates."""
         if hasattr(self.editor_tab, 'typing_area'):
@@ -4111,6 +4175,7 @@ class MainWindow(QMainWindow):
             
             # Additional UI sync
             self.sound_enabled_changed.connect(self.editor_tab.sound_widget.set_enabled)
+            self.sound_volume_changed.connect(self.editor_tab.sound_widget.set_volume)
             self.colors_changed.connect(self.editor_tab.apply_theme)
     
     def _emit_initial_settings(self):
@@ -4168,6 +4233,13 @@ class MainWindow(QMainWindow):
         
         stats_pos = settings.get_setting("stats_display_pos", settings.get_default("stats_display_pos"))
         self.stats_display_pos_changed.emit(stats_pos)
+
+        # Sound settings
+        sound_enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+        self.sound_enabled_changed.emit(sound_enabled)
+        
+        sound_volume = int(settings.get_setting("sound_volume", settings.get_default("sound_volume")))
+        self.sound_volume_changed.emit(sound_volume)
 
     def on_ignored_extensions_changed(self, text: str):
         """Deprecated: Logic moved to _save_ignore_settings."""
@@ -4301,6 +4373,7 @@ class MainWindow(QMainWindow):
         from app.sound_manager import get_sound_manager
         get_ghost_manager().refresh()
         get_sound_manager().refresh()
+        self._load_custom_fonts()
 
         # 4. Reload Tabs
         
@@ -4310,7 +4383,7 @@ class MainWindow(QMainWindow):
             
         # Languages
         if hasattr(self, 'languages_tab'):
-            self.languages_tab.ensure_loaded(force=True)
+            self.languages_tab.refresh()
             
         # History
         if hasattr(self, 'history_tab') and not isinstance(self.history_tab, QLabel):
@@ -4326,48 +4399,24 @@ class MainWindow(QMainWindow):
             if hasattr(self.stats_tab, 'refresh'):
                 self.stats_tab.refresh()
                 
-        # Settings - Reload values from new DB
+        # Settings - Reload ALL values from new DB
         if hasattr(self, 'settings_tab'):
-            # Reset Settings Tab UI State
+            # Reset Settings Tab View State
             if hasattr(self, 'settings_search_input'):
                 self.settings_search_input.clear()
             if hasattr(self, 'settings_scroll_area'):
                 self.settings_scroll_area.verticalScrollBar().setValue(0)
                 
-            # Refresh all toggle button states from new profile's settings
-            auto_indent_state = settings.get_setting("auto_indent", settings.get_default("auto_indent")) == "1"
-            self._update_auto_indent_buttons(auto_indent_state)
-            
-            allow_continue_state = settings.get_setting("allow_continue_mistakes", settings.get_default("allow_continue_mistakes")) == "1"
-            self._update_allow_continue_buttons(allow_continue_state)
-            
-            show_typed_state = settings.get_setting("show_typed_characters", settings.get_default("show_typed_characters")) == "1"
-            self._update_show_typed_buttons(show_typed_state)
-            
-            show_ghost_state = settings.get_setting("show_ghost_text", settings.get_default("show_ghost_text")) == "1"
-            self._update_show_ghost_text_buttons(show_ghost_state)
-            
-            instant_death_state = settings.get_setting("instant_death_mode", settings.get_default("instant_death_mode")) == "1"
-            self._update_instant_death_buttons(instant_death_state)
-            
-            sound_enabled_state = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
-            self._update_sound_enabled_buttons(sound_enabled_state)
-            
-            confirm_del_state = settings.get_setting("delete_confirm", settings.get_default("delete_confirm")) == "1"
-            self._update_confirm_del_buttons(confirm_del_state)
+            # Authoritative refresh of all UI components
+            self.refresh_settings_ui()
 
-        # 4. Refresh Editor Settings & THEME
-        self.apply_current_theme() # Apply theme for the new profile
+        # Editor Tab - Clear contents on profile switch
+        if hasattr(self, 'editor_tab') and not isinstance(self.editor_tab, QLabel):
+            self.editor_tab.refresh()
+
+        # 4. Refresh Editor Settings, Theme & Notify Listeners
+        self.apply_current_theme() 
         self._emit_initial_settings()
-
-        # Update scheme combo box to reflect new profile's theme
-        if hasattr(self, 'scheme_combo'):
-            current_scheme = settings.get_setting("dark_scheme", settings.get_default("dark_scheme"))
-            index = self.scheme_combo.findText(current_scheme)
-            if index >= 0:
-                self.scheme_combo.blockSignals(True)
-                self.scheme_combo.setCurrentIndex(index)
-                self.scheme_combo.blockSignals(False)
         
         # 5. Reset Editor Session if needed
         # The editor logic listens to settings changes, so it should be fine.

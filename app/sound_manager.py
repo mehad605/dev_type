@@ -253,10 +253,18 @@ class SoundManager(QObject):
         self.builtin_profiles = self._discover_builtin_profiles()
         self.custom_profiles = self._load_custom_profiles()
         
-        # Restore current profile if it still exists, else none
-        old_profile = self.current_profile
-        if old_profile in self.get_all_profiles():
-            self._load_profile(old_profile)
+        # Reload settings for the new profile from database
+        enabled = settings.get_setting("sound_enabled", settings.get_default("sound_enabled")) == "1"
+        profile = settings.get_setting("sound_profile", settings.get_default("sound_profile"))
+        volume = int(settings.get_setting("sound_volume", settings.get_default("sound_volume"))) / 100.0
+        
+        self.set_enabled(enabled)
+        self.set_volume(volume)
+        
+        # Switch to the profile stored in the new database
+        if profile in self.get_all_profiles():
+            self.current_profile = profile
+            self._load_profile(profile)
         else:
             self.set_profile("none")
         

@@ -58,8 +58,8 @@ class TypingHighlighter(QSyntaxHighlighter):
     def set_typed_char(self, position: int, typed_char: str, expected_char: str, is_correct: bool, is_skipped: bool = False):
         """Record a typed character at a position."""
         self.typed_chars[position] = {
-            "typed": typed_char,
-            "expected": expected_char,
+            "raw_typed": typed_char,
+            "raw_expected": expected_char,
             "is_correct": is_correct,
             "is_skipped": is_skipped,
             "length": max(len(expected_char), len(typed_char), 1),
@@ -520,9 +520,11 @@ class TypingAreaWidget(QTextEdit):
         result = result.replace('\t', self.space_char * self.tab_width)
         return result
     
-    def _display_char_for(self, char: str) -> str:
+    def _display_char_for(self, char: str, is_mistake: bool = False) -> str:
         """Return the visual representation of a character."""
         if char == ' ':
+            if is_mistake and self.space_char == ' ':
+                return '␣'
             return self.space_char
         if char == '\n':
             return self.enter_char
@@ -552,8 +554,15 @@ class TypingAreaWidget(QTextEdit):
         if not info:
             return
 
-        expected_len = info.get("length", max(len(info.get("expected", "")), 1))
-        target_char = info["typed"] if self.show_typed_characters else info["expected"]
+        is_mistake = not info.get("is_correct", True)
+        raw_typed = info.get("raw_typed", "")
+        raw_expected = info.get("raw_expected", "")
+        
+        typed_display = self._display_char_for(raw_typed, is_mistake=is_mistake)
+        expected_display = self._display_char_for(raw_expected, is_mistake=is_mistake)
+        
+        expected_len = info.get("length", max(len(expected_display), 1))
+        target_char = typed_display if self.show_typed_characters else expected_display
         self._replace_display_char(position, target_char, expected_len)
 
     def _refresh_typed_display(self):
@@ -567,33 +576,34 @@ class TypingAreaWidget(QTextEdit):
         # Only process characters visible in the window for performance
         for position, info in self.highlighter.typed_chars.items():
             if window_start <= position < window_end:
-                length = info.get("length", max(len(info.get("expected", "")), 1))
-                target_char = info["typed"] if self.show_typed_characters else info["expected"]
+                is_mistake = not info.get("is_correct", True)
+                raw_typed = info.get("raw_typed", "")
+                raw_expected = info.get("raw_expected", "")
+                
+                typed_display = self._display_char_for(raw_typed, is_mistake=is_mistake)
+                expected_display = self._display_char_for(raw_expected, is_mistake=is_mistake)
+                
+                length = info.get("length", max(len(expected_display), 1))
+                target_char = typed_display if self.show_typed_characters else expected_display
                 self._replace_display_char(position, target_char, length)
 
     def _restore_display_for_position(self, position: int):
         """Restore the original expected character at a position."""
         info = self.highlighter.typed_chars.get(position) if self.highlighter else None
         if info:
-            expected_char = info["expected"]
-            expected_len = info.get("length", max(len(expected_char), 1))
+            raw_expected = info.get("raw_expected", "")
+            is_mistake = not info.get("is_correct", True)
+            expected_display = self._display_char_for(raw_expected, is_mistake=is_mistake)
+            self._replace_display_char(position, expected_display, info.get("length", 1))
         else:
-            if self.engine:
-                engine_pos = self._display_position_to_engine(position)
-                if engine_pos is not None and engine_pos < len(self.engine.state.content):
-                    expected_char = self._display_char_for(self.engine.state.content[engine_pos])
-                elif position < len(self.display_content):
-                    expected_char = self.display_content[position]
-                else:
-                    expected_char = ""
+            # Not in typed_chars, use original file content
+            orig_engine_pos = self._display_position_to_engine(position)
+            if self.engine and orig_engine_pos is not None and orig_engine_pos < len(self.engine.state.content):
+                orig_char = self.engine.state.content[orig_engine_pos]
+                display_char = self._display_char_for(orig_char)
+                self._replace_display_char(position, display_char, max(len(display_char), 1))
             elif position < len(self.display_content):
-                expected_char = self.display_content[position]
-            else:
-                expected_char = ""
-            expected_len = max(len(expected_char), 1) if expected_char else 1
-
-        if expected_char:
-            self._replace_display_char(position, expected_char, expected_len)
+                self._replace_display_char(position, self.display_content[position], 1)
 
     def _display_position_to_engine(self, display_pos: int) -> Optional[int]:
         """Map a document index (relative to window) back to absolute engine index."""
@@ -934,8 +944,8 @@ class TypingAreaWidget(QTextEdit):
                     break
                 
                 # Track visual state
-                typed_display = self._display_char_for(char_to_type)
-                expected_display = self._display_char_for(expected_actual)
+                typed_display = self._display_char_for(char_to_type, is_mistake=not is_correct)
+                expected_display = self._display_char_for(expected_actual, is_mistake=not is_correct)
 
                 if self.highlighter:
                     self.highlighter.set_typed_char(
@@ -1021,8 +1031,8 @@ class TypingAreaWidget(QTextEdit):
                 return
             
             # Track typed vs expected characters
-            typed_display = self._display_char_for(char)
-            expected_display = self._display_char_for(expected)
+            typed_display = self._display_char_for(char, is_mistake=not is_correct)
+            expected_display = self._display_char_for(expected, is_mistake=not is_correct)
 
             self.highlighter.set_typed_char(
                 position,
@@ -1097,6 +1107,20 @@ class TypingAreaWidget(QTextEdit):
         self.clear_ghost_progress()
         self.start_ghost_recording() # Restart recording from scratch
         self.stats_updated.emit()
+    
+    def clear(self):
+        """Completely clear the typing area and its state."""
+        self.original_content = ""
+        self.display_content = ""
+        self.engine = None
+        self.highlighter = None
+        self.current_typing_position = 0
+        self.is_recording_ghost = False
+        self.ghost_keystrokes = []
+        self._has_emitted_first_key = False
+        self.setPlainText("")
+        self._ghost_display_limit = 0
+        self.line_indices = []
     
     def reset_cursor_only(self):
         """Reset cursor to beginning but keep stats running (for race mode instant death)."""
