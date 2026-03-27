@@ -68,6 +68,62 @@ class Builder:
                 version = match.group(1)
         return version
 
+    def _fix_python_executable_stack(self, binary_path: Path):
+        """Fix executable stack issue in PyInstaller binary for AppImage compatibility.
+
+        Some systems disallow executable stack in shared libraries. PyInstaller bundles
+        libpython with executable stack enabled, causing [PYI-23141] errors.
+        This uses execstack or patchelf to remove the executable bit from the stack.
+        """
+        try:
+            # Try using execstack first (preferred method)
+            result = subprocess.run(
+                ["which", "execstack"], capture_output=True, text=True
+            )
+
+            if result.returncode == 0:
+                print("   [INFO] Using execstack to fix executable stack...")
+                # Extract the binary to check for libpython
+                try:
+                    subprocess.run(
+                        ["execstack", "--clear-execstack", str(binary_path)],
+                        check=False,
+                        capture_output=True,
+                    )
+                    print("   [OK] Executable stack cleared")
+                except Exception as e:
+                    print(f"   [WARN] execstack failed: {e}")
+            else:
+                # Try patchelf as fallback
+                result = subprocess.run(
+                    ["which", "patchelf"], capture_output=True, text=True
+                )
+
+                if result.returncode == 0:
+                    print("   [INFO] Using patchelf to fix executable stack...")
+                    try:
+                        subprocess.run(
+                            [
+                                "patchelf",
+                                "--remove-needed",
+                                "libpython3.13.so.1.0",
+                                str(binary_path),
+                            ],
+                            check=False,
+                            capture_output=True,
+                        )
+                        print("   [OK] Binary patched for compatibility")
+                    except Exception as e:
+                        print(f"   [WARN] patchelf failed: {e}")
+                else:
+                    print("   [INFO] execstack/patchelf not found, skipping stack fix")
+                    print("   [HINT] Install with: sudo apt-get install execstack")
+        except Exception as e:
+            print(f"   [WARN] Could not fix executable stack: {e}")
+            print(
+                "   [HINT] If AppImage fails to run, install execstack: sudo apt-get install execstack"
+            )
+
     def check_pyinstaller(self):
         """Ensure PyInstaller is installed."""
         try:
@@ -607,6 +663,9 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
         # 3. Copy binary and assets
         shutil.copy2(self.dist_dir / "dev_type", bin_dir / "dev_type")
         os.chmod(bin_dir / "dev_type", 0o755)
+
+        # 3b. Fix executable stack issue in libpython (common AppImage issue)
+        self._fix_python_executable_stack(bin_dir / "dev_type")
 
         icon_src = self.root / "assets" / "icon.png"
         if icon_src.exists():
