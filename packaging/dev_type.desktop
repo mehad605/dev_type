@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Dev Type
+Exec=dev_type
+Icon=dev_type
+Type=Application
+Categories=Education;
+Comment=Master touch typing while coding
+Terminal=false

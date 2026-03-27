@@ -6,6 +6,8 @@ __pycache__/
 .Python
 env/
 build/
+appdir-lint.sh
+excludelist
 develop-eggs/
 dist/
 downloads/

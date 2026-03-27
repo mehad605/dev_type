@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.mehad605.dev_type</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>CC-BY-NC-SA-4.0</project_license>
+  <name>Dev Type</name>
+  <developer id="com.github.mehad605">
+    <name>Mehad</name>
+  </developer>
+  <summary>A typing practice tool built for developers</summary>
+  <description>
+    <p>
+      Dev Type helps developers improve their typing speed by practicing
+      with real code from their own projects. Features include ghost racing
+      against your best performance, detailed analytics with keyboard heatmaps,
+      multi-profile support, and extensive theme customization.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev_type.desktop</launchable>
+  <url type="homepage">https://github.com/mehad605/dev_type</url>
+  <url type="bugtracker">https://github.com/mehad605/dev_type/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/mehad605/dev_type/main/assets/Screenshots/typing_tab.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mehad605/dev_type/main/assets/Screenshots/history_tab.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mehad605/dev_type/main/assets/Screenshots/stats_tab.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Development</category>
+    <category>Education</category>
+  </categories>
+  <provides>
+    <binary>dev_type</binary>
+  </provides>
+</component>
