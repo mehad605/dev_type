@@ -559,14 +559,16 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
                 cwd=self.root,
             )
 
-            rpm_output = (
-                rpm_build / "RPMS" / "x86_64" / f"dev-type-{version}-1.x86_64.rpm"
-            )
+            rpm_candidates = list((rpm_build / "RPMS").rglob("*.rpm"))
+            if not rpm_candidates:
+                print("[ERROR] RPM build produced no artifacts.")
+                return False
+
+            rpm_output = rpm_candidates[0]
             final_rpm = self.dist_dir / f"dev_type_v{version}.rpm"
-            if rpm_output.exists():
-                if final_rpm.exists():
-                    final_rpm.unlink()
-                shutil.move(str(rpm_output), str(final_rpm))
+            if final_rpm.exists():
+                final_rpm.unlink()
+            shutil.move(str(rpm_output), str(final_rpm))
 
             print(f"\n[SUCCESS] RPM package built: {final_rpm.name}")
             return True
