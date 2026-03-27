@@ -152,6 +152,20 @@ Most typing tutors are designed for general text—essays, articles, random word
 3. Click "Add Folder" and select a project directory
 4. Start typing!
 
+### Arch Linux (AUR)
+
+If you are on Arch Linux, you can install Dev Type using an AUR helper like `paru` or `yay`:
+
+**Build from source:**
+```bash
+paru -S dev-type
+```
+
+**Pre-built binary:**
+```bash
+paru -S dev-type-bin
+```
+
 ### Option 2: Run from Source
 
 **Prerequisites**: Python 3.13+, Git
