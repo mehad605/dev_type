@@ -3,6 +3,7 @@
 This module provides theme definitions and application logic for the typing app.
 Themes include complete color schemes for UI elements, text editor, and all widgets.
 """
+
 import logging
 import re
 import json
@@ -16,15 +17,15 @@ logger = logging.getLogger(__name__)
 _stylesheet_cache: Dict[str, str] = {}
 
 # Regex pattern for validating hex colors (#RGB or #RRGGBB)
-_HEX_COLOR_PATTERN = re.compile(r'^#(?:[0-9a-fA-F]{3}){1,2}$')
+_HEX_COLOR_PATTERN = re.compile(r"^#(?:[0-9a-fA-F]{3}){1,2}$")
 
 
 def is_valid_hex_color(color: str) -> bool:
     """Check if a string is a valid hex color.
-    
+
     Args:
         color: String to validate
-        
+
     Returns:
         True if valid hex color (#RGB or #RRGGBB), False otherwise
     """
@@ -35,11 +36,11 @@ def is_valid_hex_color(color: str) -> bool:
 
 def validate_hex_color(color: str, default: str = "#FFFFFF") -> str:
     """Validate and return a hex color, falling back to default if invalid.
-    
+
     Args:
         color: Color string to validate
         default: Default color to return if invalid
-        
+
     Returns:
         Valid hex color string
     """
@@ -52,29 +53,30 @@ def validate_hex_color(color: str, default: str = "#FFFFFF") -> str:
 @dataclass
 class ColorScheme:
     """Color scheme definition for a theme."""
+
     # Background colors
     bg_primary: str  # Main background
     bg_secondary: str  # Secondary background (sidebars, etc.)
     bg_tertiary: str  # Tertiary background (hover, selection)
-    
+
     # Text colors
     text_primary: str  # Main text
     text_secondary: str  # Secondary text (labels, etc.)
     text_disabled: str  # Disabled text
-    
+
     # Typing colors
     text_untyped: str  # Not yet typed
     text_correct: str  # Correctly typed
     text_incorrect: str  # Incorrectly typed
     text_paused: str  # Paused file highlight
     cursor_color: str  # Cursor color
-    
+
     # UI colors
     border_color: str  # Widget borders
     accent_color: str  # Accent/selection color
     button_bg: str  # Button background
     button_hover: str  # Button hover
-    
+
     # Status colors
     success_color: str  # Success messages
     warning_color: str  # Warning messages
@@ -88,15 +90,15 @@ class ColorScheme:
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary."""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, str]) -> 'ColorScheme':
+    def from_dict(cls, data: Dict[str, str]) -> "ColorScheme":
         """Create from dictionary."""
         # Filter out unknown keys to be safe
         known_keys = cls.__annotations__.keys()
         filtered_data = {k: v for k, v in data.items() if k in known_keys}
         # Provide defaults for missing keys (fallback to Dracula-ish)
-        defaults = DRACULA_DARK.to_dict() if 'DRACULA_DARK' in globals() else {}
+        defaults = DRACULA_DARK.to_dict() if "DRACULA_DARK" in globals() else {}
         for k in known_keys:
             if k not in filtered_data:
                 filtered_data[k] = defaults.get(k, "#FF0000")
@@ -109,8 +111,9 @@ from app.palettes import THEME_MAP, NORD
 
 # Compatibility shim
 THEMES = {
-    "dark": {k: None for k in THEME_MAP.keys()} # Keys only, values are proxies
+    "dark": {k: None for k in THEME_MAP.keys()}  # Keys only, values are proxies
 }
+
 
 def get_available_schemes(theme_type: str = "dark") -> list[str]:
     """Get list of available built-in scheme names."""
@@ -118,55 +121,53 @@ def get_available_schemes(theme_type: str = "dark") -> list[str]:
         return list(THEME_MAP.keys())
     return []
 
+
 # ... existing utilities ...
+
 
 def create_from_palette(p: RawPalette) -> ColorScheme:
     """Derive a full ColorScheme from a minimalist RawPalette."""
-    
+
     # Derived shades
-    bg_tertiary = adjust_color(p.bg_surface, 1.1)     # Slightly lighter than surface
-    border_col = adjust_color(p.bg_surface, 1.2)      # Visible border
-    text_sec = p.fg_muted                             # Use muted for secondary text
-    text_dis = adjust_color(p.fg_muted, 0.7)          # Darker muted for disabled
-    
+    bg_tertiary = adjust_color(p.bg_surface, 1.1)  # Slightly lighter than surface
+    border_col = adjust_color(p.bg_surface, 1.2)  # Visible border
+    text_sec = p.fg_muted  # Use muted for secondary text
+    text_dis = adjust_color(p.fg_muted, 0.7)  # Darker muted for disabled
+
     # Button states
     btn_bg = p.bg_surface
     btn_hover = adjust_color(p.bg_surface, 1.15)
-    
+
     return ColorScheme(
         # Backgrounds
         bg_primary=p.bg_base,
         bg_secondary=p.bg_surface,
         bg_tertiary=bg_tertiary,
-        
         # Text
         text_primary=p.fg_main,
         text_secondary=text_sec,
         text_disabled=text_dis,
-        
         # Typing colors
         text_untyped=p.fg_muted,
         text_correct=p.success,
         text_incorrect=p.error,
         text_paused=p.warning,
         cursor_color=p.accent,
-        
         # UI colors
         border_color=border_col,
         accent_color=p.accent,
         button_bg=btn_bg,
         button_hover=btn_hover,
-        
         # Status colors
         success_color=p.success,
         warning_color=p.warning,
         error_color=p.error,
         info_color=p.accent,  # Often same as accent
-        
         # Card/List specific
         card_bg=p.bg_surface,
         card_border=border_col,
     )
+
 
 def _get_custom_themes() -> Dict[str, Dict]:
     """Load custom themes from settings."""
@@ -177,14 +178,16 @@ def _get_custom_themes() -> Dict[str, Dict]:
         logger.error(f"Failed to load custom themes: {e}")
         return {}
 
+
 def save_custom_theme(name: str, scheme: ColorScheme, type: str = "dark"):
     """Save a custom theme."""
     customs = _get_custom_themes()
     if type not in customs:
         customs[type] = {}
-    
+
     customs[type][name] = scheme.to_dict()
     settings.set_setting("custom_themes", json.dumps(customs))
+
 
 def delete_custom_theme(name: str, type: str = "dark"):
     """Delete a custom theme."""
@@ -193,56 +196,60 @@ def delete_custom_theme(name: str, type: str = "dark"):
         del customs[type][name]
         settings.set_setting("custom_themes", json.dumps(customs))
 
+
 def get_color_scheme(theme: str = "dark", scheme: str = "nord") -> ColorScheme:
     """Get a color scheme by scheme name.
-    
+
     Always returns a dark theme as light mode is removed.
     Checks custom themes first, then built-in palettes.
     """
     # Force dark theme base
     theme = "dark"
-    
+
     # 1. Check custom themes (full ColorScheme dicts)
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
         return ColorScheme.from_dict(customs[theme][scheme])
-    
+
     # 2. Check built-in palettes (RawPalette -> generator)
-    raw_palette = THEME_MAP.get(scheme, NORD) # Default to Nord
+    raw_palette = THEME_MAP.get(scheme, NORD)  # Default to Nord
     return create_from_palette(raw_palette)
+
 
 def is_builtin_theme(theme: str, scheme: str) -> bool:
     """Check if a theme is built-in (and unmodified)."""
     customs = _get_custom_themes()
     if theme in customs and scheme in customs[theme]:
-        return False # Overridden by custom
-    
+        return False  # Overridden by custom
+
     return scheme in THEME_MAP
 
 
 def generate_app_stylesheet(scheme: ColorScheme) -> str:
     """Generate complete Qt stylesheet for the application.
-    
+
     Uses caching to avoid regenerating the same stylesheet multiple times.
-    
+
     Args:
         scheme: ColorScheme to use
-        
+
     Returns:
         Complete Qt stylesheet string
     """
     # Fetch font settings
-    ui_family = settings.get_setting("ui_font_family", settings.get_default("ui_font_family"))
+    ui_family = settings.get_setting(
+        "ui_font_family", settings.get_default("ui_font_family")
+    )
     ui_size = settings.get_setting("ui_font_size", settings.get_default("ui_font_size"))
-    
+
     # Create cache key from all scheme colors and fonts to ensure updates
     colors_key = "|".join(f"{k}:{v}" for k, v in sorted(scheme.to_dict().items()))
     cache_key = f"{colors_key}|font:{ui_family}|size:{ui_size}"
-    
+
     # Return cached stylesheet if available
     if cache_key in _stylesheet_cache:
         return _stylesheet_cache[cache_key]
-    
+
     # Generate new stylesheet
     stylesheet = f"""
     /* Main Application */
@@ -588,19 +595,49 @@ def generate_app_stylesheet(scheme: ColorScheme) -> str:
         border-top: 1px solid {scheme.border_color};
     }}
     """
-    
+
     # Cache the generated stylesheet
     _stylesheet_cache[cache_key] = stylesheet
-    
+
     return stylesheet
 
 
 def apply_theme_to_app(app, scheme: ColorScheme):
     """Apply color scheme to entire QApplication.
-    
+
     Args:
         app: QApplication instance
         scheme: ColorScheme to apply
     """
+    from PySide6.QtGui import QPalette, QColor
+
     stylesheet = generate_app_stylesheet(scheme)
     app.setStyleSheet(stylesheet)
+
+    # Create and set palette for dark theme (affects title bar on Linux)
+    palette = QPalette()
+
+    # Window/Base colors
+    palette.setColor(QPalette.Window, QColor(scheme.bg_primary))
+    palette.setColor(QPalette.Base, QColor(scheme.bg_primary))
+
+    # Text colors
+    palette.setColor(QPalette.Text, QColor(scheme.text_primary))
+    palette.setColor(QPalette.WindowText, QColor(scheme.text_primary))
+    palette.setColor(QPalette.ButtonText, QColor(scheme.text_primary))
+
+    # Button colors
+    palette.setColor(QPalette.Button, QColor(scheme.button_bg))
+    palette.setColor(QPalette.AlternateBase, QColor(scheme.bg_secondary))
+
+    # Disabled text
+    palette.setColor(QPalette.Disabled, QPalette.Text, QColor(scheme.text_disabled))
+    palette.setColor(
+        QPalette.Disabled, QPalette.WindowText, QColor(scheme.text_disabled)
+    )
+
+    # Highlight
+    palette.setColor(QPalette.Highlight, QColor(scheme.accent_color))
+    palette.setColor(QPalette.HighlightedText, QColor(scheme.text_primary))
+
+    app.setPalette(palette)
