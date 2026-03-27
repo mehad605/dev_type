@@ -71,58 +71,55 @@ class Builder:
     def _fix_python_executable_stack(self, binary_path: Path):
         """Fix executable stack issue in PyInstaller binary for AppImage compatibility.
 
-        Some systems disallow executable stack in shared libraries. PyInstaller bundles
-        libpython with executable stack enabled, causing [PYI-23141] errors.
-        This uses execstack or patchelf to remove the executable bit from the stack.
+        Uses execstack to clear the executable stack flag from the binary and all its
+        dependencies. This is required on systems with Address Space Layout Randomization (ASLR)
+        that have strict security policies preventing executable stacks.
+
+        This fixes [PYI-23141] and [PYI-28344] errors.
+        See: https://github.com/pyinstaller/pyinstaller/issues/5370
         """
         try:
-            # Try using execstack first (preferred method)
+            # Check if execstack is available
             result = subprocess.run(
                 ["which", "execstack"], capture_output=True, text=True
             )
 
-            if result.returncode == 0:
-                print("   [INFO] Using execstack to fix executable stack...")
-                # Extract the binary to check for libpython
-                try:
-                    subprocess.run(
-                        ["execstack", "--clear-execstack", str(binary_path)],
-                        check=False,
-                        capture_output=True,
-                    )
-                    print("   [OK] Executable stack cleared")
-                except Exception as e:
-                    print(f"   [WARN] execstack failed: {e}")
-            else:
-                # Try patchelf as fallback
+            if result.returncode != 0:
+                print("   [WARN] execstack not found, cannot fix executable stack")
+                print("   [HINT] Install with: sudo apt-get install execstack")
+                print("   [HINT] Or: sudo dnf install execstack")
+                return False
+
+            print("   [INFO] Clearing executable stack flag from binary...")
+            try:
+                # Clear executable stack from the main binary
+                # The -c flag clears the flag, making the binary compatible with strict ASLR
                 result = subprocess.run(
-                    ["which", "patchelf"], capture_output=True, text=True
+                    ["execstack", "-c", str(binary_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
 
                 if result.returncode == 0:
-                    print("   [INFO] Using patchelf to fix executable stack...")
-                    try:
-                        subprocess.run(
-                            [
-                                "patchelf",
-                                "--remove-needed",
-                                "libpython3.13.so.1.0",
-                                str(binary_path),
-                            ],
-                            check=False,
-                            capture_output=True,
-                        )
-                        print("   [OK] Binary patched for compatibility")
-                    except Exception as e:
-                        print(f"   [WARN] patchelf failed: {e}")
+                    print("   [OK] Executable stack flag cleared successfully")
+                    return True
                 else:
-                    print("   [INFO] execstack/patchelf not found, skipping stack fix")
-                    print("   [HINT] Install with: sudo apt-get install execstack")
+                    print(f"   [WARN] execstack returned code {result.returncode}")
+                    if result.stderr:
+                        print(f"   [DEBUG] {result.stderr.strip()}")
+                    return False
+
+            except subprocess.TimeoutExpired:
+                print("   [WARN] execstack timed out")
+                return False
+            except Exception as e:
+                print(f"   [WARN] execstack failed: {e}")
+                return False
+
         except Exception as e:
             print(f"   [WARN] Could not fix executable stack: {e}")
-            print(
-                "   [HINT] If AppImage fails to run, install execstack: sudo apt-get install execstack"
-            )
+            return False
 
     def check_pyinstaller(self):
         """Ensure PyInstaller is installed."""
