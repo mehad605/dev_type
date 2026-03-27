@@ -68,15 +68,22 @@ class Builder:
                 version = match.group(1)
         return version
 
-    def _fix_python_executable_stack(self, binary_path: Path):
-        """Fix executable stack issue in PyInstaller binary for AppImage compatibility.
+    def _fix_python_executable_stack(self, search_dir: Path):
+        """Fix executable stack issue in all shared libraries for AppImage compatibility.
 
-        Uses execstack to clear the executable stack flag from the binary and all its
-        dependencies. This is required on systems with Address Space Layout Randomization (ASLR)
-        that have strict security policies preventing executable stacks.
+        Uses execstack to clear the executable stack flag from the main binary and
+        every bundled .so file inside the PyInstaller onedir output.  This is required
+        on systems / kernels that enforce a strict no-executable-stack (NX) policy,
+        where libpython and other shared libs compiled with an executable stack marker
+        will be refused by the dynamic linker.
 
-        This fixes [PYI-23141] and [PYI-28344] errors.
+        This fixes the '[PYI-xxxxx] Failed to load Python shared library' error.
         See: https://github.com/pyinstaller/pyinstaller/issues/5370
+
+        Args:
+            search_dir: Directory to recursively scan for ELF binaries/libraries.
+                        For onedir builds this is the _internal/ folder next to the
+                        main executable.
         """
         try:
             # Check if execstack is available
@@ -90,31 +97,47 @@ class Builder:
                 print("   [HINT] Or: sudo dnf install execstack")
                 return False
 
-            print("   [INFO] Clearing executable stack flag from binary...")
-            try:
-                # Clear executable stack from the main binary
-                # The -c flag clears the flag, making the binary compatible with strict ASLR
-                result = subprocess.run(
-                    ["execstack", "-c", str(binary_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+            # Collect all ELF files: the main binary and every .so under search_dir
+            targets: list[Path] = []
+            if search_dir.is_file():
+                targets.append(search_dir)
+            else:
+                # The directory itself may contain the main binary as well as _internal/
+                for f in search_dir.rglob("*"):
+                    if f.is_file() and not f.is_symlink():
+                        targets.append(f)
 
-                if result.returncode == 0:
-                    print("   [OK] Executable stack flag cleared successfully")
-                    return True
-                else:
-                    print(f"   [WARN] execstack returned code {result.returncode}")
-                    if result.stderr:
-                        print(f"   [DEBUG] {result.stderr.strip()}")
-                    return False
-
-            except subprocess.TimeoutExpired:
-                print("   [WARN] execstack timed out")
+            if not targets:
+                print(f"   [WARN] No files found in {search_dir}")
                 return False
-            except Exception as e:
-                print(f"   [WARN] execstack failed: {e}")
+
+            print(f"   [INFO] Clearing executable stack flag from {len(targets)} file(s)...")
+            failed = 0
+            for target in targets:
+                try:
+                    res = subprocess.run(
+                        ["execstack", "-c", str(target)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if res.returncode != 0 and res.stderr:
+                        # execstack prints errors for non-ELF files; suppress those
+                        if "not an ELF" not in res.stderr and "No such file" not in res.stderr:
+                            print(f"   [WARN] execstack {target.name}: {res.stderr.strip()}")
+                            failed += 1
+                except subprocess.TimeoutExpired:
+                    print(f"   [WARN] execstack timed out on {target.name}")
+                    failed += 1
+                except Exception as exc:
+                    print(f"   [WARN] execstack failed on {target.name}: {exc}")
+                    failed += 1
+
+            if failed == 0:
+                print("   [OK] Executable stack flag cleared from all bundled libraries")
+                return True
+            else:
+                print(f"   [WARN] execstack had issues with {failed} file(s)")
                 return False
 
         except Exception as e:
@@ -632,6 +655,87 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
             print(f"[ERROR] rpmbuild failed with error code {e.returncode}")
             return False
 
+    def _build_linux_onedir(self) -> bool:
+        """Build Linux onedir executable (used by AppImage build).
+
+        Unlike build_linux() which creates a single-file executable, this produces
+        a directory (dist/dev_type/) containing the main binary plus an _internal/
+        folder with all bundled shared libraries.  This layout is required so that
+        execstack can patch the .so files before they are packed into the AppImage.
+        """
+        print("Building Linux onedir executable for AppImage...\n")
+
+        icon_path = self.get_icon_path()
+
+        # Create a temporary entry point script
+        entry_script = self.root / "run_app.py"
+        entry_script.write_text("""#!/usr/bin/env python
+if __name__ == "__main__":
+    from app.ui_main import run_app
+    run_app()
+""")
+
+        # onedir (no --onefile) so that .so files are accessible on disk
+        cmd = [
+            "pyinstaller",
+            "--name=dev_type",
+            # NOTE: --onedir is the default - explicitly stated for clarity
+            "--onedir",
+            f"--icon={icon_path}",
+            # Data files
+            "--add-data=assets/icon.svg:assets",
+            "--add-data=assets/icon.png:assets",
+            "--add-data=assets/sounds:assets/sounds",
+            "--add-data=assets/icon-theme.zip:assets",
+            # Hidden imports
+            "--hidden-import=PySide6.QtSvg",
+            "--hidden-import=PySide6.QtSvgWidgets",
+            "--hidden-import=PySide6.QtMultimedia",
+            "--hidden-import=app.portable_data",
+            "--hidden-import=app.ghost_manager",
+            "--hidden-import=app.stats_db",
+            "--hidden-import=app.settings",
+            "--hidden-import=app.themes",
+            "--hidden-import=app.typing_engine",
+            "--hidden-import=app.typing_area",
+            "--hidden-import=app.sound_manager",
+            "--hidden-import=app.sound_profile_editor",
+            "--hidden-import=app.sound_volume_widget",
+            "--hidden-import=app.icon_manager",
+            "--hidden-import=app.language_cache",
+            "--hidden-import=app.file_scanner",
+            "--hidden-import=app.file_tree",
+            "--hidden-import=app.editor_tab",
+            "--hidden-import=app.history_tab",
+            "--hidden-import=app.languages_tab",
+            "--hidden-import=app.session_result_dialog",
+            "--hidden-import=app.ghost_replay_widget",
+            "--hidden-import=app.stats_display",
+            "--hidden-import=app.progress_bar_widget",
+            "--hidden-import=app.instant_splash",
+            "--hidden-import=_tkinter",
+            "--hidden-import=tkinter",
+            "--hidden-import=tkinter.font",
+            "--hidden-import=tkinter.ttk",
+            "--noupx",
+            "--clean",
+            str(entry_script),
+        ]
+
+        print(f"Command: {' '.join(cmd)}\n")
+
+        try:
+            subprocess.run(cmd, check=True, cwd=self.root)
+            if entry_script.exists():
+                entry_script.unlink()
+            print("\n[SUCCESS] Linux onedir build complete!")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"\n[ERROR] Build failed with error code {e.returncode}")
+            if entry_script.exists():
+                entry_script.unlink()
+            return False
+
     def build_appimage(self):
         """Build AppImage package."""
         if not self.is_linux:
@@ -640,13 +744,25 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
 
         print("Building AppImage...\n")
 
-        # 1. Build the Linux binary first
-        if not self.build_linux():
+        # 1. Build the Linux onedir binary (needed so .so files can be patched)
+        if not self._build_linux_onedir():
             return False
 
         version = self.get_version()
 
-        # 2. Create AppDir structure
+        # onedir output layout: dist/dev_type/dev_type  +  dist/dev_type/_internal/
+        onedir_root = self.dist_dir / "dev_type"
+        onedir_bin = onedir_root / "dev_type"
+        onedir_internal = onedir_root / "_internal"
+
+        # 2. Fix executable stack on ALL bundled .so files before packaging.
+        #    With --onefile the .so files are embedded inside the binary and cannot
+        #    be patched.  With --onedir they live in _internal/ as real files.
+        print("Patching executable stack flags on bundled libraries...")
+        # Patch both the main binary and everything inside _internal/
+        self._fix_python_executable_stack(onedir_root)
+
+        # 3. Create AppDir structure
         appdir = self.build_dir / "AppDir"
         if appdir.exists():
             shutil.rmtree(appdir)
@@ -657,12 +773,24 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
         for directory in [bin_dir, apps_dir, icons_dir]:
             directory.mkdir(parents=True, exist_ok=True)
 
-        # 3. Copy binary and assets
-        shutil.copy2(self.dist_dir / "dev_type", bin_dir / "dev_type")
+        # 4. Copy the onedir bundle into AppDir/usr/bin/
+        #    The main exe goes to usr/bin/dev_type and _internal/ goes alongside it.
+        shutil.copy2(onedir_bin, bin_dir / "dev_type")
         os.chmod(bin_dir / "dev_type", 0o755)
 
-        # 3b. Fix executable stack issue in libpython (common AppImage issue)
-        self._fix_python_executable_stack(bin_dir / "dev_type")
+        internal_dest = bin_dir / "_internal"
+        if onedir_internal.exists():
+            shutil.copytree(onedir_internal, internal_dest)
+        else:
+            # Older PyInstaller versions may not use _internal/; copy the whole dir
+            for item in onedir_root.iterdir():
+                if item.name == "dev_type":
+                    continue  # already copied the main binary
+                dest = bin_dir / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
 
         icon_src = self.root / "assets" / "icon.png"
         if icon_src.exists():
@@ -670,7 +798,7 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
             # AppImage also needs icon at AppDir root
             shutil.copy2(icon_src, appdir / "dev_type.png")
 
-        # 4. Install desktop file
+        # 5. Install desktop file
         desktop_src = self.root / "packaging" / "dev_type.desktop"
         if desktop_src.exists():
             shutil.copy2(desktop_src, apps_dir / "dev_type.desktop")
