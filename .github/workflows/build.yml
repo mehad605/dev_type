@@ -97,11 +97,15 @@ jobs:
         run: uv sync
       - name: Build RPM
         run: uv run python build.py --rpm --clean
+
+      - name: List RPM artifacts
+        run: ls -la dist
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: dev_type-rpm
           path: dist/*.rpm
+          if-no-files-found: error
 
   create-release:
     name: Create GitHub Release
@@ -133,6 +137,7 @@ jobs:
 
       - name: Download RPM Package
         uses: actions/download-artifact@v4
+        if: ${{ needs.build-rpm.result == 'success' }}
         with:
           name: dev_type-rpm
           path: release_assets/
@@ -144,10 +149,6 @@ jobs:
           name: ${{ github.event.inputs.version_tag || github.ref_name }}
           body: ${{ github.event.inputs.release_notes }}
           generate_release_notes: ${{ github.event.inputs.release_notes == '' && (github.event.inputs.auto_generate == 'true' || github.event_name == 'push') }}
-          files: |
-            release_assets/*.exe
-            release_assets/*.deb
-            release_assets/*.AppImage
-            release_assets/*.rpm
+          files: release_assets/*
           draft: false
           prerelease: false
