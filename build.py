@@ -26,6 +26,7 @@ import subprocess
 import sys
 import re
 import tarfile
+from datetime import datetime
 from pathlib import Path
 
 
@@ -498,7 +499,9 @@ Description: Master touch typing while coding
 
         # 10. Spec file
         spec_path = rpm_build / "SPECS" / "dev_type.spec"
-        spec_content = f"""Name:           dev-type
+        changelog_date = datetime.now().strftime("* %a %b %d %Y")
+        spec_content = f"""%define debug_package %{{nil}}
+Name:           dev-type
 Version:        {version}
 Release:        1%{{?dist}}
 Summary:        Master touch typing while coding
@@ -537,7 +540,7 @@ cp -a usr/share/licenses/dev_type/LICENSE %{{buildroot}}%{{_licensedir}}/dev_typ
 %{{_datadir}}/metainfo/com.github.mehad605.dev_type.metainfo.xml
 
 %changelog
-* {version} Mehad <mehad605@example.com> - {version}-1
+- {changelog_date} Mehad <mehad605@example.com> - {version}-1
 - Automated build
 """
         spec_path.write_text(spec_content, encoding="utf-8")
