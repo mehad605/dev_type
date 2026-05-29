@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Version tag (e.g. v1.0.0). Leave blank to ONLY build testing artifacts.'
+        description: 'Version tag (e.g. v1.0.1). Leave blank to ONLY build testing artifacts.'
         required: false
       release_notes:
         description: 'Manual release notes. (Optional)'
