@@ -59,7 +59,7 @@ class Builder:
 
     def get_version(self):
         """Get version from pyproject.toml."""
-        version = "1.0.1"
+        version = "1.0.2"
         pyproject_path = self.root / "pyproject.toml"
         if pyproject_path.exists():
             content = pyproject_path.read_text()
@@ -414,7 +414,7 @@ if __name__ == "__main__":
             return False
 
         # 2. Get version from pyproject.toml
-        version = "1.0.1"
+        version = "1.0.2"
         pyproject_path = self.root / "pyproject.toml"
         if pyproject_path.exists():
             content = pyproject_path.read_text()
