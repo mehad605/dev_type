@@ -965,7 +965,7 @@ class EditorTab(QWidget):
         self.stats_display.clear_wpm_history()
         
         dialog = SessionResultDialog(
-            parent=self,
+            parent=self.window(),
             stats=stats,
             is_new_best=is_new_best,
             is_race=False,
@@ -1784,7 +1784,7 @@ class EditorTab(QWidget):
         self.stats_display.clear_wpm_history()
         
         dialog = SessionResultDialog(
-            parent=self,
+            parent=self.window(),
             stats=race_stats,
             is_new_best=is_new_best,
             is_race=True,

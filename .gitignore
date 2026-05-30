@@ -41,6 +41,7 @@ ENV/
 
 # --- Project Specific ---
 Dev_Type_Data/
+.agents
 data_location.txt
 dev_type.spec
 version_info.txt
