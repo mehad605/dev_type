@@ -945,8 +945,17 @@ class SessionResultDialog(QDialog):
         self.ghost_wpm_history = ghost_wpm_history or []  # Ghost WPM history
         self.ghost_error_history = ghost_error_history or []  # Ghost error history
         
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        import sys
+        is_frozen_linux = sys.platform.startswith('linux') and getattr(sys, 'frozen', False)
+        
+        if is_frozen_linux:
+            # PyInstaller Linux defaults to Fusion style which fails to render translucent
+            # frameless Wayland windows. Fallback to a standard window frame to prevent invisible freezes.
+            self.setWindowFlags(Qt.Dialog)
+        else:
+            self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            self.setAttribute(Qt.WA_TranslucentBackground)
+            
         self.setModal(True)
         
         # Calculate dynamic height based on content
@@ -980,13 +989,17 @@ class SessionResultDialog(QDialog):
         user_color = theme.get('user_color', '#4CAF50')
         ghost_color = theme.get('ghost_color', '#9C27B0')
         
+        import sys
+        is_frozen_linux = sys.platform.startswith('linux') and getattr(sys, 'frozen', False)
+        radius = "0px" if is_frozen_linux else "20px"
+        
         # Main background frame - use dynamic height
         bg_frame = QFrame(self)
         bg_frame.setGeometry(0, 0, self.width(), self.height())
         bg_frame.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_primary};
-                border-radius: 20px;
+                border-radius: {radius};
                 border: 1px solid {border_color};
             }}
         """)

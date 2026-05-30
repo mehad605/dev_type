@@ -3189,7 +3189,8 @@ class MainWindow(QMainWindow):
     def refresh_history_tab(self):
         """Refresh the session history tab."""
         if hasattr(self, "history_tab"):
-            self.history_tab.refresh_history()
+            if hasattr(self.history_tab, "refresh"):
+                self.history_tab.refresh()
 
     def refresh_stats_tab(self):
         """Refresh the stats tab after session completion."""

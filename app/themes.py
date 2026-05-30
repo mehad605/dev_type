@@ -616,7 +616,6 @@ def apply_theme_to_app(app, scheme: ColorScheme):
 
     # Force dark scheme for native window titlebars (Qt 6.5+)
     from PySide6.QtCore import Qt
-    app.setStyle("Fusion")
     if hasattr(app, "styleHints") and hasattr(app.styleHints(), "setColorScheme"):
         app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
 
